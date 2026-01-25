@@ -1,0 +1,6 @@
+model = "gpt-5.1-codex-max"
+model_reasoning_effort = "xhigh"
+
+[mcp_servers.serena]
+command = "uvx"
+args = ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "codex"]

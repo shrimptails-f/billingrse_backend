@@ -1,0 +1,66 @@
+# Ubiquitous Language Class Diagram
+
+```mermaid
+classDiagram
+  class User["ユーザー（User）"]
+  class MailService["メールサービス（MailService）"]
+  class MailAccountConnection["メールアカウント連携（MailAccountConnection）"]
+  class MailFetch["メール取得（MailFetch）"]
+  class ManualMailFetch["手動メール取得（ManualMailFetch）"]
+  class MailFetchBatch["メール取得バッチ（MailFetchBatch）"]
+  class Email["メール（Email）"]
+  class ParsedEmail["メール解析結果（ParsedEmail）"]
+  class BillingEligibility["請求成立判定（BillingEligibility）"]
+  class Billing["請求（Billing）"]
+  class Vendor["支払先（Vendor）"]
+  class PaymentType["支払いタイプ（PaymentType）"]
+
+  class User {
+    + ログインする()
+    + ログアウトする()
+  }
+
+  class MailAccountConnection {
+    + 認可する()
+    + 再認可する()
+    + 失効する()
+  }
+
+  class ManualMailFetch {
+    + 実行する()
+  }
+
+  class MailFetchBatch {
+    + 実行する()
+  }
+
+  class BillingEligibility {
+    + 判定する()
+  }
+
+  <<concept>> MailFetch
+  <<policy>> BillingEligibility
+  <<enumeration>> PaymentType
+
+  User "1" --> "0..*" MailAccountConnection : 連携
+  User "1" --> "0..*" Email : 所有
+  User "1" --> "0..*" Billing : 所有
+
+  MailAccountConnection "0..*" --> "1" MailService : サービス
+  MailAccountConnection "1" --> "0..*" MailFetch : 取得に使用
+
+  MailFetch "1" o-- "0..*" ManualMailFetch : 手動
+  MailFetch "1" o-- "0..*" MailFetchBatch : バッチ
+
+  ManualMailFetch --> Email : 取得
+  MailFetchBatch --> Email : 取得
+
+  Email --> ParsedEmail : 解析結果
+  ParsedEmail --> BillingEligibility : 成立判定
+  BillingEligibility --> Billing : 生成
+
+  Billing --> Vendor : 支払先
+  Billing --> PaymentType : 支払いタイプ
+  Billing ..> Email : 参照元
+  Billing ..> ParsedEmail : 参照元
+```

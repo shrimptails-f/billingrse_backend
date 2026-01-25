@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch via DAP",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/cmd/app", 
+      "debugAdapter": "dlv-dap",
+      "trace": "warn",
+      "showLog": false,
+      "env": {
+        "GIN_MODE": "debug"
+      }
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+    "gopls": {
+        "build.buildFlags": ["-tags=integration,unit,test"]
+    },
+    "cSpell.ignoreWords": [
+        "billingrse",
+        "honnef",
+        "fatih",
+        "gomodifytags",
+        "rinchsan",
+        "gosimports",
+        "staticcheck",
+        "gopls",
+        "localedef",
+        "dpkg",
+    ]
+}

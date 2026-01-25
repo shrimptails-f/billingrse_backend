@@ -1,0 +1,17 @@
+#!/bin/sh
+
+# Goのテストコマンドを実行
+# テストファイルがないディレクトリの表示を除外する
+go test ${APP_ROOT}/... 2>&1 | grep -v "no test files"
+
+# go testの終了コードをチェック
+if [ $? -ne 0 ]; then
+ # 警告メッセージを赤色で表示
+ echo -e "\033[31mWARNING: Tests failed, but commit is allowed.\033[0m"
+else
+ # 成功メッセージを緑色で表示
+ echo -e "\033[32mTests passed successfully.\033[0m"
+fi
+
+# 0を返してコミットを許可
+exit 0

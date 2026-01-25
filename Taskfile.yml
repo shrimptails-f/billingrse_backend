@@ -1,0 +1,104 @@
+# https://taskfile.dev
+
+version: '3'
+
+env:
+  MIGRATION_ROOT: "tools/migrations"
+  SEED_ROOT: "tools/seeder"
+  USER_DIR: /home/dev
+
+tasks:
+  setup:
+    desc: "ローカル環境のセットアップを行う。(gitコマンドが使用できるようにする)"
+    cmds:
+      - cp {{.APP_ROOT}}/.gitconfig ~/.gitconfig
+      - git config --global core.autocrlf input
+      - git config --global --add safe.directory {{.APP_ROOT}}
+      - chmod +x {{.APP_ROOT}}/.github/hooks/pre-commit
+      - git config core.hooksPath {{.APP_ROOT}}/.github/hooks
+      # わざわざコピーする理由は、commit時に毎回メアドとユーザー名の設定(.gitconfigの作成)を求められ面倒なので、git cloneするなら作成済みであろう.gitconfigを使うという魂胆である。
+      # だが、Windowsユーザーが.gitconfigを使用中と解釈されるようでgit configコマンドが失敗するため、ファイルをコピーする必要がある。
+      # core.autocrlf inputを使用する理由は、Linuxの改行コードが原因で差分が表示されてしまうため。
+      # safe.directory $APP_ROOTを使用する理由は、WSL2側に配置しgitを使うには毎回求められるため。
+
+  run:
+    desc: "リモートコンテナ tcpリンク発行"
+    cmds:
+      - task: setup
+      - ide/bin/remote-dev-server.sh run {{.APP_ROOT}} --listenOn 0.0.0.0 --port 5994
+
+  air:
+    desc: "ホットリロード 起動"
+    cmds:
+      - air -c .air.toml
+
+  run-remote-dev:
+    desc: "リモート開発サーバーを起動"
+    cmds:
+      - air -c .air.toml & ide/bin/remote-dev-server.sh run {{.APP_ROOT}} --listenOn 0.0.0.0 --port 5994
+
+  migration-drop:
+    desc: "develop schema のテーブルを削除する。"
+    cmds:
+      - go run {{.MIGRATION_ROOT}}/main.go dev drop
+
+  migration-create:
+    desc: "develop schema のテーブル作成する。"
+    cmds:
+      - go run {{.MIGRATION_ROOT}}/main.go dev create
+
+  migration-test-drop:
+    desc: "test schema のテーブルを削除する。"
+    cmds:
+      - go run {{.MIGRATION_ROOT}}/main.go test drop
+
+  migration-test-create:
+    desc: "test schema のテーブルを作成する。"
+    cmds:
+      - go run {{.MIGRATION_ROOT}}/main.go test create
+
+  migration-fresh:
+    desc: "develop schema のテーブルを削除し作成する。"
+    cmds:
+      - task: migration-drop
+      - task: migration-create
+
+  migration-fresh-test:
+    desc: "test schema のテーブルを削除し作成する。"
+    cmds:
+      - task: migration-test-drop
+      - task: migration-test-create
+
+  seed:
+    desc: "develop schema のテーブルにデータを投入する。"
+    cmds:
+      - go run {{.SEED_ROOT}}/main.go dev
+
+  seed-test:
+    desc: "test schema のテーブルにデータを投入する。"
+    cmds:
+      - go run {{.SEED_ROOT}}/main.go test
+
+  test:
+    desc: "カバレッジ率を取得する。"
+    cmds:
+      # 外部依存テストは認証の問題がクリアされるまで放置。 
+      # - go test -tags=integration -cover -coverprofile=coverage.out ./...
+      - go test -count=1 -race -coverprofile=coverage.out ./internal/...
+      - go tool cover -html=coverage.out -o coverage.html
+      - rm coverage.out
+
+  codex:
+    desc: "codexに権限をあたえて、コマンド確認させずに実行します。DevContainer(ガードレール付環境)内でのみ実行してください。"
+    cmds:
+      - codex --dangerously-bypass-approvals-and-sandbox
+
+  ccusage-live:
+    desc: "Claude Codeの使用状況をリアルタイムで監視します"
+    cmds:
+      - npx ccusage@latest blocks --live
+  
+  cxusage-live:
+    desc: "CodeXの使用状況をリアルタイムで監視します"
+    cmds:
+      - npx @ccusage/codex@latest blocks --live

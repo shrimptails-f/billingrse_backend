@@ -1,0 +1,16 @@
+{
+    "name": "Billingrse Parser DevContainer",
+    "dockerComposeFile": "docker-compose.yml",
+    "service": "go",
+    "workspaceFolder": "/home/dev/backend",
+    "postCreateCommand": "task setup",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "editorconfig.editorconfig", // エディタを跨いだ共通設定ファイルをVsCodeで実行するのに必要
+                "ms-azuretools.vscode-docker", // VsCodeでのIntelliSenseやタブ補完用
+                "golang.go" // Go言語の拡張機能
+            ]
+        }
+    }
+}

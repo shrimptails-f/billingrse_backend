@@ -1,0 +1,69 @@
+version: "3"
+services:
+  go:
+    build:
+      context: ../
+      dockerfile: .devcontainer/infra/go/Dockerfile
+      args:
+        - APP_ROOT=$APP_ROOT
+    env_file:
+      - .env
+    tty: true
+    ports:
+      - ${GO_PORT}:${GO_PORT}
+      - ${GO_DEBUG_PORT}:${GO_DEBUG_PORT}
+      - 1455:1455
+    depends_on:
+      - "mysql"
+      - "redis"
+    volumes:
+      - ../:$APP_ROOT
+      - ~/.gitconfig:/root/.gitconfig
+    security_opt: # delve用に必要
+      - apparmor:unconfined
+    cap_add: # delve用に必要
+      - SYS_PTRACE
+    networks:
+      default:
+      gmail_parser:
+
+  mysql:
+    image: mysql:8.0
+    ports:
+      - ${DB_PORT}:3306
+    command: mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - ../.devcontainer/infra/mysql/:/docker-entrypoint-initdb.d/
+      - db-data:/var/lib/mysql
+      - go-modules:/go/pkg/mod
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - target: 8025
+        published: ${MAILHOG_PUBLISHED_PORT:-8025}
+        protocol: tcp
+        mode: host
+
+  redis:
+    image: redis:8.4-alpine
+    ports:
+      - $REDIS_PORT:$REDIS_PORT
+    volumes:
+      - redis-data:/data
+
+volumes:
+  go-modules:
+  db-data:
+    driver: local
+  redis-data:
+    driver: local
+
+networks:
+  gmail_parser:
+    external: true

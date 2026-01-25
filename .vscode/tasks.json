@@ -1,0 +1,39 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "テーブルリフレッシュ(削除→作成)",
+            "type": "shell",
+            "command": "task migration-fresh"
+        },
+        {
+            "label": "テストデータ投入",
+            "type": "shell",
+            "command": "task seed"
+        },
+        {
+          "label": "codex callback access",
+          "type": "shell",
+          "command": "curl -v '${input:codex_callback}'",
+          "problemMatcher": [],
+          "presentation": {
+            "echo": true,
+            "reveal": "always"
+          }
+        },
+    ],
+     "inputs": [
+       {
+         "id": "sinceDaysAgo",
+         "type": "promptString",
+         "description": "何日前から取得しますか？当日分:0 前日分:-1",
+         "default": "1"
+       },
+       {
+         "id": "codex_callback",
+         "type": "promptString",
+         "description": "callbackのURLを入力してください",
+         "default": "http://localhost:1455/auth/callback?"
+       },
+    ],
+}

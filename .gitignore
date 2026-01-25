@@ -1,0 +1,39 @@
+.env
+shas.env
+
+# air(ホットリロード)で勝手に更新されるので除外
+/tmp/*
+__debug_bin*
+# ビルドファイル
+main
+# node
+node_modules
+#AIエージェント用の課題メモディレクトリ
+tasks
+.claude-local
+.serena
+
+# 多分コンテナ作成時に勝手に作成されるキャッシュなので除外
+.attach_pid*
+
+# GoLand用のリモートコンテナ作成時勝手に作成されるので削除。
+.idea
+ide
+
+# ローカル環境生成した秘密鍵の配置場所(コピー元)
+cert
+
+# 秘密鍵
+/credentials/token_user.json
+client_secret.json
+/gmail_auth
+
+# プロンプト
+prompts/text_analysis_prompt.txt
+
+# カバレッジ率
+coverage.out
+coverage.html
+
+# 恐らくWindowsユーザーに使用中と解釈されWSL2配置時にgit configコマンドが失敗してしまうのでマウントした際の差分を無視する用。
+.gitconfig

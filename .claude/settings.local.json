@@ -1,0 +1,52 @@
+  {
+    "permissions": {
+      "defaultMode": "acceptEdits",
+      "allow": [
+        "Bash(go:*)",
+        "Bash(git status:*)",
+        "Bash(gh:*)",
+        "Bash(ls:*)",
+        "Bash(cat:*)",
+        "Bash(grep:*)",
+        "Bash(find:*)",
+        "Bash(curl:*)",
+        "Bash(mysql:*)",
+        "Bash(printf:*)",
+        "Bash(codex:*)",
+        "Bash(python3:*)",
+        "Read(/home/dev/backend/**)",
+        "Write(/home/dev/backend/**)"
+      ],
+      "deny": [
+        "Bash(rm -rf:*)",
+        "Bash(rm -r:*)",
+        "Bash(sudo rm:*)",
+        "Bash(rmdir:*)",
+        "Bash(rm --recursive:*)",
+        "Bash(rm --force:*)",
+        "Bash(rm -f:*)",
+        "Bash(rm -R:*)",
+        "Bash(find * -delete:*)",
+        "Bash(find * -exec rm:*)",
+        "Bash(xargs rm:*)",
+        "Bash(sudo:*)",
+        "Bash(git config *)",
+        "Bash(git push:*)",
+        "Bash(git reset:*)",
+        "Bash(git rebase:*)",
+        "Bash(brew install *)",
+        "Bash(chmod 777 *)",
+        "Read(.env*)",
+        "Read(id_rsa*)",
+        "Read(*.key)",
+        "Read(*.pem)",
+        "Write(.env*)",
+        "Write(id_rsa*)",
+        "Write(*.key)",
+        "Write(*.pem)"
+      ],
+      "ask": [
+        "Bash(script:*)"
+      ]
+    }
+  }

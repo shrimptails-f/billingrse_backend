@@ -1,0 +1,24 @@
+以下のようなリレーション構造を持つキーワード関連テーブルがあります。
+
+- keyword_groups（キーワードグループ）
+- keyword_group_word_links（中間テーブル）
+- key_words（単語）
+
+このリレーションで使用されている `key_words.word` に対して、以下のような正規化を行いたいです：
+
+- 大文字小文字を統一（例：すべて小文字）
+- 全角英数字を半角に統一
+- 記号や空白をトリム（必要に応じて）
+- 重複する単語は1つに統合し、リンク情報も更新したい
+
+この要件に基づいて、以下のSQLに対応した正規化手順・対応方法を提示してください。
+
+```sql
+SELECT
+  kg.keyword_group_id,
+  kg.name AS group_name,
+  k.id AS keyword_id,
+  k.word AS keyword
+FROM keyword_groups kg
+JOIN keyword_group_word_links kgwl ON kg.keyword_group_id = kgwl.keyword_group_id
+JOIN key_words k ON kgwl.key_word_id = k.id;
