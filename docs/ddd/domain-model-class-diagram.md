@@ -7,6 +7,7 @@ classDiagram
       + ログインする()
       + ログアウトする()
     }
+    class EmailVerificationToken["メール認証トークン（EmailVerificationToken）"]
   }
   namespace 集約_メールサービス {
     class MailService["メールサービス（MailService）"]
@@ -57,6 +58,7 @@ classDiagram
 
   User "1" --> "0..*" MailAccountConnection : 連携
   User "1" --> "0..*" MailFetch : 取得
+  User "1" --> "0..*" EmailVerificationToken : 認証
   User "1" --> "0..*" BatchSetting : 所有
   User "1" --> "0..*" Email : 所有
   User "1" --> "0..*" Billing : 所有
@@ -95,6 +97,7 @@ classDiagram
 
 ### ユーザー集約
 - ルート: ユーザー（User）
+- 含む: メール認証トークン（EmailVerificationToken）
 - 説明: データ分離の単位
 
 ### メールサービス集約

@@ -45,15 +45,15 @@ func (s *SMTPVerificationEmailSender) SendVerificationEmail(ctx context.Context,
 本メールに心当たりがない場合は、このメールを無視してください。
 
 よろしくお願いいたします。
-`, user.Name, verifyURL)
+`, user.Name.String(), verifyURL)
 
 	if err := s.client.Send(ctx, sendMailerClient.Message{
-		To:      user.Email,
+		To:      user.Email.String(),
 		Subject: subject,
 		Body:    body,
 	}); err != nil {
 		s.logger.Error("failed to send verification email",
-			logger.String("email", user.Email),
+			logger.String("email", user.Email.String()),
 			logger.Uint("user_id", user.ID),
 			logger.Err(err),
 		)

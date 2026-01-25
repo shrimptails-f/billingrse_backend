@@ -81,7 +81,7 @@ classDiagram
 
 | カテゴリ名 | 言語 |
 | --- | --- |
-| [ユーザー系](user.md) | ユーザー（User）,ログイン（Login）,ログアウト（Logout） |
+| [ユーザー系](user.md) | ユーザー（User）,ログイン（Login）,ログアウト（Logout）,ユーザー名（UserName）,メールアドレス（EmailAddress）,パスワード（Password）,パスワードハッシュ（PasswordHash）,メール認証（EmailVerification）,メール認証トークン（EmailVerificationToken） |
 | [メール連携/取得系](mail-integration-fetch.md) | メールサービス（MailService）,メールアカウント連携（MailAccountConnection）,メール取得（MailFetch）,手動メール取得（ManualMailFetch）,メール取得バッチ（MailFetchBatch）,バッチ設定（BatchSetting）,取得条件（FetchCondition） |
 | [メール/解析系](mail-analysis.md) | メール（Email）,メール解析結果（ParsedEmail）,請求成立判定（BillingEligibility） |
 | [請求/支払先系](billing-vendor.md) | 支払先（Vendor）,請求（Billing）,支払いタイプ（PaymentType） |

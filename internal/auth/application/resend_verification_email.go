@@ -17,7 +17,12 @@ import (
 // It checks for an existing active token and reuses it if available.
 func (uc *AuthUseCase) ResendVerificationEmail(ctx context.Context, req domain.ResendVerificationRequest) error {
 	// Authenticate the user
-	user, err := uc.repo.GetUserByEmail(ctx, req.Email)
+	email, err := domain.NewEmailAddress(req.Email)
+	if err != nil {
+		return ErrInvalidCredentials
+	}
+
+	user, err := uc.repo.GetUserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrInvalidCredentials

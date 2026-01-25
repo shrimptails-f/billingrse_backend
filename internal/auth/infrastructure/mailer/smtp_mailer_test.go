@@ -15,15 +15,18 @@ func TestSMTPVerificationEmailSender_SendVerificationEmail_ComposesMessage(t *te
 	client := &spySMTPClient{}
 	sender := NewSMTPVerificationEmailSender(client, logger.NewNop())
 
-	user := domain.User{Name: "山田太郎", Email: "taro@example.com"}
+	user := domain.User{
+		Name:  domain.UserName("山田太郎"),
+		Email: domain.EmailAddress("taro@example.com"),
+	}
 	verifyURL := "https://example.com/verify"
 
 	err := sender.SendVerificationEmail(context.Background(), user, verifyURL)
 	require.NoError(t, err)
 
-	require.Equal(t, user.Email, client.msg.To)
+	require.Equal(t, user.Email.String(), client.msg.To)
 	require.Contains(t, client.msg.Subject, "メールアドレスの確認")
-	require.Contains(t, client.msg.Body, user.Name)
+	require.Contains(t, client.msg.Body, user.Name.String())
 	require.Contains(t, client.msg.Body, verifyURL)
 }
 
@@ -33,7 +36,7 @@ func TestSMTPVerificationEmailSender_SendVerificationEmail_ClientError(t *testin
 	}
 	sender := NewSMTPVerificationEmailSender(client, logger.NewNop())
 
-	err := sender.SendVerificationEmail(context.Background(), domain.User{Email: "err@example.com"}, "https://example.com/verify")
+	err := sender.SendVerificationEmail(context.Background(), domain.User{Email: domain.EmailAddress("err@example.com")}, "https://example.com/verify")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to send email")
 	require.Contains(t, err.Error(), "smtp failure")

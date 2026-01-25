@@ -14,7 +14,7 @@ import (
 // GetUserByEmail retrieves a user by email address from the users table.
 // Returns gorm.ErrRecordNotFound as-is when no user is found.
 // Other errors are wrapped with context.
-func (r *Repository) GetUserByEmail(ctx context.Context, email string) (domain.User, error) {
+func (r *Repository) GetUserByEmail(ctx context.Context, email domain.EmailAddress) (domain.User, error) {
 	var record userRecord
 
 	// Fallback to Background if ctx is nil
@@ -25,7 +25,7 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (domain.U
 	err := r.db.
 		WithContext(ctx).
 		Select("id, name, email, password, email_verified, email_verified_at, created_at, updated_at").
-		Where("email = ?", email).
+		Where("email = ?", email.String()).
 		First(&record).
 		Error
 
@@ -33,14 +33,23 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (domain.U
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return domain.User{}, gorm.ErrRecordNotFound
 		}
-		r.logger.Error("failed to get user by email", logger.String("email", email), logger.Err(err))
+		r.logger.Error("failed to get user by email", logger.String("email", email.String()), logger.Err(err))
 		return domain.User{}, fmt.Errorf("failed to get user by email: %w", err)
+	}
+
+	name, err := domain.NewUserName(record.Name)
+	if err != nil {
+		return domain.User{}, fmt.Errorf("invalid user name: %w", err)
+	}
+	emailAddress, err := domain.NewEmailAddress(record.Email)
+	if err != nil {
+		return domain.User{}, fmt.Errorf("invalid email address: %w", err)
 	}
 
 	domainUser := domain.User{
 		ID:              record.ID,
-		Name:            record.Name,
-		Email:           record.Email,
+		Name:            name,
+		Email:           emailAddress,
 		PasswordHash:    record.Password,
 		EmailVerified:   record.EmailVerified,
 		EmailVerifiedAt: record.EmailVerifiedAt,
@@ -59,8 +68,8 @@ func (r *Repository) CreateUser(ctx context.Context, user domain.User) (domain.U
 	}
 
 	record := userRecord{
-		Name:            user.Name,
-		Email:           user.Email,
+		Name:            user.Name.String(),
+		Email:           user.Email.String(),
 		Password:        user.PasswordHash,
 		EmailVerified:   user.EmailVerified,
 		EmailVerifiedAt: user.EmailVerifiedAt,
@@ -72,14 +81,23 @@ func (r *Repository) CreateUser(ctx context.Context, user domain.User) (domain.U
 		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
 			return domain.User{}, gorm.ErrDuplicatedKey
 		}
-		r.logger.Error("failed to create user", logger.String("email", user.Email), logger.Err(err))
+		r.logger.Error("failed to create user", logger.String("email", user.Email.String()), logger.Err(err))
 		return domain.User{}, fmt.Errorf("failed to create user: %w", err)
+	}
+
+	name, err := domain.NewUserName(record.Name)
+	if err != nil {
+		return domain.User{}, fmt.Errorf("invalid user name: %w", err)
+	}
+	emailAddress, err := domain.NewEmailAddress(record.Email)
+	if err != nil {
+		return domain.User{}, fmt.Errorf("invalid email address: %w", err)
 	}
 
 	return domain.User{
 		ID:              record.ID,
-		Name:            record.Name,
-		Email:           record.Email,
+		Name:            name,
+		Email:           emailAddress,
 		PasswordHash:    record.Password,
 		EmailVerified:   record.EmailVerified,
 		EmailVerifiedAt: record.EmailVerifiedAt,
@@ -112,10 +130,19 @@ func (r *Repository) GetUserByID(ctx context.Context, id uint) (domain.User, err
 		return domain.User{}, fmt.Errorf("failed to get user by id: %w", err)
 	}
 
+	name, err := domain.NewUserName(record.Name)
+	if err != nil {
+		return domain.User{}, fmt.Errorf("invalid user name: %w", err)
+	}
+	emailAddress, err := domain.NewEmailAddress(record.Email)
+	if err != nil {
+		return domain.User{}, fmt.Errorf("invalid email address: %w", err)
+	}
+
 	domainUser := domain.User{
 		ID:              record.ID,
-		Name:            record.Name,
-		Email:           record.Email,
+		Name:            name,
+		Email:           emailAddress,
 		PasswordHash:    record.Password,
 		EmailVerified:   record.EmailVerified,
 		EmailVerifiedAt: record.EmailVerifiedAt,

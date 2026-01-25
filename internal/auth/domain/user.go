@@ -1,26 +1,31 @@
 package domain
 
-import (
-	"time"
+import cd "business/internal/common/domain"
 
-	"golang.org/x/crypto/bcrypt"
-)
+// User represents the user entity in the authentication domain.
+type User = cd.User
 
-// User represents the user entity in the authentication domain
-type User struct {
-	ID              uint
-	Name            string
-	Email           string
-	PasswordHash    string
-	EmailVerified   bool
-	EmailVerifiedAt *time.Time
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+// UserName represents a user's display name.
+type UserName = cd.UserName
+
+// EmailAddress represents a user's email address.
+type EmailAddress = cd.EmailAddress
+
+// ErrUserNameEmpty is returned when the user name is empty.
+var ErrUserNameEmpty = cd.ErrUserNameEmpty
+
+// ErrEmailAddressEmpty is returned when the email address is empty.
+var ErrEmailAddressEmpty = cd.ErrEmailAddressEmpty
+
+// ErrEmailAddressInvalid is returned when the email address format is invalid.
+var ErrEmailAddressInvalid = cd.ErrEmailAddressInvalid
+
+// NewUserName creates a UserName from a raw string.
+func NewUserName(value string) (UserName, error) {
+	return cd.NewUserName(value)
 }
 
-// VerifyPassword verifies the provided password against the stored password hash
-// using bcrypt. Returns true if the password matches, false otherwise.
-func (u *User) VerifyPassword(password string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password))
-	return err == nil
+// NewEmailAddress creates an EmailAddress from a raw string.
+func NewEmailAddress(value string) (EmailAddress, error) {
+	return cd.NewEmailAddress(value)
 }

@@ -3,6 +3,7 @@
 ```mermaid
 classDiagram
   class User["ユーザー（User）"]
+  class EmailVerificationToken["メール認証トークン（EmailVerificationToken）"]
   class MailService["メールサービス（MailService）"]
   class MailAccountConnection["メールアカウント連携（MailAccountConnection）"]
   class MailFetch["メール取得（MailFetch）"]
@@ -45,6 +46,7 @@ classDiagram
   <<enumeration>> PaymentType
 
   User "1" --> "0..*" MailAccountConnection : 連携
+  User "1" --> "0..*" EmailVerificationToken : 認証
   User "1" --> "0..*" BatchSetting : 所有
   User "1" --> "0..*" Email : 所有
   User "1" --> "0..*" Billing : 所有
