@@ -3,7 +3,7 @@
 本ドキュメントはユビキタス言語を概念レベルで構造化したモデルを示す。詳細な属性設計や実装方針は別途策定する。
 
 参照:
-- `docs/ddd/ubiquitous-language.md`
+- `docs/ddd/ubiquitous-language/README.md`
 - `docs/ddd/invariants.md`
 - `docs/ddd/ubiquitous-language-class-diagram.md`
 
@@ -24,8 +24,8 @@
 - 手動トリガーで実行されるメール取得
 
 ### メール取得バッチ（MailFetchBatch）
-- 定期実行のメール取得を設定するレコード
-- 取得条件と実行スケジュールを内包する
+- 定期実行されるメール取得を実行するためのバッチ
+- バッチ設定に基づいて Email を取得する
 
 ### メール（Email）
 - 取得した加工前の一次情報
@@ -65,6 +65,16 @@
 - Email は ParsedEmail を生成する
 - ParsedEmail は請求成立判定を経て Billing を生成する
 - Billing は Vendor を参照する
+
+## 依存関係（モデル）
+
+- User / MailService / Vendor / PaymentType は他に依存しない
+- MailAccountConnection -> User, MailService
+- ManualMailFetch / MailFetchBatch -> MailAccountConnection
+- Email -> MailAccountConnection
+- ParsedEmail -> Email
+- BillingEligibility（ポリシー） -> ParsedEmail
+- Billing -> Vendor, PaymentType, Email / ParsedEmail（参照元）
 
 ## 補足
 

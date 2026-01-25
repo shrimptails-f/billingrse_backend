@@ -1,6 +1,6 @@
 # 不変条件（Invariants）
 
-本ファイルはドメイン上の「必ず守るべきルール」を整理する。用語の定義は `docs/ddd/ubiquitous-language.md` を参照。
+本ファイルはドメイン上の「必ず守るべきルール」を整理する。用語の定義は `docs/ddd/ubiquitous-language/README.md` を参照。
 
 ## 全体
 - 請求の同一性は「ユーザー + Vendor + 請求番号」で判定する
