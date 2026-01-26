@@ -35,5 +35,5 @@ func (c MailAccountConnection) IsActive() bool {
 	if c.OAuthStateExpiresAt == nil {
 		return false
 	}
-	return time.Now().Before(*c.OAuthStateExpiresAt)
+	return time.Now().Add(OAuthStateExpirySafetyOffset).Before(*c.OAuthStateExpiresAt)
 }
