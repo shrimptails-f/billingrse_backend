@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"business/internal/auth/domain"
 )
@@ -11,9 +12,10 @@ import (
 type stubAuthUserProvider struct{}
 
 func (s *stubAuthUserProvider) GetUserByID(ctx context.Context, id uint) (domain.User, error) {
+	verifiedAt := time.Now()
 	return domain.User{
-		ID:            id,
-		EmailVerified: true,
+		ID:              id,
+		EmailVerifiedAt: &verifiedAt,
 	}, nil
 }
 

@@ -11,6 +11,9 @@ type UserName = cd.UserName
 // EmailAddress represents a user's email address.
 type EmailAddress = cd.EmailAddress
 
+// PasswordHash represents a hashed password value.
+type PasswordHash = cd.PasswordHash
+
 // ErrUserNameEmpty is returned when the user name is empty.
 var ErrUserNameEmpty = cd.ErrUserNameEmpty
 
@@ -28,4 +31,14 @@ func NewUserName(value string) (UserName, error) {
 // NewEmailAddress creates an EmailAddress from a raw string.
 func NewEmailAddress(value string) (EmailAddress, error) {
 	return cd.NewEmailAddress(value)
+}
+
+// NewPasswordHashFromPlaintext hashes a plaintext password using bcrypt.
+func NewPasswordHashFromPlaintext(password string) (PasswordHash, error) {
+	return cd.NewPasswordHashFromPlaintext(password)
+}
+
+// NewPasswordHashFromHash wraps an existing password hash string.
+func NewPasswordHashFromHash(hash string) PasswordHash {
+	return cd.NewPasswordHashFromHash(hash)
 }

@@ -46,12 +46,12 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email domain.EmailAddre
 		return domain.User{}, fmt.Errorf("invalid email address: %w", err)
 	}
 
+	passwordHash := domain.NewPasswordHashFromHash(record.Password)
 	domainUser := domain.User{
 		ID:              record.ID,
 		Name:            name,
 		Email:           emailAddress,
-		PasswordHash:    record.Password,
-		EmailVerified:   record.EmailVerified,
+		PasswordHash:    passwordHash,
 		EmailVerifiedAt: record.EmailVerifiedAt,
 		CreatedAt:       record.CreatedAt,
 		UpdatedAt:       record.UpdatedAt,
@@ -70,8 +70,8 @@ func (r *Repository) CreateUser(ctx context.Context, user domain.User) (domain.U
 	record := userRecord{
 		Name:            user.Name.String(),
 		Email:           user.Email.String(),
-		Password:        user.PasswordHash,
-		EmailVerified:   user.EmailVerified,
+		Password:        user.PasswordHash.String(),
+		EmailVerified:   user.IsEmailVerified(),
 		EmailVerifiedAt: user.EmailVerifiedAt,
 	}
 
@@ -94,12 +94,12 @@ func (r *Repository) CreateUser(ctx context.Context, user domain.User) (domain.U
 		return domain.User{}, fmt.Errorf("invalid email address: %w", err)
 	}
 
+	passwordHash := domain.NewPasswordHashFromHash(record.Password)
 	return domain.User{
 		ID:              record.ID,
 		Name:            name,
 		Email:           emailAddress,
-		PasswordHash:    record.Password,
-		EmailVerified:   record.EmailVerified,
+		PasswordHash:    passwordHash,
 		EmailVerifiedAt: record.EmailVerifiedAt,
 		CreatedAt:       record.CreatedAt,
 		UpdatedAt:       record.UpdatedAt,
@@ -139,12 +139,12 @@ func (r *Repository) GetUserByID(ctx context.Context, id uint) (domain.User, err
 		return domain.User{}, fmt.Errorf("invalid email address: %w", err)
 	}
 
+	passwordHash := domain.NewPasswordHashFromHash(record.Password)
 	domainUser := domain.User{
 		ID:              record.ID,
 		Name:            name,
 		Email:           emailAddress,
-		PasswordHash:    record.Password,
-		EmailVerified:   record.EmailVerified,
+		PasswordHash:    passwordHash,
 		EmailVerifiedAt: record.EmailVerifiedAt,
 		CreatedAt:       record.CreatedAt,
 		UpdatedAt:       record.UpdatedAt,

@@ -78,60 +78,6 @@ func Seed(tx *gorm.DB) error {
 	if err = seeders.CreateUser(tx); err != nil {
 		return err
 	}
-	// メール関連のシーダー（依存関係順に実行）
-	// 1. マスタデータ
-	if err = seeders.CreateKeywordGroupWordLink(tx); err != nil {
-		return err
-	}
-	if err = seeders.CreateKeywordGroup(tx); err != nil {
-		return err
-	}
-	if err = seeders.CreateKeyWord(tx); err != nil {
-		return err
-	}
-	if err = seeders.CreatePositionGroup(tx); err != nil {
-		return err
-	}
-	if err = seeders.CreatePositionWord(tx); err != nil {
-		return err
-	}
-	if err = seeders.CreateWorkTypeGroup(tx); err != nil {
-		return err
-	}
-	if err = seeders.CreateWorkTypeWord(tx); err != nil {
-		return err
-	}
-
-	// 2. メールデータ（共通ヘッダー）
-	if err = seeders.CreateEmail(tx); err != nil {
-		return err
-	}
-
-	// 3. メール種別専用データ
-	// CreateEmailProjectは現在使用しません（createEmail.goでEmailProjectをネストして作成するため）
-	// if err = seeders.CreateEmailProject(tx); err != nil {
-	// 	return err
-	// }
-
-	// EntryTimingは現在createEmail.goでEmailProjectのリレーションとして作成されます
-	// if err = seeders.CreateEntryTiming(tx); err != nil {
-	// 	return err
-	// }
-
-	if err = seeders.CreateEmailCandidate(tx); err != nil {
-		return err
-	}
-
-	// 4. 関連テーブル
-	if err = seeders.CreateEmailKeywordGroup(tx); err != nil {
-		return err
-	}
-	if err = seeders.CreateEmailPositionGroup(tx); err != nil {
-		return err
-	}
-	if err = seeders.CreateEmailWorkTypeGroup(tx); err != nil {
-		return err
-	}
 
 	return nil
 }

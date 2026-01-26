@@ -157,7 +157,7 @@ func TestRepository_ConsumeTokenAndVerifyUser_Success(t *testing.T) {
 	user, err := env.repo.ConsumeTokenAndVerifyUser(context.Background(), tokenRec.ID, userRec.ID, consumedAt)
 
 	assert.NoError(t, err)
-	assert.True(t, user.EmailVerified)
+	assert.True(t, user.IsEmailVerified())
 	assert.NotNil(t, user.EmailVerifiedAt)
 	assert.WithinDuration(t, consumedAt, *user.EmailVerifiedAt, time.Second)
 

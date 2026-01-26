@@ -23,7 +23,7 @@ func TestRepository_GetUserByEmail_Success(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, "user@example.com", got.Email.String())
-	assert.Equal(t, "hashed-password", got.PasswordHash)
+	assert.Equal(t, "hashed-password", got.PasswordHash.String())
 	assert.WithinDuration(t, env.nowUTC, got.CreatedAt, time.Second)
 	assert.WithinDuration(t, env.nowUTC, got.UpdatedAt, time.Second)
 }
@@ -60,7 +60,7 @@ func TestRepository_CreateUser_Success(t *testing.T) {
 	user, err := env.repo.CreateUser(context.Background(), domain.User{
 		Name:         domain.UserName("New User"),
 		Email:        domain.EmailAddress("new@example.com"),
-		PasswordHash: "hashed",
+		PasswordHash: domain.NewPasswordHashFromHash("hashed"),
 	})
 
 	assert.NoError(t, err)
@@ -84,7 +84,7 @@ func TestRepository_CreateUser_DuplicateEmail(t *testing.T) {
 	_, err := env.repo.CreateUser(context.Background(), domain.User{
 		Name:         domain.UserName("Dup User"),
 		Email:        domain.EmailAddress("dup@example.com"),
-		PasswordHash: "hashed",
+		PasswordHash: domain.NewPasswordHashFromHash("hashed"),
 	})
 
 	assert.ErrorIs(t, err, gorm.ErrDuplicatedKey)
@@ -106,7 +106,7 @@ func TestRepository_GetUserByID_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, record.ID, got.ID)
 	assert.Equal(t, "getbyid@example.com", got.Email.String())
-	assert.Equal(t, "hashed-password", got.PasswordHash)
+	assert.Equal(t, "hashed-password", got.PasswordHash.String())
 }
 
 func TestRepository_GetUserByID_NotFound(t *testing.T) {

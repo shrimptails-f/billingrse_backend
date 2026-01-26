@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -35,7 +34,7 @@ func (uc *AuthUseCase) Register(ctx context.Context, req domain.RegisterRequest)
 		return domain.User{}, fmt.Errorf("failed to check existing user: %w", err)
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	passwordHash, err := domain.NewPasswordHashFromPlaintext(req.Password)
 	if err != nil {
 		return domain.User{}, fmt.Errorf("failed to hash password: %w", err)
 	}
@@ -43,7 +42,7 @@ func (uc *AuthUseCase) Register(ctx context.Context, req domain.RegisterRequest)
 	user, err := uc.repo.CreateUser(ctx, domain.User{
 		Name:         name,
 		Email:        email,
-		PasswordHash: string(hashedPassword),
+		PasswordHash: passwordHash,
 	})
 	if err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {

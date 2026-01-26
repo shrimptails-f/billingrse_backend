@@ -25,7 +25,6 @@ func TestVerifyEmailHandler(t *testing.T) {
 			ID:              1,
 			Name:            domain.UserName("Test User"),
 			Email:           domain.EmailAddress("test@example.com"),
-			EmailVerified:   true,
 			EmailVerifiedAt: &now,
 		}
 		usecase.On("VerifyEmail", mock.Anything, mock.MatchedBy(func(req domain.VerifyEmailRequest) bool {

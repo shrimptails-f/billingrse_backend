@@ -35,7 +35,7 @@ func (uc *AuthUseCase) ResendVerificationEmail(ctx context.Context, req domain.R
 	}
 
 	// Check if already verified
-	if user.EmailVerified {
+	if user.IsEmailVerified() {
 		return ErrEmailAlreadyVerified
 	}
 

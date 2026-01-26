@@ -71,7 +71,7 @@ func (lc *AuthController) VerifyEmail(c *gin.Context) {
 			ID:              user.ID,
 			Name:            user.Name.String(),
 			Email:           user.Email.String(),
-			EmailVerified:   user.EmailVerified,
+			EmailVerified:   user.IsEmailVerified(),
 			EmailVerifiedAt: user.EmailVerifiedAt,
 			CreatedAt:       user.CreatedAt,
 		},
