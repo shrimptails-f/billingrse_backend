@@ -19,20 +19,9 @@ classDiagram
       + 失効する()
     }
   }
-  namespace 集約_メール取得バッチ {
-    class MailFetchBatch["メール取得バッチ（MailFetchBatch）"] {
-      + 実行する()
-    }
-  }
   namespace 集約_バッチ設定 {
     class BatchSetting["バッチ設定（BatchSetting）"] {
       + 取得条件（FetchCondition）
-    }
-  }
-  namespace 概念_メール取得 {
-    class MailFetch["メール取得（MailFetch）"]
-    class ManualMailFetch["手動メール取得（ManualMailFetch）"] {
-      + 実行する()
     }
   }
   namespace 集約_メール {
@@ -52,28 +41,16 @@ classDiagram
     class Vendor["支払先（Vendor）"]
   }
 
-  <<concept>> MailFetch
   <<policy>> BillingEligibility
   <<enumeration>> PaymentType
 
   User "1" --> "0..*" MailAccountConnection : 連携
-  User "1" --> "0..*" MailFetch : 取得
   User "1" --> "0..*" EmailVerificationToken : 認証
   User "1" --> "0..*" BatchSetting : 所有
   User "1" --> "0..*" Email : 所有
   User "1" --> "0..*" Billing : 所有
 
   MailAccountConnection "0..*" --> "1" MailService : サービス
-  MailAccountConnection "1" --> "0..*" MailFetch : 取得に使用
-  MailAccountConnection "1" --> "0..*" MailFetchBatch : バッチ
-
-  MailFetch "1" o-- "0..*" ManualMailFetch : 手動
-  MailFetch "1" o-- "0..*" MailFetchBatch : バッチ
-
-  MailFetchBatch "1" --> "1" BatchSetting : 設定
-
-  ManualMailFetch --> Email : 取得
-  MailFetchBatch --> Email : 取得
 
   Email --> ParsedEmail : 解析結果
   ParsedEmail --> BillingEligibility : 成立判定
@@ -106,7 +83,6 @@ classDiagram
 
 ### メールアカウント連携集約
 - ルート: メールアカウント連携（MailAccountConnection）
-- 含む: メール取得バッチ（MailFetchBatch）
 - バッチ設定: 取得条件 / 実行スケジュール（いずれも連携に紐づく）
 - 参照: ユーザー / メールサービス
 
@@ -125,5 +101,4 @@ classDiagram
 
 ## 補足
 
-- メール取得（MailFetch）は概念であり、集約として扱わない
 - 不変条件の詳細は `docs/ddd/invariants.md` を正とする

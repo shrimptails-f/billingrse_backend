@@ -27,13 +27,6 @@
 - ユーザーの外部メールサービス接続情報
 - 認可情報を持つ
 
-### 手動メール取得（ManualMailFetch）
-- 手動トリガーで実行されるメール取得
-
-### メール取得バッチ（MailFetchBatch）
-- 定期実行されるメール取得を実行するためのバッチ
-- バッチ設定に基づいて Email を取得する
-
 ### メール（Email）
 - 取得した加工前の一次情報
 - 参照元として保持される
@@ -48,10 +41,6 @@
 - 金額・支払先・請求番号などが確定した支払いの事実
 
 ## 概念 / ポリシー / 列挙
-
-### メール取得（MailFetch）
-- 手動/バッチの総称となる概念
-- 実装上の実体を持たない
 
 ### 請求成立判定（BillingEligibility）
 - ParsedEmail を入力として成立可否を判断するポリシー
@@ -73,7 +62,6 @@
 - ユーザーは複数のメールアカウント連携を持つ
 - ユーザーは複数のメール認証トークンを持つ
 - メールアカウント連携は1つのメールサービスに紐づく
-- メール取得（手動/バッチ）により Email を取得する
 - Email は ParsedEmail を生成する
 - ParsedEmail は請求成立判定を経て Billing を生成する
 - Billing は Vendor を参照する
@@ -82,7 +70,6 @@
 
 - User / MailService / Vendor / PaymentType は他に依存しない
 - MailAccountConnection -> User, MailService
-- ManualMailFetch / MailFetchBatch -> MailAccountConnection
 - Email -> MailAccountConnection
 - ParsedEmail -> Email
 - BillingEligibility（ポリシー） -> ParsedEmail
