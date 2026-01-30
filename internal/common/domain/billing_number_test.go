@@ -11,7 +11,7 @@ func TestNewBillingNumber(t *testing.T) {
 	t.Parallel()
 
 	raw := "  INV-001  "
-	number, err := NewBillingNumber(&raw)
+	number, err := NewBillingNumber(raw)
 	if err != nil {
 		t.Fatalf("NewBillingNumber returned error: %v", err)
 	}
@@ -20,10 +20,7 @@ func TestNewBillingNumber(t *testing.T) {
 	}
 
 	empty := "  "
-	number, err = NewBillingNumber(&empty)
-	assert.ErrorIs(t, ErrBillingNumberEmpty, err)
-
-	number, err = NewBillingNumber(nil)
+	number, err = NewBillingNumber(empty)
 	assert.ErrorIs(t, ErrBillingNumberEmpty, err)
 }
 

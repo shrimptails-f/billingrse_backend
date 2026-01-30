@@ -20,7 +20,7 @@ func TestBillingValidate(t *testing.T) {
 		UserID:        1,
 		VendorID:      2,
 		EmailID:       9,
-		BillingNumber: "",
+		BillingNumber: BillingNumber("INV-001"),
 		InvoiceNumber: "",
 		Money:         money,
 		BillingDate:   time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
@@ -59,6 +59,14 @@ func TestBillingValidate(t *testing.T) {
 				return b
 			},
 			err: ErrBillingEmailIDEmpty,
+		},
+		{
+			name: "missing billing number",
+			mutate: func(b Billing) Billing {
+				b.BillingNumber = ""
+				return b
+			},
+			err: ErrBillingNumberEmpty,
 		},
 		{
 			name: "invalid amount",
@@ -114,7 +122,7 @@ func TestNewBilling(t *testing.T) {
 		1,
 		2,
 		3,
-		nil,
+		"",
 		&invoice,
 		1200.5,
 		"usd",
@@ -129,7 +137,7 @@ func TestNewBilling(t *testing.T) {
 		1,
 		2,
 		3,
-		&billingNumber,
+		billingNumber,
 		&invoice,
 		10,
 		"JPY",
@@ -148,7 +156,7 @@ func TestNewBilling(t *testing.T) {
 		1,
 		2,
 		3,
-		&billingNumber,
+		billingNumber,
 		&empty,
 		10,
 		"JPY",

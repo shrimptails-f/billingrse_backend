@@ -13,13 +13,10 @@ var (
 // BillingNumber represents a vendor-provided invoice/billing identifier.
 type BillingNumber string
 
-// NewBillingNumber creates an optional billing number from raw input.
-// It returns empty when the input is nil or blank.
-func NewBillingNumber(value *string) (BillingNumber, error) {
-	if value == nil {
-		return "", ErrBillingNumberEmpty
-	}
-	trimmed := strings.TrimSpace(*value)
+// NewBillingNumber creates a required billing number from raw input.
+// It returns an error when the input is blank.
+func NewBillingNumber(value string) (BillingNumber, error) {
+	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
 		return "", ErrBillingNumberEmpty
 	}

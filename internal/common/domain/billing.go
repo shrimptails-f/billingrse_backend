@@ -22,7 +22,7 @@ type Billing struct {
 	UserID        uint
 	VendorID      uint
 	EmailID       uint
-	BillingNumber BillingNumber // Vendor-provided invoice/billing identifier (optional).
+	BillingNumber BillingNumber // Vendor-provided invoice/billing identifier.
 	InvoiceNumber InvoiceNumber // Invoice number (qualified invoice issuer number, optional).
 	Money         Money
 	BillingDate   time.Time // BillingDate is interpreted in JST.
@@ -34,7 +34,7 @@ func NewBilling(
 	userID uint,
 	vendorID uint,
 	emailID uint,
-	billingNumber *string,
+	billingNumber string,
 	invoiceNumber *string,
 	amount float64,
 	currency string,
@@ -89,10 +89,8 @@ func (b Billing) Validate() error {
 	if b.EmailID == 0 {
 		return ErrBillingEmailIDEmpty
 	}
-	if !b.BillingNumber.IsEmpty() {
-		if err := b.BillingNumber.Validate(); err != nil {
-			return err
-		}
+	if err := b.BillingNumber.Validate(); err != nil {
+		return err
 	}
 	if !b.InvoiceNumber.IsEmpty() {
 		if err := b.InvoiceNumber.Validate(); err != nil {

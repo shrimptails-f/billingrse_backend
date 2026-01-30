@@ -12,9 +12,36 @@ func TestMailAccountConnectionValidate(t *testing.T) {
 	t.Run("returns error when user id is empty", func(t *testing.T) {
 		t.Parallel()
 
-		conn := MailAccountConnection{}
+		conn := MailAccountConnection{
+			AccessToken:  "access-token",
+			RefreshToken: "refresh-token",
+		}
 		if err := conn.Validate(); !errors.Is(err, ErrMailAccountConnectionUserIDEmpty) {
 			t.Fatalf("expected ErrMailAccountConnectionUserIDEmpty, got %v", err)
+		}
+	})
+
+	t.Run("returns error when access token is empty", func(t *testing.T) {
+		t.Parallel()
+
+		conn := MailAccountConnection{
+			UserID:       1,
+			RefreshToken: "refresh-token",
+		}
+		if err := conn.Validate(); !errors.Is(err, ErrMailAccountConnectionAccessTokenEmpty) {
+			t.Fatalf("expected ErrMailAccountConnectionAccessTokenEmpty, got %v", err)
+		}
+	})
+
+	t.Run("returns error when refresh token is empty", func(t *testing.T) {
+		t.Parallel()
+
+		conn := MailAccountConnection{
+			UserID:      1,
+			AccessToken: "access-token",
+		}
+		if err := conn.Validate(); !errors.Is(err, ErrMailAccountConnectionRefreshTokenEmpty) {
+			t.Fatalf("expected ErrMailAccountConnectionRefreshTokenEmpty, got %v", err)
 		}
 	})
 
@@ -22,7 +49,12 @@ func TestMailAccountConnectionValidate(t *testing.T) {
 		t.Parallel()
 
 		zero := time.Time{}
-		conn := MailAccountConnection{UserID: 1, OAuthStateExpiresAt: &zero}
+		conn := MailAccountConnection{
+			UserID:              1,
+			AccessToken:         "access-token",
+			RefreshToken:        "refresh-token",
+			OAuthStateExpiresAt: &zero,
+		}
 		if err := conn.Validate(); !errors.Is(err, ErrOAuthStateExpiresAtEmpty) {
 			t.Fatalf("expected ErrOAuthStateExpiresAtEmpty, got %v", err)
 		}
@@ -32,7 +64,12 @@ func TestMailAccountConnectionValidate(t *testing.T) {
 		t.Parallel()
 
 		expiresAt := time.Now().Add(1 * time.Hour)
-		conn := MailAccountConnection{UserID: 1, OAuthStateExpiresAt: &expiresAt}
+		conn := MailAccountConnection{
+			UserID:              1,
+			AccessToken:         "access-token",
+			RefreshToken:        "refresh-token",
+			OAuthStateExpiresAt: &expiresAt,
+		}
 		if err := conn.Validate(); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
