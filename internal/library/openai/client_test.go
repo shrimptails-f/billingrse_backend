@@ -34,11 +34,14 @@ func TestChat_Integration(t *testing.T) {
 		if item.VendorName != nil {
 			fmt.Printf("支払先名: %s\n", *item.VendorName)
 		}
+		if item.BillingNumber != nil {
+			fmt.Printf("請求番号: %s\n", *item.BillingNumber)
+		}
 		if item.InvoiceNumber != nil {
-			fmt.Printf("請求番号: %s\n", *item.InvoiceNumber)
+			fmt.Printf("インボイス番号: %s\n", *item.InvoiceNumber)
 		}
 		if item.Amount != nil {
-			fmt.Printf("金額: %d\n", *item.Amount)
+			fmt.Printf("金額: %.3f\n", *item.Amount)
 		}
 		if item.Currency != nil {
 			fmt.Printf("通貨: %s\n", *item.Currency)
@@ -46,8 +49,8 @@ func TestChat_Integration(t *testing.T) {
 		if item.BillingDate != nil {
 			fmt.Printf("請求日: %s\n", item.BillingDate.Format(time.RFC3339))
 		}
-		if item.PaymentType != nil {
-			fmt.Printf("支払いタイプ: %s\n", *item.PaymentType)
+		if item.PaymentCycle != nil {
+			fmt.Printf("支払周期: %s\n", *item.PaymentCycle)
 		}
 		fmt.Printf("抽出日時: %s\n", item.ExtractedAt.Format(time.RFC3339))
 	}
@@ -80,10 +83,11 @@ func buildParsedEmailPrompt(body string) string {
 
 ルール:
 - 出力はJSON配列のみ（前後に説明文を入れない）
-- 要素のキーは vendorName, invoiceNumber, amount, currency, billingDate, paymentType, extractedAt のみ
+- 要素のキーは vendorName, billingNumber, invoiceNumber, amount, currency, billingDate, paymentCycle, extractedAt のみ
 - 不明な値は null をセット
 - billingDate と extractedAt は RFC3339 形式の文字列
-- amount は整数
+- amount は小数第3位までの数値
+- invoiceNumber は "T" + 13桁のインボイス番号（適格請求書発行事業者登録番号）
 - 複数の請求が含まれる場合は配列に複数要素を入れる
 
 本文:

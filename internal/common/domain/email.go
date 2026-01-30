@@ -95,10 +95,11 @@ func (e *Email) AppendParsedEmail(parsed ParsedEmail) {
 // It does not represent a final billing decision.
 type ParsedEmail struct {
 	VendorName    *string    `json:"vendorName"`
+	BillingNumber *string    `json:"billingNumber"`
 	InvoiceNumber *string    `json:"invoiceNumber"`
-	Amount        *int       `json:"amount"`
+	Amount        *float64   `json:"amount"`
 	Currency      *string    `json:"currency"`
 	BillingDate   *time.Time `json:"billingDate"`
-	PaymentType   *string    `json:"paymentType"`
+	PaymentCycle  *string    `json:"paymentCycle"`
 	ExtractedAt   time.Time  `json:"extractedAt"`
 }

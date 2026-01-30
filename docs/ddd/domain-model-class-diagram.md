@@ -35,14 +35,20 @@ classDiagram
   }
   namespace 集約_請求 {
     class Billing["請求（Billing）"]
-    class PaymentType["支払いタイプ（PaymentType）"]
+    class PaymentCycle["支払周期（PaymentCycle）"]
+    class Money["金額（Money）"]
+    class BillingNumber["請求番号（BillingNumber）"]
+    class InvoiceNumber["インボイス番号（InvoiceNumber）"]
   }
   namespace 集約_支払先 {
     class Vendor["支払先（Vendor）"]
   }
 
   <<policy>> BillingEligibility
-  <<enumeration>> PaymentType
+  <<enumeration>> PaymentCycle
+  <<value_object>> Money
+  <<value_object>> BillingNumber
+  <<value_object>> InvoiceNumber
 
   User "1" --> "0..*" MailAccountConnection : 連携
   User "1" --> "0..*" EmailVerificationToken : 認証
@@ -57,7 +63,10 @@ classDiagram
   BillingEligibility --> Billing : 生成
 
   Billing --> Vendor : 支払先
-  Billing --> PaymentType : 支払いタイプ
+  Billing --> PaymentCycle : 支払周期
+  Billing *-- Money : 金額
+  Billing *-- BillingNumber : 請求番号
+  Billing *-- InvoiceNumber : インボイス番号
   Billing ..> Email : 参照元
 ```
 
@@ -93,7 +102,8 @@ classDiagram
 
 ### 請求集約
 - ルート: 請求（Billing）
-- 参照: 支払先（Vendor）/ メール（Email）/ 支払いタイプ（PaymentType）
+- 参照: 支払先（Vendor）/ メール（Email）/ 支払周期（PaymentCycle）
+- 含む（値オブジェクト）: 金額（Money）/ 請求番号（BillingNumber）/ インボイス番号（InvoiceNumber）
 
 ### 支払先集約
 - ルート: 支払先（Vendor）

@@ -39,7 +39,7 @@
 - 正規化された事業者・サービス
 
 ### 請求（Billing）
-- 金額・支払先・請求番号などが確定した支払いの事実
+- 金額（Money）・支払先・請求番号（BillingNumber）・インボイス番号（InvoiceNumber）などが確定した支払いの事実
 
 ## 概念 / ポリシー / 列挙
 
@@ -47,16 +47,28 @@
 - ParsedEmail を入力として成立可否を判断するポリシー
 - 永続化されない
 
-### 支払いタイプ（PaymentType）
-- 請求の性質を表す分類
+### 支払周期（PaymentCycle）
+- 請求が単発か定期かを表す分類
 
 ### メール認証（EmailVerification）
 - EmailVerificationToken を用いてメールアドレスの正当性を確認する手続き
 - 永続化されない
 
-## 値オブジェクト（後で定義）
+## 値オブジェクト（Billing 集約に内包）
 
-候補の整理は別途行う。現時点では枠のみを用意する。
+### 金額（Money）
+- 金額と通貨の組
+- 金額は小数第3位までを許容する
+- 通貨は ISO 4217 の3文字コード
+
+### 請求番号（BillingNumber）
+- ベンダーが発行する請求書の識別子
+- 任意（存在しない請求もある）
+
+### インボイス番号（InvoiceNumber）
+- 適格請求書発行事業者登録番号
+- 形式は "T" + 数字13桁
+- 任意（存在しない請求もある）
 
 ## 主要な関係（概念）
 
@@ -69,12 +81,12 @@
 
 ## 依存関係（モデル）
 
-- User / MailService / Vendor / PaymentType は他に依存しない
+- User / MailService / Vendor / PaymentCycle / Money / BillingNumber / InvoiceNumber は他に依存しない
 - MailAccountConnection -> User, MailService
 - Email -> MailAccountConnection
 - ParsedEmail -> Email
 - BillingEligibility（ポリシー） -> ParsedEmail
-- Billing -> Vendor, PaymentType, Email / ParsedEmail（参照元）
+- Billing -> Vendor, PaymentCycle, Money, BillingNumber, InvoiceNumber, Email / ParsedEmail（参照元）
 
 ## 補足
 
