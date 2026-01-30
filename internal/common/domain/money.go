@@ -3,7 +3,10 @@ package domain
 import (
 	"errors"
 	"math"
+	"strconv"
 	"strings"
+
+	"github.com/shopspring/decimal"
 )
 
 var (
@@ -19,7 +22,7 @@ var (
 
 // Money represents an amount of money with currency.
 type Money struct {
-	Amount   float64
+	Amount   decimal.Decimal
 	Currency string
 }
 
@@ -38,7 +41,7 @@ func NewMoney(amount float64, currency string) (Money, error) {
 
 // Validate enforces invariants for Money.
 func (m Money) Validate() error {
-	if _, err := NormalizeAmount(m.Amount); err != nil {
+	if _, err := NormalizeAmountDecimal(m.Amount); err != nil {
 		return err
 	}
 	if _, err := NormalizeCurrency(m.Currency); err != nil {
@@ -48,23 +51,34 @@ func (m Money) Validate() error {
 }
 
 // NormalizeAmount validates and normalizes the amount to 3 decimal places.
-func NormalizeAmount(amount float64) (float64, error) {
+func NormalizeAmount(amount float64) (decimal.Decimal, error) {
 	if math.IsNaN(amount) || math.IsInf(amount, 0) {
-		return 0, ErrMoneyAmountInvalid
+		return decimal.Zero, ErrMoneyAmountInvalid
 	}
 	if amount <= 0 {
-		return 0, ErrMoneyAmountInvalid
+		return decimal.Zero, ErrMoneyAmountInvalid
 	}
-	const scale = 1000.0
-	scaled := amount * scale
-	rounded := math.Round(scaled)
-	if math.Abs(scaled-rounded) > 1e-9 {
-		return 0, ErrMoneyAmountScaleInvalid
+	raw := strconv.FormatFloat(amount, 'f', -1, 64)
+	parsed, err := decimal.NewFromString(raw)
+	if err != nil {
+		return decimal.Zero, ErrMoneyAmountInvalid
 	}
-	return rounded / scale, nil
+	return NormalizeAmountDecimal(parsed)
 }
 
-// NormalizeCurrency validates and normalizes currency to uppercase ISO 4217.
+// NormalizeAmountDecimal validates a decimal amount with up to 3 fractional digits.
+func NormalizeAmountDecimal(amount decimal.Decimal) (decimal.Decimal, error) {
+	if amount.Cmp(decimal.Zero) <= 0 {
+		return decimal.Zero, ErrMoneyAmountInvalid
+	}
+	if !amount.Equal(amount.Round(3)) {
+		return decimal.Zero, ErrMoneyAmountScaleInvalid
+	}
+	return amount, nil
+}
+
+// NormalizeCurrency validates and normalizes currency to uppercase ISO 4217
+// (currently allowlisted to JPY and USD).
 func NormalizeCurrency(currency string) (string, error) {
 	trimmed := strings.TrimSpace(currency)
 	if trimmed == "" {
@@ -78,6 +92,9 @@ func NormalizeCurrency(currency string) (string, error) {
 		if r < 'A' || r > 'Z' {
 			return "", ErrMoneyCurrencyInvalid
 		}
+	}
+	if upper != "JPY" && upper != "USD" {
+		return "", ErrMoneyCurrencyInvalid
 	}
 	return upper, nil
 }

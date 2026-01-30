@@ -21,7 +21,7 @@ func TestNewBillingNumber(t *testing.T) {
 
 	empty := "  "
 	number, err = NewBillingNumber(empty)
-	assert.ErrorIs(t, ErrBillingNumberEmpty, err)
+	assert.ErrorIs(t, err, ErrBillingNumberEmpty)
 }
 
 func TestBillingNumberValidate(t *testing.T) {

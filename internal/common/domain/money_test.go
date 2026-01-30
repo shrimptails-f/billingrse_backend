@@ -2,8 +2,9 @@ package domain
 
 import (
 	"errors"
-	"math"
 	"testing"
+
+	"github.com/shopspring/decimal"
 )
 
 func TestNewMoney(t *testing.T) {
@@ -13,8 +14,8 @@ func TestNewMoney(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMoney returned error: %v", err)
 	}
-	if money.Amount != 12.345 {
-		t.Fatalf("expected amount 12.345, got %v", money.Amount)
+	if !money.Amount.Equal(decimal.RequireFromString("12.345")) {
+		t.Fatalf("expected amount 12.345, got %s", money.Amount.String())
 	}
 	if money.Currency != "USD" {
 		t.Fatalf("expected currency USD, got %s", money.Currency)
@@ -31,33 +32,28 @@ func TestMoneyValidate(t *testing.T) {
 	}{
 		{
 			name:  "valid money",
-			money: Money{Amount: 1.5, Currency: "JPY"},
+			money: Money{Amount: decimal.RequireFromString("1.5"), Currency: "JPY"},
 			err:   nil,
 		},
 		{
 			name:  "invalid amount",
-			money: Money{Amount: 0, Currency: "JPY"},
+			money: Money{Amount: decimal.Zero, Currency: "JPY"},
 			err:   ErrMoneyAmountInvalid,
 		},
 		{
 			name:  "invalid amount scale",
-			money: Money{Amount: 1.2345, Currency: "JPY"},
+			money: Money{Amount: decimal.RequireFromString("1.2345"), Currency: "JPY"},
 			err:   ErrMoneyAmountScaleInvalid,
 		},
 		{
 			name:  "invalid currency empty",
-			money: Money{Amount: 1, Currency: ""},
+			money: Money{Amount: decimal.RequireFromString("1"), Currency: ""},
 			err:   ErrMoneyCurrencyEmpty,
 		},
 		{
-			name:  "invalid currency format",
-			money: Money{Amount: 1, Currency: "JP"},
+			name:  "invalid currency unsupported",
+			money: Money{Amount: decimal.RequireFromString("1"), Currency: "EUR"},
 			err:   ErrMoneyCurrencyInvalid,
-		},
-		{
-			name:  "invalid amount NaN",
-			money: Money{Amount: math.NaN(), Currency: "USD"},
-			err:   ErrMoneyAmountInvalid,
 		},
 	}
 

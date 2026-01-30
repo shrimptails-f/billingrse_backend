@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -71,7 +72,7 @@ func TestBillingValidate(t *testing.T) {
 		{
 			name: "invalid amount",
 			mutate: func(b Billing) Billing {
-				b.Money.Amount = 0
+				b.Money.Amount = decimal.Zero
 				return b
 			},
 			err: ErrMoneyAmountInvalid,
@@ -99,6 +100,14 @@ func TestBillingValidate(t *testing.T) {
 				return b
 			},
 			err: ErrPaymentCycleEmpty,
+		},
+		{
+			name: "invalid invoice number format",
+			mutate: func(b Billing) Billing {
+				b.InvoiceNumber = InvoiceNumber("INV-002")
+				return b
+			},
+			err: ErrInvoiceNumberInvalidFormat,
 		},
 	}
 
@@ -129,7 +138,7 @@ func TestNewBilling(t *testing.T) {
 		time.Date(2025, 1, 5, 12, 30, 15, 0, time.UTC),
 		"recurring",
 	)
-	assert.ErrorIs(t, ErrBillingNumberEmpty, err)
+	assert.ErrorIs(t, err, ErrBillingNumberEmpty)
 
 	billingNumber := " INV-100 "
 	invoice = "T1234567890123"

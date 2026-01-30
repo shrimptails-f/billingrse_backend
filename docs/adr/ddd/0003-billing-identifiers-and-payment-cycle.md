@@ -34,9 +34,13 @@ InvoiceNumber の意味が曖昧だった。インボイス番号を持たない
 - ParsedEmail の推定項目は以下に整理する。
   - vendorName, billingNumber, invoiceNumber, amount, currency, billingDate, paymentCycle, extractedAt
   - amount は小数第3位までの数値を許容する。
+- Money は float ではなく decimal を採用し、小数第3位までのスケールを保証する。
+- 通貨コードは ISO 4217 の3文字コードを前提としつつ、当面は JPY / USD のみ許容する。
 
 ## Consequences
 - ADR 0001/0002 にある「請求番号任意/支払いタイプ」等の記述は、本ADRにより上書きされる。
 - 解析プロンプトや DTO で billingNumber / invoiceNumber / paymentCycle の取り扱いが必須になる。
 - 既存データ/移行時には BillingNumber の補完方針（再解析・手動補正・一時ID付与など）が必要になる。
 - InvoiceNumber の検証は "T" + 13桁に限定されるため、他形式は BillingNumber に格納する。
+- Money の永続化・集計・比較は decimal 前提となるため、DB/DTO/集計処理の型整合が必要になる。
+- 通貨は当面 JPY / USD に限定されるため、他通貨の追加時は ADR 更新と検証ロジック拡張が必要になる。
