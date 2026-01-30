@@ -80,23 +80,6 @@ func CreateArrayMigrationSlice() []interface{} {
 	return []interface{}{
 		model.User{},
 		model.EmailVerificationToken{},
-		model.Agent{},
-		model.AgentChangeLog{},
 		model.EmailCredential{},
-		model.KeywordGroup{},
-		model.KeyWord{},
-		model.KeywordGroupWordLink{},
-		model.PositionGroup{},
-		model.PositionWord{},
-		model.WorkTypeGroup{},
-		model.WorkTypeWord{},
-		model.Email{},
-		model.EmailProject{},
-		model.EmailCandidate{},
-		model.EntryTiming{},
-		model.EmailKeywordGroup{},
-		model.EmailPositionGroup{},
-		model.EmailWorkTypeGroup{},
-		model.EmailAnalysisLog{},
 	}
 }

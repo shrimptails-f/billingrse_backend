@@ -11,6 +11,9 @@ import (
 // ErrInvalidCredentials is returned when email or password is incorrect
 var ErrInvalidCredentials = errors.New("invalid credentials")
 
+// ErrInvalidInput is returned when request payload values are invalid.
+var ErrInvalidInput = errors.New("invalid input")
+
 // ErrEmailAlreadyExists is returned when attempting to register with an existing email.
 var ErrEmailAlreadyExists = errors.New("email already exists")
 
@@ -44,7 +47,7 @@ var (
 // AuthRepository defines the interface for user data access
 type AuthRepository interface {
 	// GetUserByEmail retrieves a user by email address
-	GetUserByEmail(ctx context.Context, email string) (domain.User, error)
+	GetUserByEmail(ctx context.Context, email domain.EmailAddress) (domain.User, error)
 	// GetUserByID retrieves a user by ID
 	GetUserByID(ctx context.Context, id uint) (domain.User, error)
 	// CreateUser inserts a new user record.

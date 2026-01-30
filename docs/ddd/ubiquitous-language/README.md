@@ -21,7 +21,10 @@ classDiagram
   class BillingEligibility["請求成立判定（BillingEligibility）"]
   class Billing["請求（Billing）"]
   class Vendor["支払先（Vendor）"]
-  class PaymentType["支払いタイプ（PaymentType）"]
+  class PaymentCycle["支払周期（PaymentCycle）"]
+  class Money["金額（Money）"]
+  class BillingNumber["請求番号（BillingNumber）"]
+  class InvoiceNumber["インボイス番号（InvoiceNumber）"]
 
   class User {
     + ログインする()
@@ -48,7 +51,10 @@ classDiagram
 
   <<concept>> MailFetch
   <<policy>> BillingEligibility
-  <<enumeration>> PaymentType
+  <<enumeration>> PaymentCycle
+  <<value_object>> Money
+  <<value_object>> BillingNumber
+  <<value_object>> InvoiceNumber
 
   User "1" --> "0..*" MailAccountConnection : 連携
   User "1" --> "0..*" BatchSetting : 所有
@@ -67,12 +73,15 @@ classDiagram
   ManualMailFetch --> Email : 取得
   MailFetchBatch --> Email : 取得
 
-  Email --> ParsedEmail : 解析結果
+  Email "1" --> "0..*" ParsedEmail : 解析結果
   ParsedEmail --> BillingEligibility : 成立判定
   BillingEligibility --> Billing : 生成
 
   Billing --> Vendor : 支払先
-  Billing --> PaymentType : 支払いタイプ
+  Billing --> PaymentCycle : 支払周期
+  Billing *-- Money : 金額
+  Billing *-- BillingNumber : 請求番号
+  Billing *-- InvoiceNumber : インボイス番号
   Billing ..> Email : 参照元
   Billing ..> ParsedEmail : 参照元
 ```
@@ -81,10 +90,10 @@ classDiagram
 
 | カテゴリ名 | 言語 |
 | --- | --- |
-| [ユーザー系](user.md) | ユーザー（User）,ログイン（Login）,ログアウト（Logout） |
+| [ユーザー系](user.md) | ユーザー（User）,ログイン（Login）,ログアウト（Logout）,ユーザー名（UserName）,メールアドレス（EmailAddress）,パスワード（Password）,パスワードハッシュ（PasswordHash）,メール認証（EmailVerification）,メール認証トークン（EmailVerificationToken） |
 | [メール連携/取得系](mail-integration-fetch.md) | メールサービス（MailService）,メールアカウント連携（MailAccountConnection）,メール取得（MailFetch）,手動メール取得（ManualMailFetch）,メール取得バッチ（MailFetchBatch）,バッチ設定（BatchSetting）,取得条件（FetchCondition） |
 | [メール/解析系](mail-analysis.md) | メール（Email）,メール解析結果（ParsedEmail）,請求成立判定（BillingEligibility） |
-| [請求/支払先系](billing-vendor.md) | 支払先（Vendor）,請求（Billing）,支払いタイプ（PaymentType） |
+| [請求/支払先系](billing-vendor.md) | 支払先（Vendor）,請求（Billing）,支払周期（PaymentCycle）,金額（Money）,請求番号（BillingNumber）,インボイス番号（InvoiceNumber） |
 
 ## 用語間の関係（言語レベル）
 

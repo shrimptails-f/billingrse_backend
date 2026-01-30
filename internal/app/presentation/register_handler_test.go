@@ -22,10 +22,9 @@ func TestRegisterHandler(t *testing.T) {
 		t.Parallel()
 		usecase := new(mockAuthUseCase)
 		user := domain.User{
-			ID:            1,
-			Name:          "New User",
-			Email:         "new@example.com",
-			EmailVerified: false,
+			ID:    1,
+			Name:  domain.UserName("New User"),
+			Email: domain.EmailAddress("new@example.com"),
 		}
 		usecase.On("Register", mock.Anything, mock.MatchedBy(func(req domain.RegisterRequest) bool {
 			return req.Email == "new@example.com" && req.Name == "New User" && req.Password == "password123"

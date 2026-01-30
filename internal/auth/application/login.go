@@ -21,7 +21,12 @@ func (uc *AuthUseCase) Login(ctx context.Context, req domain.LoginRequest) (stri
 		return "", fmt.Errorf("missing JWT secret: %w", err)
 	}
 
-	user, err := uc.repo.GetUserByEmail(ctx, req.Email)
+	email, err := domain.NewEmailAddress(req.Email)
+	if err != nil {
+		return "", ErrInvalidCredentials
+	}
+
+	user, err := uc.repo.GetUserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return "", ErrInvalidCredentials

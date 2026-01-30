@@ -3,6 +3,7 @@
 ```mermaid
 classDiagram
   class User["ユーザー（User）"]
+  class EmailVerificationToken["メール認証トークン（EmailVerificationToken）"]
   class MailService["メールサービス（MailService）"]
   class MailAccountConnection["メールアカウント連携（MailAccountConnection）"]
   class MailFetch["メール取得（MailFetch）"]
@@ -15,7 +16,10 @@ classDiagram
   class BillingEligibility["請求成立判定（BillingEligibility）"]
   class Billing["請求（Billing）"]
   class Vendor["支払先（Vendor）"]
-  class PaymentType["支払いタイプ（PaymentType）"]
+  class PaymentCycle["支払周期（PaymentCycle）"]
+  class Money["金額（Money）"]
+  class BillingNumber["請求番号（BillingNumber）"]
+  class InvoiceNumber["インボイス番号（InvoiceNumber）"]
 
   class User {
     + ログインする()
@@ -42,9 +46,13 @@ classDiagram
 
   <<concept>> MailFetch
   <<policy>> BillingEligibility
-  <<enumeration>> PaymentType
+  <<enumeration>> PaymentCycle
+  <<value_object>> Money
+  <<value_object>> BillingNumber
+  <<value_object>> InvoiceNumber
 
   User "1" --> "0..*" MailAccountConnection : 連携
+  User "1" --> "0..*" EmailVerificationToken : 認証
   User "1" --> "0..*" BatchSetting : 所有
   User "1" --> "0..*" Email : 所有
   User "1" --> "0..*" Billing : 所有
@@ -61,12 +69,15 @@ classDiagram
   ManualMailFetch --> Email : 取得
   MailFetchBatch --> Email : 取得
 
-  Email --> ParsedEmail : 解析結果
+  Email "1" --> "0..*" ParsedEmail : 解析結果
   ParsedEmail --> BillingEligibility : 成立判定
   BillingEligibility --> Billing : 生成
 
   Billing --> Vendor : 支払先
-  Billing --> PaymentType : 支払いタイプ
+  Billing --> PaymentCycle : 支払周期
+  Billing *-- Money : 金額
+  Billing *-- BillingNumber : 請求番号
+  Billing *-- InvoiceNumber : インボイス番号
   Billing ..> Email : 参照元
   Billing ..> ParsedEmail : 参照元
 ```

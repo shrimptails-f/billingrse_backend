@@ -14,6 +14,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/openai/openai-go v1.3.0
 	github.com/redis/go-redis/v9 v9.16.0
+	github.com/shopspring/decimal v1.4.0
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/dig v1.19.0
 	go.uber.org/zap v1.27.0

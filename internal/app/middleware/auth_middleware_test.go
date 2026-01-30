@@ -69,9 +69,10 @@ func TestAuthMiddleware_Success(t *testing.T) {
 	secret := "test-secret"
 	osw := newStubOsWrapper(secret)
 	users := new(mockUserProvider)
+	verifiedAt := time.Now()
 	users.On("GetUserByID", mock.Anything, uint(123)).Return(domain.User{
-		ID:            123,
-		EmailVerified: true,
+		ID:              123,
+		EmailVerifiedAt: &verifiedAt,
 	}, nil)
 
 	middleware := NewAuthMiddleware(osw, users)
@@ -104,9 +105,10 @@ func TestAuthMiddleware_SuccessWithCookie(t *testing.T) {
 	secret := "test-secret"
 	osw := newStubOsWrapper(secret)
 	users := new(mockUserProvider)
+	verifiedAt := time.Now()
 	users.On("GetUserByID", mock.Anything, uint(123)).Return(domain.User{
-		ID:            123,
-		EmailVerified: true,
+		ID:              123,
+		EmailVerifiedAt: &verifiedAt,
 	}, nil)
 
 	middleware := NewAuthMiddleware(osw, users)
@@ -308,8 +310,7 @@ func TestAuthMiddleware_EmailVerificationRequired(t *testing.T) {
 	osw := newStubOsWrapper(secret)
 	users := new(mockUserProvider)
 	users.On("GetUserByID", mock.Anything, uint(123)).Return(domain.User{
-		ID:            123,
-		EmailVerified: false, // Not verified
+		ID: 123, // Not verified
 	}, nil)
 
 	middleware := NewAuthMiddleware(osw, users)

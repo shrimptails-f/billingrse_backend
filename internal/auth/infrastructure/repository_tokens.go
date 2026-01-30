@@ -191,12 +191,20 @@ func (r *Repository) ConsumeTokenAndVerifyUser(ctx context.Context, tokenID uint
 			return fmt.Errorf("failed to retrieve user: %w", err)
 		}
 
+		name, err := domain.NewUserName(record.Name)
+		if err != nil {
+			return fmt.Errorf("invalid user name: %w", err)
+		}
+		emailAddress, err := domain.NewEmailAddress(record.Email)
+		if err != nil {
+			return fmt.Errorf("invalid email address: %w", err)
+		}
+
 		user = domain.User{
 			ID:              record.ID,
-			Name:            record.Name,
-			Email:           record.Email,
-			PasswordHash:    record.Password,
-			EmailVerified:   record.EmailVerified,
+			Name:            name,
+			Email:           emailAddress,
+			PasswordHash:    domain.NewPasswordHashFromHash(record.Password),
 			EmailVerifiedAt: record.EmailVerifiedAt,
 			CreatedAt:       record.CreatedAt,
 			UpdatedAt:       record.UpdatedAt,

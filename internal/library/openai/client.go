@@ -48,7 +48,7 @@ func New(apiKey string, limiter ratelimit.Limiter, log logger.Interface) *Client
 // 	Items []cd.AnalysisResult `json:"results" jsonschema_description:"分析結果の配列"`
 // }
 
-func (c *Client) Chat(ctx context.Context, prompt string) ([]cd.AnalysisResult, error) {
+func (c *Client) Chat(ctx context.Context, prompt string) ([]cd.ParsedEmail, error) {
 	// schema := GenerateSchema[AnalysisResults]()
 
 	// schemaParam := openai.ResponseFormatJSONSchemaJSONSchemaParam{
@@ -90,7 +90,7 @@ func (c *Client) Chat(ctx context.Context, prompt string) ([]cd.AnalysisResult, 
 	}
 	raw := resp.Choices[0].Message.Content
 
-	var results []cd.AnalysisResult
+	var results []cd.ParsedEmail
 	if err := json.Unmarshal([]byte(raw), &results); err != nil {
 		c.log.Error("JSON→構造体変換失敗",
 			logger.Err(err),

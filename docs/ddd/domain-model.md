@@ -12,20 +12,20 @@
 ### ユーザー（User）
 - サービスを利用する主体
 - データ分離の単位
+- ユーザー名・メールアドレスを持つ
+- パスワードハッシュを保持する
+- メール認証状態と認証日時を持つ
+
+### メール認証トークン（EmailVerificationToken）
+- ユーザーのメール認証に使うトークン
+- 有効期限と消費状態を持つ
 
 ### メールサービス（MailService）
 - Gmail / Outlook などのサービス種別
 
 ### メールアカウント連携（MailAccountConnection）
 - ユーザーの外部メールサービス接続情報
-- 認可情報を持つ
-
-### 手動メール取得（ManualMailFetch）
-- 手動トリガーで実行されるメール取得
-
-### メール取得バッチ（MailFetchBatch）
-- 定期実行されるメール取得を実行するためのバッチ
-- バッチ設定に基づいて Email を取得する
+- 認可情報（アクセストークン / リフレッシュトークン）を持つ
 
 ### メール（Email）
 - 取得した加工前の一次情報
@@ -33,48 +33,61 @@
 
 ### メール解析結果（ParsedEmail）
 - Email から生成される推定データ
+- 解析結果の各フィールドは推定値のため、厳密な値オブジェクトは持たせない（プリミティブで保持）
 
 ### 支払先（Vendor）
 - 正規化された事業者・サービス
 
 ### 請求（Billing）
-- 金額・支払先・請求番号などが確定した支払いの事実
+- 金額（Money）・支払先・請求番号（BillingNumber）・インボイス番号（InvoiceNumber）などが確定した支払いの事実
 
 ## 概念 / ポリシー / 列挙
-
-### メール取得（MailFetch）
-- 手動/バッチの総称となる概念
-- 実装上の実体を持たない
 
 ### 請求成立判定（BillingEligibility）
 - ParsedEmail を入力として成立可否を判断するポリシー
 - 永続化されない
 
-### 支払いタイプ（PaymentType）
-- 請求の性質を表す分類
+### 支払周期（PaymentCycle）
+- 請求が単発か定期かを表す分類
 
-## 値オブジェクト（後で定義）
+### メール認証（EmailVerification）
+- EmailVerificationToken を用いてメールアドレスの正当性を確認する手続き
+- 永続化されない
 
-候補の整理は別途行う。現時点では枠のみを用意する。
+## 値オブジェクト（Billing 集約に内包）
+
+### 金額（Money）
+- 金額と通貨の組
+- 金額は小数第3位までを許容する
+- 通貨は ISO 4217 の3文字コード
+- 当面は JPY / USD のみに限定する
+
+### 請求番号（BillingNumber）
+- ベンダーが発行する請求書の識別子
+- 必須
+
+### インボイス番号（InvoiceNumber）
+- 適格請求書発行事業者登録番号
+- 形式は "T" + 数字13桁
+- 任意（存在しない請求もある）
 
 ## 主要な関係（概念）
 
 - ユーザーは複数のメールアカウント連携を持つ
+- ユーザーは複数のメール認証トークンを持つ
 - メールアカウント連携は1つのメールサービスに紐づく
-- メール取得（手動/バッチ）により Email を取得する
 - Email は ParsedEmail を生成する
 - ParsedEmail は請求成立判定を経て Billing を生成する
 - Billing は Vendor を参照する
 
 ## 依存関係（モデル）
 
-- User / MailService / Vendor / PaymentType は他に依存しない
+- User / MailService / Vendor / PaymentCycle / Money / BillingNumber / InvoiceNumber は他に依存しない
 - MailAccountConnection -> User, MailService
-- ManualMailFetch / MailFetchBatch -> MailAccountConnection
 - Email -> MailAccountConnection
 - ParsedEmail -> Email
 - BillingEligibility（ポリシー） -> ParsedEmail
-- Billing -> Vendor, PaymentType, Email / ParsedEmail（参照元）
+- Billing -> Vendor, PaymentCycle, Money, BillingNumber, InvoiceNumber, Email / ParsedEmail（参照元）
 
 ## 補足
 

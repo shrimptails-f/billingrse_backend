@@ -7,6 +7,7 @@ classDiagram
       + ログインする()
       + ログアウトする()
     }
+    class EmailVerificationToken["メール認証トークン（EmailVerificationToken）"]
   }
   namespace 集約_メールサービス {
     class MailService["メールサービス（MailService）"]
@@ -18,20 +19,9 @@ classDiagram
       + 失効する()
     }
   }
-  namespace 集約_メール取得バッチ {
-    class MailFetchBatch["メール取得バッチ（MailFetchBatch）"] {
-      + 実行する()
-    }
-  }
   namespace 集約_バッチ設定 {
     class BatchSetting["バッチ設定（BatchSetting）"] {
       + 取得条件（FetchCondition）
-    }
-  }
-  namespace 概念_メール取得 {
-    class MailFetch["メール取得（MailFetch）"]
-    class ManualMailFetch["手動メール取得（ManualMailFetch）"] {
-      + 実行する()
     }
   }
   namespace 集約_メール {
@@ -45,40 +35,38 @@ classDiagram
   }
   namespace 集約_請求 {
     class Billing["請求（Billing）"]
-    class PaymentType["支払いタイプ（PaymentType）"]
+    class PaymentCycle["支払周期（PaymentCycle）"]
+    class Money["金額（Money）"]
+    class BillingNumber["請求番号（BillingNumber）"]
+    class InvoiceNumber["インボイス番号（InvoiceNumber）"]
   }
   namespace 集約_支払先 {
     class Vendor["支払先（Vendor）"]
   }
 
-  <<concept>> MailFetch
   <<policy>> BillingEligibility
-  <<enumeration>> PaymentType
+  <<enumeration>> PaymentCycle
+  <<value_object>> Money
+  <<value_object>> BillingNumber
+  <<value_object>> InvoiceNumber
 
   User "1" --> "0..*" MailAccountConnection : 連携
-  User "1" --> "0..*" MailFetch : 取得
+  User "1" --> "0..*" EmailVerificationToken : 認証
   User "1" --> "0..*" BatchSetting : 所有
   User "1" --> "0..*" Email : 所有
   User "1" --> "0..*" Billing : 所有
 
   MailAccountConnection "0..*" --> "1" MailService : サービス
-  MailAccountConnection "1" --> "0..*" MailFetch : 取得に使用
-  MailAccountConnection "1" --> "0..*" MailFetchBatch : バッチ
 
-  MailFetch "1" o-- "0..*" ManualMailFetch : 手動
-  MailFetch "1" o-- "0..*" MailFetchBatch : バッチ
-
-  MailFetchBatch "1" --> "1" BatchSetting : 設定
-
-  ManualMailFetch --> Email : 取得
-  MailFetchBatch --> Email : 取得
-
-  Email --> ParsedEmail : 解析結果
+  Email "1" --> "0..*" ParsedEmail : 解析結果
   ParsedEmail --> BillingEligibility : 成立判定
   BillingEligibility --> Billing : 生成
 
   Billing --> Vendor : 支払先
-  Billing --> PaymentType : 支払いタイプ
+  Billing --> PaymentCycle : 支払周期
+  Billing *-- Money : 金額
+  Billing *-- BillingNumber : 請求番号
+  Billing *-- InvoiceNumber : インボイス番号
   Billing ..> Email : 参照元
 ```
 
@@ -95,6 +83,7 @@ classDiagram
 
 ### ユーザー集約
 - ルート: ユーザー（User）
+- 含む: メール認証トークン（EmailVerificationToken）
 - 説明: データ分離の単位
 
 ### メールサービス集約
@@ -103,7 +92,6 @@ classDiagram
 
 ### メールアカウント連携集約
 - ルート: メールアカウント連携（MailAccountConnection）
-- 含む: メール取得バッチ（MailFetchBatch）
 - バッチ設定: 取得条件 / 実行スケジュール（いずれも連携に紐づく）
 - 参照: ユーザー / メールサービス
 
@@ -114,7 +102,8 @@ classDiagram
 
 ### 請求集約
 - ルート: 請求（Billing）
-- 参照: 支払先（Vendor）/ メール（Email）/ 支払いタイプ（PaymentType）
+- 参照: 支払先（Vendor）/ メール（Email）/ 支払周期（PaymentCycle）
+- 含む（値オブジェクト）: 金額（Money）/ 請求番号（BillingNumber）/ インボイス番号（InvoiceNumber）
 
 ### 支払先集約
 - ルート: 支払先（Vendor）
@@ -122,5 +111,4 @@ classDiagram
 
 ## 補足
 
-- メール取得（MailFetch）は概念であり、集約として扱わない
 - 不変条件の詳細は `docs/ddd/invariants.md` を正とする

@@ -80,7 +80,7 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 			}
 
 			// Check if email is verified
-			if !user.EmailVerified {
+			if !user.IsEmailVerified() {
 				c.JSON(http.StatusUnauthorized, gin.H{
 					"error": gin.H{
 						"code":    "email_verification_required",

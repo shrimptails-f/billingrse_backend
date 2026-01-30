@@ -69,9 +69,9 @@ func (lc *AuthController) VerifyEmail(c *gin.Context) {
 		Message: "メールアドレスの認証が完了しました。",
 		User: userResponse{
 			ID:              user.ID,
-			Name:            user.Name,
-			Email:           user.Email,
-			EmailVerified:   user.EmailVerified,
+			Name:            user.Name.String(),
+			Email:           user.Email.String(),
+			EmailVerified:   user.IsEmailVerified(),
 			EmailVerifiedAt: user.EmailVerifiedAt,
 			CreatedAt:       user.CreatedAt,
 		},

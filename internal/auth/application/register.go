@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -17,7 +16,17 @@ import (
 // After creating the user, it checks for an existing active token and reuses it if available.
 // Otherwise, it generates a new verification token and sends a verification email.
 func (uc *AuthUseCase) Register(ctx context.Context, req domain.RegisterRequest) (domain.User, error) {
-	_, err := uc.repo.GetUserByEmail(ctx, req.Email)
+	email, err := domain.NewEmailAddress(req.Email)
+	if err != nil {
+		return domain.User{}, ErrInvalidInput
+	}
+
+	name, err := domain.NewUserName(req.Name)
+	if err != nil {
+		return domain.User{}, ErrInvalidInput
+	}
+
+	_, err = uc.repo.GetUserByEmail(ctx, email)
 	if err == nil {
 		return domain.User{}, ErrEmailAlreadyExists
 	}
@@ -25,15 +34,15 @@ func (uc *AuthUseCase) Register(ctx context.Context, req domain.RegisterRequest)
 		return domain.User{}, fmt.Errorf("failed to check existing user: %w", err)
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	passwordHash, err := domain.NewPasswordHashFromPlaintext(req.Password)
 	if err != nil {
 		return domain.User{}, fmt.Errorf("failed to hash password: %w", err)
 	}
 
 	user, err := uc.repo.CreateUser(ctx, domain.User{
-		Name:         req.Name,
-		Email:        req.Email,
-		PasswordHash: string(hashedPassword),
+		Name:         name,
+		Email:        email,
+		PasswordHash: passwordHash,
 	})
 	if err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {

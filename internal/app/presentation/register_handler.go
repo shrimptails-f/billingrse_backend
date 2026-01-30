@@ -45,6 +45,15 @@ func (lc *AuthController) Register(c *gin.Context) {
 			})
 			return
 		}
+		if errors.Is(err, application.ErrInvalidInput) {
+			c.JSON(http.StatusBadRequest, errorResponse{
+				Error: errorDetail{
+					Code:    "invalid_input",
+					Message: "入力値が不正です。",
+				},
+			})
+			return
+		}
 		if errors.Is(err, application.ErrMailSendFailed) {
 			c.JSON(http.StatusInternalServerError, errorResponse{
 				Error: errorDetail{
@@ -63,9 +72,9 @@ func (lc *AuthController) Register(c *gin.Context) {
 		Message: "登録が完了しました。確認メールを送信しましたので、メールアドレスの認証を完了してください。",
 		User: userResponse{
 			ID:              user.ID,
-			Name:            user.Name,
-			Email:           user.Email,
-			EmailVerified:   user.EmailVerified,
+			Name:            user.Name.String(),
+			Email:           user.Email.String(),
+			EmailVerified:   user.IsEmailVerified(),
 			EmailVerifiedAt: user.EmailVerifiedAt,
 			CreatedAt:       user.CreatedAt,
 		},
