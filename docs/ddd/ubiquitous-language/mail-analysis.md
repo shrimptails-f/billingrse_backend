@@ -26,6 +26,7 @@
 - ParsedEmail 単体では「請求」とは呼ばない
 - 請求かどうかの最終判断は持たない
 - 1メールに対して ParsedEmail は複数件になり得る
+- ParsedEmail の各フィールドは推定値のため、厳密な値オブジェクトは持たせない
 
 ## 請求成立判定（BillingEligibility）
 
