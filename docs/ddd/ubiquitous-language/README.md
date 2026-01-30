@@ -67,7 +67,7 @@ classDiagram
   ManualMailFetch --> Email : 取得
   MailFetchBatch --> Email : 取得
 
-  Email --> ParsedEmail : 解析結果
+  Email "1" --> "0..*" ParsedEmail : 解析結果
   ParsedEmail --> BillingEligibility : 成立判定
   BillingEligibility --> Billing : 生成
 

@@ -52,7 +52,7 @@ classDiagram
 
   MailAccountConnection "0..*" --> "1" MailService : サービス
 
-  Email --> ParsedEmail : 解析結果
+  Email "1" --> "0..*" ParsedEmail : 解析結果
   ParsedEmail --> BillingEligibility : 成立判定
   BillingEligibility --> Billing : 生成
 

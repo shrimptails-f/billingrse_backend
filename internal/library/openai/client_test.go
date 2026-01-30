@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"business/internal/library/logger"
 )
@@ -19,29 +20,36 @@ func TestChat_Integration(t *testing.T) {
 		t.Fatal("OPENAI_API_KEY is not set")
 	}
 	limiter := &noOpLimiter{}
-	prompt, _ := os.ReadFile("/home/dev/backend/prompts/text_analysis_prompt.txt")
-
-	combinedText := string(prompt) + "\n\n" + getEmailBody()
+	prompt := buildParsedEmailPrompt(getEmailBody())
 
 	c := New(apiKey, limiter, logger.NewNop())
 
-	analysisResults, err := c.Chat(context.Background(), combinedText)
-	for i, item := range analysisResults {
-		fmt.Printf("---- 結果 %d ----\n", i+1)
-		fmt.Printf("案件名: %s\n", item.ProjectTitle)
-		fmt.Printf("メール区分: %s\n", item.MailCategory)
-		fmt.Printf("開始時期: %v\n", item.StartPeriod)
-		fmt.Printf("終了時期: %s\n", item.EndPeriod)
-		if item.PriceFrom != nil && item.PriceTo != nil {
-			fmt.Printf("単価: %d〜%d円\n", *item.PriceFrom, *item.PriceTo)
-		}
-		if item.RemoteWorkFrequency != nil {
-			fmt.Printf("リモート頻度: %s\n", *item.RemoteWorkFrequency)
-		}
-	}
-
+	analysisResults, err := c.Chat(context.Background(), prompt)
 	if err != nil {
 		t.Fatalf("API call failed: %v", err)
+	}
+
+	for i, item := range analysisResults {
+		fmt.Printf("---- 結果 %d ----\n", i+1)
+		if item.VendorName != nil {
+			fmt.Printf("支払先名: %s\n", *item.VendorName)
+		}
+		if item.InvoiceNumber != nil {
+			fmt.Printf("請求番号: %s\n", *item.InvoiceNumber)
+		}
+		if item.Amount != nil {
+			fmt.Printf("金額: %d\n", *item.Amount)
+		}
+		if item.Currency != nil {
+			fmt.Printf("通貨: %s\n", *item.Currency)
+		}
+		if item.BillingDate != nil {
+			fmt.Printf("請求日: %s\n", item.BillingDate.Format(time.RFC3339))
+		}
+		if item.PaymentType != nil {
+			fmt.Printf("支払いタイプ: %s\n", *item.PaymentType)
+		}
+		fmt.Printf("抽出日時: %s\n", item.ExtractedAt.Format(time.RFC3339))
 	}
 }
 
@@ -65,6 +73,21 @@ func getEmailBody() string {
 ■面談:WEB1回(上位同席）)
 ■リモート リモート可 週３回
 ■備考:`
+}
+
+func buildParsedEmailPrompt(body string) string {
+	return fmt.Sprintf(`以下は請求に関するメール本文です。本文を読み取り、JSON配列のみを出力してください。
+
+ルール:
+- 出力はJSON配列のみ（前後に説明文を入れない）
+- 要素のキーは vendorName, invoiceNumber, amount, currency, billingDate, paymentType, extractedAt のみ
+- 不明な値は null をセット
+- billingDate と extractedAt は RFC3339 形式の文字列
+- amount は整数
+- 複数の請求が含まれる場合は配列に複数要素を入れる
+
+本文:
+%s`, body)
 }
 
 type noOpLimiter struct{}

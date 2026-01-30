@@ -25,6 +25,7 @@
 ### ルール
 - ParsedEmail 単体では「請求」とは呼ばない
 - 請求かどうかの最終判断は持たない
+- 1メールに対して ParsedEmail は複数件になり得る
 
 ## 請求成立判定（BillingEligibility）
 

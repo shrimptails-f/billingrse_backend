@@ -6,5 +6,5 @@ import (
 )
 
 type UseCaserInterface interface {
-	Chat(ctx context.Context, prompt string) ([]cd.AnalysisResult, error)
+	Chat(ctx context.Context, prompt string) ([]cd.ParsedEmail, error)
 }
