@@ -37,25 +37,15 @@ tasks:
     cmds:
       - air -c .air.toml & ide/bin/remote-dev-server.sh run {{.APP_ROOT}} --listenOn 0.0.0.0 --port 5994
 
-  migration-drop:
-    desc: "develop schema のテーブルを削除する。"
-    cmds:
-      - go run {{.MIGRATION_ROOT}}/main.go dev drop
-
   migration-create:
-    desc: "develop schema のテーブル作成する。"
+    desc: "マイグレーションを実行します。"
     cmds:
-      - go run {{.MIGRATION_ROOT}}/main.go dev create
+      - atlas migrate apply --config file://atlas.hcl --env gorm
 
-  migration-test-drop:
-    desc: "test schema のテーブルを削除する。"
+  migration-drop:
+    desc: "全テーブルを削除します。"
     cmds:
-      - go run {{.MIGRATION_ROOT}}/main.go test drop
-
-  migration-test-create:
-    desc: "test schema のテーブルを作成する。"
-    cmds:
-      - go run {{.MIGRATION_ROOT}}/main.go test create
+      - atlas schema clean --config file://atlas.hcl --env gorm
 
   migration-fresh:
     desc: "develop schema のテーブルを削除し作成する。"
@@ -63,11 +53,10 @@ tasks:
       - task: migration-drop
       - task: migration-create
 
-  migration-fresh-test:
-    desc: "test schema のテーブルを削除し作成する。"
+  migration-gen:
+    desc: "構造体からddlを生成します。"
     cmds:
-      - task: migration-test-drop
-      - task: migration-test-create
+      - atlas migrate diff --config file://atlas.hcl --env gorm
 
   seed:
     desc: "develop schema のテーブルにデータを投入する。"

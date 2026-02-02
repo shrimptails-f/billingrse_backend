@@ -25,13 +25,13 @@ services:
       - SYS_PTRACE
     networks:
       default:
-      gmail_parser:
+      billing_parser:
 
   mysql:
     image: mysql:8.0
     ports:
-      - ${DB_PORT}:3306
-    command: mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      - ${MYSQL_PORT}:3306
+    command: mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --default-authentication-plugin=mysql_native_password
     volumes:
       - ../.devcontainer/infra/mysql/:/docker-entrypoint-initdb.d/
       - db-data:/var/lib/mysql
@@ -65,5 +65,5 @@ volumes:
     driver: local
 
 networks:
-  gmail_parser:
+  billing_parser:
     external: true

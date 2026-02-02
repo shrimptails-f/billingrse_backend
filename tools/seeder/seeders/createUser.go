@@ -1,7 +1,7 @@
 package seeders
 
 import (
-	"business/tools/migrations/model"
+	model "business/tools/migrations/models"
 	"log"
 	"time"
 
