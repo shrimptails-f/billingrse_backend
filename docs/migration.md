@@ -6,11 +6,6 @@
 - CI: なし (Atlasはローカル/手動運用)
 - 本番・検証環境: 未作成
 
-## Atlas関連ファイル
-- 設定ファイル: /home/dev/backend/atlas.hcl
-- マイグレーションDDL: /home/dev/backend/tools/migrations/ddl
-- モデル定義: /home/dev/backend/tools/migrations/models
-
 ## マイグレーションの手順
 マイグレーションを適用する
 ```
@@ -52,3 +47,8 @@ task migration-gen
 
 #### デプロイ戦略
 アプリはローリングデプロイ。DBは先に適用し、後方互換性を保つことを前提とする。
+
+## Atlas関連ファイル
+- 設定ファイル: /home/dev/backend/atlas.hcl
+- マイグレーションDDL: /home/dev/backend/tools/migrations/ddl
+- モデル定義: /home/dev/backend/tools/migrations/models
