@@ -4,6 +4,7 @@
     - アーキテクチャ: Clean Architecture（HTTP + メッセージングパイプライン）
     - WebFramework: Gin
     - ORM: Gorm
+    - マイグレーション: Atlas
     - 非同期パイプライン: internal/messaging（Gmail / OpenAI / emailstore）
     - DI コンテナ: go.uber.org/dig
   </context>

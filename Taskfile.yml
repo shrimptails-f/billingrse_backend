@@ -45,7 +45,7 @@ tasks:
   migration-drop:
     desc: "全テーブルを削除します。"
     cmds:
-      - atlas schema clean --config file://atlas.hcl --env gorm
+      - atlas schema clean --config file://atlas.hcl --env gorm --auto-approve
 
   migration-fresh:
     desc: "develop schema のテーブルを削除し作成する。"

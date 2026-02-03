@@ -2,6 +2,11 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "テストデータ投入",
+            "type": "shell",
+            "command": "task migration-gen"
+        },
+        {
             "label": "テーブルリフレッシュ(削除→作成)",
             "type": "shell",
             "command": "task migration-fresh"
