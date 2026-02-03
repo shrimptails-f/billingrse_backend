@@ -5,7 +5,6 @@
 - DB: MySQL
 - CI: なし (Atlasはローカル/手動運用)
 - 本番・検証環境: 未作成
-- Atlas導入理由: バージョン管理のマイグレーションがなかったため。GORMで紹介されていたので採用。
 
 ## Atlas関連ファイル
 - 設定ファイル: /home/dev/backend/atlas.hcl
@@ -21,10 +20,6 @@ task migration-create
 テストデータ投入コマンドを実行する
 ```
 task seed
-```
-テストスキーマ向けは以下
-```
-task seed-test
 ```
 
 ## マイグレーション運用について
