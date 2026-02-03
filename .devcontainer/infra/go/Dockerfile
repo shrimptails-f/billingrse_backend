@@ -63,6 +63,9 @@ RUN groupadd -g 1000 dev && \
 RUN mkdir -p /home/dev/.vscode-server/bin /home/dev/.vscode-server/extensions && \
     chown -R dev:dev /home/dev/.vscode-server
 
+# Atlasインストール(マイグレーションのバージョン管理)
+RUN curl -sSf https://atlasgo.sh | sh
+
 WORKDIR $APP_ROOT
 
 USER dev
