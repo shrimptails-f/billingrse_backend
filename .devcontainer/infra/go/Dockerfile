@@ -41,9 +41,6 @@ ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
     REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
     NO_PROXY=localhost,127.0.0.1,::1,auth.openai.com
 
-# Codexを公式ガイド通りにグローバルインストール
-RUN npm i -g @openai/codex@latest
-
 # Go ツール (root でインストール -> 全ユーザーで共有)
 RUN go install github.com/air-verse/air@latest && \
     go install github.com/go-delve/delve/cmd/dlv@latest && \
@@ -69,6 +66,10 @@ RUN curl -sSf https://atlasgo.sh | sh
 WORKDIR $APP_ROOT
 
 USER dev
+
+# dev ユーザー配下に npm グローバルインストール（sudo不要）
+ENV NPM_CONFIG_PREFIX=/home/dev/.local
+RUN mkdir -p /home/dev/.local && npm i -g @openai/codex@latest
 
 # bashrc 設定
 COPY --chown=dev:dev .devcontainer/infra/go/.bashrc /home/dev/.bashrc
