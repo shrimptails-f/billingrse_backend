@@ -60,7 +60,7 @@ func (lc *AuthController) VerifyEmail(c *gin.Context) {
 			})
 			return
 		}
-		lc.logger.Error("VerifyEmail error", logger.Err(err))
+		lc.logger.WithContext(c.Request.Context()).Error("VerifyEmail error", logger.Err(err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}

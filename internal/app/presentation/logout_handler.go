@@ -12,14 +12,14 @@ import (
 func (lc *AuthController) Logout(c *gin.Context) {
 	secure, err := lc.secureCookieEnabled()
 	if err != nil {
-		lc.logger.Error("failed to determine cookie security", logger.Err(err))
+		lc.logger.WithContext(c.Request.Context()).Error("failed to determine cookie security", logger.Err(err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 
 	domain, err := lc.cookieDomain()
 	if err != nil {
-		lc.logger.Error("failed to determine cookie domain", logger.Err(err))
+		lc.logger.WithContext(c.Request.Context()).Error("failed to determine cookie domain", logger.Err(err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}

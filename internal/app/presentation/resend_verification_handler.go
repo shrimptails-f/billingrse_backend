@@ -69,7 +69,7 @@ func (lc *AuthController) ResendVerificationEmail(c *gin.Context) {
 			})
 			return
 		}
-		lc.logger.Error("ResendVerificationEmail error", logger.Err(err))
+		lc.logger.WithContext(c.Request.Context()).Error("ResendVerificationEmail error", logger.Err(err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}

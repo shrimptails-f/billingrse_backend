@@ -63,7 +63,7 @@ func (lc *AuthController) Register(c *gin.Context) {
 			})
 			return
 		}
-		lc.logger.Error("Register error", logger.Err(err))
+		lc.logger.WithContext(c.Request.Context()).Error("Register error", logger.Err(err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}

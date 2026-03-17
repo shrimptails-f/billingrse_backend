@@ -31,7 +31,7 @@ func (r *Repository) GetActiveTokenForUser(ctx context.Context, userID uint, now
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return domain.EmailVerificationToken{}, gorm.ErrRecordNotFound
 		}
-		r.logger.Error("failed to get active token",
+		r.logger.WithContext(ctx).Error("failed to get active token",
 			logger.Uint("user_id", userID),
 			logger.String("now", now.Format(time.RFC3339)),
 			logger.Err(err),
@@ -79,7 +79,7 @@ func (r *Repository) CreateEmailVerificationToken(ctx context.Context, token dom
 		Error
 
 	if err != nil {
-		r.logger.Error("failed to create email verification token", logger.Uint("user_id", token.UserID), logger.Err(err))
+		r.logger.WithContext(ctx).Error("failed to create email verification token", logger.Uint("user_id", token.UserID), logger.Err(err))
 		return domain.EmailVerificationToken{}, fmt.Errorf("failed to create email verification token: %w", err)
 	}
 
@@ -90,7 +90,7 @@ func (r *Repository) CreateEmailVerificationToken(ctx context.Context, token dom
 		Error
 
 	if err != nil {
-		r.logger.Error("failed to retrieve token after upsert", logger.Uint("user_id", token.UserID), logger.Err(err))
+		r.logger.WithContext(ctx).Error("failed to retrieve token after upsert", logger.Uint("user_id", token.UserID), logger.Err(err))
 		return domain.EmailVerificationToken{}, fmt.Errorf("failed to retrieve token after upsert: %w", err)
 	}
 
@@ -117,7 +117,7 @@ func (r *Repository) InvalidateActiveTokens(ctx context.Context, userID uint, co
 		Error
 
 	if err != nil {
-		r.logger.Error("failed to invalidate active tokens", logger.Uint("user_id", userID), logger.Err(err))
+		r.logger.WithContext(ctx).Error("failed to invalidate active tokens", logger.Uint("user_id", userID), logger.Err(err))
 		return fmt.Errorf("failed to invalidate active tokens: %w", err)
 	}
 
@@ -137,7 +137,7 @@ func (r *Repository) GetEmailVerificationToken(ctx context.Context, token string
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return domain.EmailVerificationToken{}, gorm.ErrRecordNotFound
 		}
-		r.logger.Error("failed to get email verification token", logger.String("token", token), logger.Err(err))
+		r.logger.WithContext(ctx).Error("failed to get email verification token", logger.String("token", token), logger.Err(err))
 		return domain.EmailVerificationToken{}, fmt.Errorf("failed to get email verification token: %w", err)
 	}
 
@@ -162,7 +162,7 @@ func (r *Repository) ConsumeTokenAndVerifyUser(ctx context.Context, tokenID uint
 			Update("consumed_at", consumedAt).
 			Error
 		if err != nil {
-			r.logger.Error("failed to consume token", logger.Uint("token_id", tokenID), logger.Err(err))
+			r.logger.WithContext(ctx).Error("failed to consume token", logger.Uint("token_id", tokenID), logger.Err(err))
 			return fmt.Errorf("failed to consume token: %w", err)
 		}
 
@@ -175,7 +175,7 @@ func (r *Repository) ConsumeTokenAndVerifyUser(ctx context.Context, tokenID uint
 			}).
 			Error
 		if err != nil {
-			r.logger.Error("failed to verify user", logger.Uint("user_id", userID), logger.Err(err))
+			r.logger.WithContext(ctx).Error("failed to verify user", logger.Uint("user_id", userID), logger.Err(err))
 			return fmt.Errorf("failed to verify user: %w", err)
 		}
 
@@ -187,7 +187,7 @@ func (r *Repository) ConsumeTokenAndVerifyUser(ctx context.Context, tokenID uint
 			First(&record).
 			Error
 		if err != nil {
-			r.logger.Error("failed to retrieve user after verification", logger.Uint("user_id", userID), logger.Err(err))
+			r.logger.WithContext(ctx).Error("failed to retrieve user after verification", logger.Uint("user_id", userID), logger.Err(err))
 			return fmt.Errorf("failed to retrieve user: %w", err)
 		}
 
@@ -239,7 +239,7 @@ func (r *Repository) GetLatestTokenForUser(ctx context.Context, userID uint) (do
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return domain.EmailVerificationToken{}, gorm.ErrRecordNotFound
 		}
-		r.logger.Error("failed to get latest token", logger.Uint("user_id", userID), logger.Err(err))
+		r.logger.WithContext(ctx).Error("failed to get latest token", logger.Uint("user_id", userID), logger.Err(err))
 		return domain.EmailVerificationToken{}, fmt.Errorf("failed to get latest token: %w", err)
 	}
 
@@ -264,7 +264,7 @@ func (r *Repository) DeleteTokenByID(ctx context.Context, tokenID uint) error {
 		Error
 
 	if err != nil {
-		r.logger.Error("failed to delete token", logger.Uint("token_id", tokenID), logger.Err(err))
+		r.logger.WithContext(ctx).Error("failed to delete token", logger.Uint("token_id", tokenID), logger.Err(err))
 		return fmt.Errorf("failed to delete token: %w", err)
 	}
 

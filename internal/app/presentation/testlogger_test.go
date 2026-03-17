@@ -1,6 +1,9 @@
 package presentation
 
-import "business/internal/library/logger"
+import (
+	"business/internal/library/logger"
+	"context"
+)
 
 // testLogger is a no-op logger implementation for testing.
 type testLogger struct{}
@@ -17,6 +20,9 @@ func (l *testLogger) Warn(message string, fields ...logger.Field)  {}
 func (l *testLogger) Error(message string, fields ...logger.Field) {}
 func (l *testLogger) Fatal(message string, fields ...logger.Field) {}
 func (l *testLogger) With(fields ...logger.Field) logger.Interface {
+	return l
+}
+func (l *testLogger) WithContext(ctx context.Context) logger.Interface {
 	return l
 }
 func (l *testLogger) Sync() error {

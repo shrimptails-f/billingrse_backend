@@ -34,7 +34,7 @@ func (lc *AuthController) Login(c *gin.Context) {
 			c.Status(http.StatusUnauthorized)
 			return
 		}
-		lc.logger.Error("Login error", logger.Err(err))
+		lc.logger.WithContext(c.Request.Context()).Error("Login error", logger.Err(err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}
@@ -42,14 +42,14 @@ func (lc *AuthController) Login(c *gin.Context) {
 	maxAge := 86400 // 1日の秒数
 	secure, err := lc.secureCookieEnabled()
 	if err != nil {
-		lc.logger.Error("failed to determine cookie security", logger.Err(err))
+		lc.logger.WithContext(c.Request.Context()).Error("failed to determine cookie security", logger.Err(err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 
 	domain, err := lc.cookieDomain()
 	if err != nil {
-		lc.logger.Error("failed to determine cookie domain", logger.Err(err))
+		lc.logger.WithContext(c.Request.Context()).Error("failed to determine cookie domain", logger.Err(err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}

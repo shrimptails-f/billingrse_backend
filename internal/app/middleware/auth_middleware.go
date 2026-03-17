@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"business/internal/auth/domain"
+	"business/internal/library/logger"
 	"business/internal/library/oswrapper"
 	"context"
 	"fmt"
@@ -69,6 +70,9 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 			return
 		}
 
+		c.Set("userID", claims.UserID)
+		c.Request = c.Request.WithContext(logger.ContextWithUserID(c.Request.Context(), claims.UserID))
+
 		// Check if email verification is required for this path
 		if m.requiresEmailVerification(c.Request.URL.Path) {
 			// Get user to check email verification status
@@ -91,8 +95,6 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 				return
 			}
 		}
-
-		c.Set("userID", claims.UserID)
 		c.Next()
 	}
 }

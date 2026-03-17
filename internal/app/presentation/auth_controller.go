@@ -21,14 +21,9 @@ type AuthController struct {
 func NewAuthController(usecase application.AuthUseCaseInterface, log logger.Interface, osw oswrapper.OsWapperInterface) *AuthController {
 	return &AuthController{
 		usecase: usecase,
-		logger:  log.With(logger.String("component", "auth_controller")),
+		logger:  log.With(logger.Component("auth_controller")),
 		osw:     osw,
 	}
-}
-
-// LoggerWithUserID returns a child logger with the user_id field attached
-func (lc *AuthController) LoggerWithUserID(userID uint) logger.Interface {
-	return lc.logger.With(logger.Uint("user_id", userID))
 }
 
 type checkResponse struct {
@@ -57,14 +52,14 @@ type errorDetail struct {
 func (lc *AuthController) Check(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
-		lc.logger.Error("Check error: userID not found in context")
+		lc.logger.WithContext(c.Request.Context()).Error("Check error: userID not found in context")
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 
 	uid, ok := userID.(uint)
 	if !ok {
-		lc.logger.Error("Check error: userID type assertion failed")
+		lc.logger.WithContext(c.Request.Context()).Error("Check error: userID type assertion failed")
 		c.Status(http.StatusInternalServerError)
 		return
 	}

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"business/internal/auth/domain"
+	"business/internal/library/logger"
 	"context"
 	"errors"
 	"fmt"
@@ -85,7 +86,14 @@ func TestAuthMiddleware_Success(t *testing.T) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "userID not found"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"user_id": userID})
+
+		contextUserID, ok := logger.UserIDFromContext(c.Request.Context())
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "context userID not found"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"user_id": userID, "context_user_id": contextUserID})
 	})
 
 	token := generateToken(secret, 123, time.Now().Add(time.Hour))
@@ -96,7 +104,7 @@ func TestAuthMiddleware_Success(t *testing.T) {
 	router.ServeHTTP(resp, req)
 
 	assert.Equal(t, http.StatusOK, resp.Code)
-	assert.JSONEq(t, `{"user_id":123}`, resp.Body.String())
+	assert.JSONEq(t, `{"user_id":123,"context_user_id":123}`, resp.Body.String())
 	users.AssertExpectations(t)
 }
 
