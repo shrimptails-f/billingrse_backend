@@ -36,10 +36,9 @@ func (r *Repository) GetActiveTokenForUser(ctx context.Context, userID uint, now
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return domain.EmailVerificationToken{}, gorm.ErrRecordNotFound
 		}
-		reqLog.Error("failed to get active token",
+		logDBQueryFailed(reqLog, "email_verification_tokens", "get_active_token_for_user", err,
 			logger.Uint("user_id", userID),
 			logger.String("now", now.Format(time.RFC3339)),
-			logger.Err(err),
 		)
 		return domain.EmailVerificationToken{}, fmt.Errorf("failed to get active token: %w", err)
 	}
@@ -89,7 +88,7 @@ func (r *Repository) CreateEmailVerificationToken(ctx context.Context, token dom
 		Error
 
 	if err != nil {
-		reqLog.Error("failed to create email verification token", logger.Uint("user_id", token.UserID), logger.Err(err))
+		logDBQueryFailed(reqLog, "email_verification_tokens", "create_email_verification_token", err, logger.Uint("user_id", token.UserID))
 		return domain.EmailVerificationToken{}, fmt.Errorf("failed to create email verification token: %w", err)
 	}
 
@@ -100,7 +99,7 @@ func (r *Repository) CreateEmailVerificationToken(ctx context.Context, token dom
 		Error
 
 	if err != nil {
-		reqLog.Error("failed to retrieve token after upsert", logger.Uint("user_id", token.UserID), logger.Err(err))
+		logDBQueryFailed(reqLog, "email_verification_tokens", "get_email_verification_token_after_upsert", err, logger.Uint("user_id", token.UserID))
 		return domain.EmailVerificationToken{}, fmt.Errorf("failed to retrieve token after upsert: %w", err)
 	}
 
@@ -132,7 +131,7 @@ func (r *Repository) InvalidateActiveTokens(ctx context.Context, userID uint, co
 		Error
 
 	if err != nil {
-		reqLog.Error("failed to invalidate active tokens", logger.Uint("user_id", userID), logger.Err(err))
+		logDBQueryFailed(reqLog, "email_verification_tokens", "invalidate_active_tokens", err, logger.Uint("user_id", userID))
 		return fmt.Errorf("failed to invalidate active tokens: %w", err)
 	}
 
@@ -161,7 +160,7 @@ func (r *Repository) GetEmailVerificationToken(ctx context.Context, token string
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return domain.EmailVerificationToken{}, gorm.ErrRecordNotFound
 		}
-		reqLog.Error("failed to get email verification token", logger.String("token", token), logger.Err(err))
+		logDBQueryFailed(reqLog, "email_verification_tokens", "get_email_verification_token", err)
 		return domain.EmailVerificationToken{}, fmt.Errorf("failed to get email verification token: %w", err)
 	}
 
@@ -194,7 +193,7 @@ func (r *Repository) ConsumeTokenAndVerifyUser(ctx context.Context, tokenID uint
 			Update("consumed_at", consumedAt).
 			Error
 		if err != nil {
-			reqLog.Error("failed to consume token", logger.Uint("token_id", tokenID), logger.Err(err))
+			logDBQueryFailed(reqLog, "email_verification_tokens", "consume_token", err, logger.Uint("token_id", tokenID))
 			return fmt.Errorf("failed to consume token: %w", err)
 		}
 
@@ -207,7 +206,7 @@ func (r *Repository) ConsumeTokenAndVerifyUser(ctx context.Context, tokenID uint
 			}).
 			Error
 		if err != nil {
-			reqLog.Error("failed to verify user", logger.Uint("user_id", userID), logger.Err(err))
+			logDBQueryFailed(reqLog, "users", "verify_user", err, logger.Uint("user_id", userID))
 			return fmt.Errorf("failed to verify user: %w", err)
 		}
 
@@ -219,7 +218,7 @@ func (r *Repository) ConsumeTokenAndVerifyUser(ctx context.Context, tokenID uint
 			First(&record).
 			Error
 		if err != nil {
-			reqLog.Error("failed to retrieve user after verification", logger.Uint("user_id", userID), logger.Err(err))
+			logDBQueryFailed(reqLog, "users", "get_verified_user", err, logger.Uint("user_id", userID))
 			return fmt.Errorf("failed to retrieve user: %w", err)
 		}
 
@@ -276,7 +275,7 @@ func (r *Repository) GetLatestTokenForUser(ctx context.Context, userID uint) (do
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return domain.EmailVerificationToken{}, gorm.ErrRecordNotFound
 		}
-		reqLog.Error("failed to get latest token", logger.Uint("user_id", userID), logger.Err(err))
+		logDBQueryFailed(reqLog, "email_verification_tokens", "get_latest_token_for_user", err, logger.Uint("user_id", userID))
 		return domain.EmailVerificationToken{}, fmt.Errorf("failed to get latest token: %w", err)
 	}
 
@@ -306,7 +305,7 @@ func (r *Repository) DeleteTokenByID(ctx context.Context, tokenID uint) error {
 		Error
 
 	if err != nil {
-		reqLog.Error("failed to delete token", logger.Uint("token_id", tokenID), logger.Err(err))
+		logDBQueryFailed(reqLog, "email_verification_tokens", "delete_token_by_id", err, logger.Uint("token_id", tokenID))
 		return fmt.Errorf("failed to delete token: %w", err)
 	}
 

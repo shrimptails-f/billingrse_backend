@@ -166,11 +166,65 @@ func TestUserIDFromContext(t *testing.T) {
 	})
 }
 
+func TestJobIDFromContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("round trip", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := mustContextWithJobID(t, context.Background(), "job-123")
+
+		got, ok := JobIDFromContext(ctx)
+
+		assert.True(t, ok)
+		assert.Equal(t, "job-123", got)
+	})
+
+	t.Run("nil context", func(t *testing.T) {
+		t.Parallel()
+
+		got, ok := JobIDFromContext(nil)
+
+		assert.False(t, ok)
+		assert.Equal(t, "", got)
+	})
+
+	t.Run("missing value", func(t *testing.T) {
+		t.Parallel()
+
+		got, ok := JobIDFromContext(context.Background())
+
+		assert.False(t, ok)
+		assert.Equal(t, "", got)
+	})
+
+	t.Run("wrong type", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := context.WithValue(context.Background(), jobIDContextKey, 123)
+
+		got, ok := JobIDFromContext(ctx)
+
+		assert.False(t, ok)
+		assert.Equal(t, "", got)
+	})
+
+	t.Run("context with job id rejects nil context", func(t *testing.T) {
+		t.Parallel()
+
+		ctx, err := ContextWithJobID(nil, "job-123")
+
+		require.ErrorIs(t, err, ErrNilContext)
+		assert.Nil(t, ctx)
+	})
+}
+
 func TestWithContextAddsRequestScopedFields(t *testing.T) {
 	t.Parallel()
 
 	base, logs := newObservedLogger(zapcore.DebugLevel)
 	ctx := mustContextWithRequestID(t, context.Background(), "req-123")
+	ctx = mustContextWithJobID(t, ctx, "job-42")
 	ctx = mustContextWithUserID(t, ctx, 42)
 
 	reqLog, err := base.WithContext(ctx)
@@ -183,6 +237,7 @@ func TestWithContextAddsRequestScopedFields(t *testing.T) {
 
 	assert.Equal(t, "hello", entry.Message)
 	assert.Equal(t, "req-123", fields["request_id"])
+	assert.Equal(t, "job-42", fields["job_id"])
 	assert.EqualValues(t, 42, fields["user_id"])
 }
 
@@ -292,6 +347,26 @@ func TestSchemaHelpersUseExpectedKeys(t *testing.T) {
 
 		assert.Equal(t, "component", field.Key)
 		assert.Equal(t, "auth_controller", encoded["component"])
+	})
+
+	t.Run("service", func(t *testing.T) {
+		t.Parallel()
+
+		field := Service("backend")
+		encoded := fieldToMap(t, field)
+
+		assert.Equal(t, "service", field.Key)
+		assert.Equal(t, "backend", encoded["service"])
+	})
+
+	t.Run("environment", func(t *testing.T) {
+		t.Parallel()
+
+		field := Environment("")
+		encoded := fieldToMap(t, field)
+
+		assert.Equal(t, "environment", field.Key)
+		assert.Equal(t, "unknown", encoded["environment"])
 	})
 
 	t.Run("request id", func(t *testing.T) {
@@ -429,7 +504,7 @@ func TestNewCreatesUsableLogger(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			log, err := New(tt.level)
+			log, err := New(tt.level, "backend", "test")
 
 			require.NoError(t, err)
 			require.NotNil(t, log)
@@ -482,6 +557,15 @@ func mustContextWithUserID(t *testing.T, ctx context.Context, userID uint) conte
 	t.Helper()
 
 	next, err := ContextWithUserID(ctx, userID)
+	require.NoError(t, err)
+
+	return next
+}
+
+func mustContextWithJobID(t *testing.T, ctx context.Context, jobID string) context.Context {
+	t.Helper()
+
+	next, err := ContextWithJobID(ctx, jobID)
 	require.NoError(t, err)
 
 	return next

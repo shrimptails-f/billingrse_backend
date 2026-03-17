@@ -50,9 +50,20 @@ func RequestSummary(log logger.Interface) gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 		start := time.Now()
+		reqLog, err := summaryLogger.WithContext(c.Request.Context())
+		if err != nil {
+			reqLog = summaryLogger
+		}
+
+		reqLog.Info(
+			"http_request_started",
+			logger.String("method", c.Request.Method),
+			logger.String("path", resolvedPath(c)),
+		)
+
 		c.Next()
 
-		reqLog, err := summaryLogger.WithContext(c.Request.Context())
+		reqLog, err = summaryLogger.WithContext(c.Request.Context())
 		if err != nil {
 			reqLog = summaryLogger
 		}
@@ -66,11 +77,13 @@ func RequestSummary(log logger.Interface) gin.HandlerFunc {
 
 		switch status := c.Writer.Status(); {
 		case status >= http.StatusInternalServerError:
-			reqLog.Error("http request failed", fields...)
+			reqLog.Error("http_request_failed", fields...)
+		case status == http.StatusUnauthorized:
+			// 認証失敗系は別のミドルウェアで記録する。
 		case status >= http.StatusBadRequest:
-			reqLog.Warn("http request rejected", fields...)
+			reqLog.Info("http_request_rejected", fields...)
 		default:
-			reqLog.Info("http request succeeded", fields...)
+			reqLog.Info("http_request_succeeded", fields...)
 		}
 	}
 }

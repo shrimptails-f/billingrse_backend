@@ -22,21 +22,33 @@ type UserProvider interface {
 type AuthMiddleware struct {
 	osw   oswrapper.OsWapperInterface
 	users UserProvider
+	log   logger.Interface
 }
 
 // NewAuthMiddleware wires a middleware instance.
-func NewAuthMiddleware(osw oswrapper.OsWapperInterface, users UserProvider) *AuthMiddleware {
+func NewAuthMiddleware(osw oswrapper.OsWapperInterface, users UserProvider, log logger.Interface) *AuthMiddleware {
+	if log == nil {
+		log = logger.NewNop()
+	}
+
 	return &AuthMiddleware{
 		osw:   osw,
 		users: users,
+		log:   log.With(logger.Component("auth_middleware")),
 	}
 }
 
 // Authenticate returns a Gin middleware validating JWT tokens from the access_token cookie.
 func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		reqLog := m.log
+		if requestLog, err := m.log.WithContext(c.Request.Context()); err == nil {
+			reqLog = requestLog
+		}
+
 		cookieToken, err := c.Cookie("access_token")
 		if err != nil || strings.TrimSpace(cookieToken) == "" {
+			reqLog.Info("permission_denied", permissionDeniedFields(c, "missing_token")...)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
 			c.Abort()
 			return
@@ -46,6 +58,7 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 
 		jwtSecret, err := m.osw.GetEnv("JWT_SECRET_KEY")
 		if err != nil {
+			reqLog.Error("failed to load jwt secret", logger.Err(err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			c.Abort()
 			return
@@ -58,6 +71,7 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 			return []byte(jwtSecret), nil
 		})
 		if err != nil || !token.Valid {
+			reqLog.Info("permission_denied", permissionDeniedFields(c, "invalid_token")...)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			c.Abort()
 			return
@@ -65,6 +79,7 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 
 		claims, ok := token.Claims.(*domain.AuthClaims)
 		if !ok {
+			reqLog.Info("permission_denied", permissionDeniedFields(c, "invalid_token_claims")...)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
 			c.Abort()
 			return
@@ -73,18 +88,23 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 		c.Set("userID", claims.UserID)
 		requestCtx, err := logger.ContextWithUserID(c.Request.Context(), claims.UserID)
 		if err != nil {
+			reqLog.Error("failed to attach user context", logger.Err(err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			c.Abort()
 			return
 		}
 
 		c.Request = c.Request.WithContext(requestCtx)
+		if requestLog, err := m.log.WithContext(c.Request.Context()); err == nil {
+			reqLog = requestLog
+		}
 
 		// Check if email verification is required for this path
 		if m.requiresEmailVerification(c.Request.URL.Path) {
 			// Get user to check email verification status
 			user, err := m.users.GetUserByID(c.Request.Context(), claims.UserID)
 			if err != nil {
+				reqLog.Info("permission_denied", permissionDeniedFields(c, "user_not_found")...)
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
 				c.Abort()
 				return
@@ -92,6 +112,7 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 
 			// Check if email is verified
 			if !user.IsEmailVerified() {
+				reqLog.Info("permission_denied", permissionDeniedFields(c, "email_verification_required")...)
 				c.JSON(http.StatusUnauthorized, gin.H{
 					"error": gin.H{
 						"code":    "email_verification_required",
@@ -103,6 +124,15 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 			}
 		}
 		c.Next()
+	}
+}
+
+func permissionDeniedFields(c *gin.Context, reason string) []logger.Field {
+	return []logger.Field{
+		logger.String("reason", reason),
+		logger.String("method", c.Request.Method),
+		logger.String("path", resolvedPath(c)),
+		logger.HTTPStatusCode(http.StatusUnauthorized),
 	}
 }
 

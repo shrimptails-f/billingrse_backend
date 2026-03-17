@@ -76,7 +76,7 @@ func TestAuthMiddleware_Success(t *testing.T) {
 		EmailVerifiedAt: &verifiedAt,
 	}, nil)
 
-	middleware := NewAuthMiddleware(osw, users)
+	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
 
 	router := gin.New()
 	router.Use(middleware.Authenticate())
@@ -119,7 +119,7 @@ func TestAuthMiddleware_SuccessWithCookie(t *testing.T) {
 		EmailVerifiedAt: &verifiedAt,
 	}, nil)
 
-	middleware := NewAuthMiddleware(osw, users)
+	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
 
 	router := gin.New()
 	router.Use(middleware.Authenticate())
@@ -148,7 +148,7 @@ func TestAuthMiddleware_MissingTokenNoCredentials(t *testing.T) {
 
 	osw := newStubOsWrapper("test-secret")
 	users := new(mockUserProvider)
-	middleware := NewAuthMiddleware(osw, users)
+	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
 
 	router := gin.New()
 	router.Use(middleware.Authenticate())
@@ -170,7 +170,7 @@ func TestAuthMiddleware_IgnoresAuthorizationHeader(t *testing.T) {
 	secret := "test-secret"
 	osw := newStubOsWrapper(secret)
 	users := new(mockUserProvider)
-	middleware := NewAuthMiddleware(osw, users)
+	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
 
 	router := gin.New()
 	router.Use(middleware.Authenticate())
@@ -193,7 +193,7 @@ func TestAuthMiddleware_EmptyCookieValue(t *testing.T) {
 
 	osw := newStubOsWrapper("test-secret")
 	users := new(mockUserProvider)
-	middleware := NewAuthMiddleware(osw, users)
+	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
 
 	router := gin.New()
 	router.Use(middleware.Authenticate())
@@ -215,7 +215,7 @@ func TestAuthMiddleware_SecretKeyNotSet(t *testing.T) {
 
 	osw := &stubOsWrapper{env: map[string]string{}} // No JWT_SECRET_KEY
 	users := new(mockUserProvider)
-	middleware := NewAuthMiddleware(osw, users)
+	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
 
 	router := gin.New()
 	router.Use(middleware.Authenticate())
@@ -238,7 +238,7 @@ func TestAuthMiddleware_InvalidSigningMethod(t *testing.T) {
 	secret := "test-secret"
 	osw := newStubOsWrapper(secret)
 	users := new(mockUserProvider)
-	middleware := NewAuthMiddleware(osw, users)
+	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
 
 	router := gin.New()
 	router.Use(middleware.Authenticate())
@@ -270,7 +270,7 @@ func TestAuthMiddleware_ExpiredToken(t *testing.T) {
 	secret := "test-secret"
 	osw := newStubOsWrapper(secret)
 	users := new(mockUserProvider)
-	middleware := NewAuthMiddleware(osw, users)
+	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
 
 	router := gin.New()
 	router.Use(middleware.Authenticate())
@@ -294,7 +294,7 @@ func TestAuthMiddleware_InvalidToken(t *testing.T) {
 
 	osw := newStubOsWrapper("test-secret")
 	users := new(mockUserProvider)
-	middleware := NewAuthMiddleware(osw, users)
+	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
 
 	router := gin.New()
 	router.Use(middleware.Authenticate())
@@ -321,7 +321,7 @@ func TestAuthMiddleware_EmailVerificationRequired(t *testing.T) {
 		ID: 123, // Not verified
 	}, nil)
 
-	middleware := NewAuthMiddleware(osw, users)
+	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
 
 	router := gin.New()
 	router.Use(middleware.Authenticate())
@@ -348,7 +348,7 @@ func TestAuthMiddleware_SkipEmailVerificationForAuthPaths(t *testing.T) {
 	osw := newStubOsWrapper(secret)
 	users := new(mockUserProvider)
 
-	middleware := NewAuthMiddleware(osw, users)
+	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
 
 	testCases := []string{
 		"/auth/register",
@@ -388,7 +388,7 @@ func TestAuthMiddleware_UserNotFoundDuringEmailVerificationCheck(t *testing.T) {
 	users := new(mockUserProvider)
 	users.On("GetUserByID", mock.Anything, uint(123)).Return(domain.User{}, errors.New("user not found"))
 
-	middleware := NewAuthMiddleware(osw, users)
+	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
 
 	router := gin.New()
 	router.Use(middleware.Authenticate())
@@ -406,4 +406,29 @@ func TestAuthMiddleware_UserNotFoundDuringEmailVerificationCheck(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, resp.Code)
 	assert.JSONEq(t, `{"error":"user not found"}`, resp.Body.String())
 	users.AssertExpectations(t)
+}
+
+func TestAuthMiddleware_MissingTokenLogsPermissionDenied(t *testing.T) {
+
+	osw := newStubOsWrapper("test-secret")
+	users := new(mockUserProvider)
+	spy := &capturingLogger{}
+	middleware := NewAuthMiddleware(osw, users, spy)
+
+	router := gin.New()
+	router.Use(middleware.Authenticate())
+	router.GET("/protected", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{})
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	assert.Equal(t, http.StatusUnauthorized, resp.Code)
+	if assert.Len(t, spy.entries, 1) {
+		assert.Equal(t, "info", spy.entries[0].level)
+		assert.Equal(t, "permission_denied", spy.entries[0].message)
+	}
 }

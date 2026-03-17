@@ -14,6 +14,8 @@ import (
 	"business/internal/library/secret"
 	"context"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -27,7 +29,12 @@ func Run() {
 		panic("シークレットクライアント初期化に失敗しました: " + err.Error())
 	}
 	osw := oswrapper.New(secretClient)
-	baseLogger, err := logger.New("info")
+	environment := strings.TrimSpace(os.Getenv("APP"))
+	if environment == "" {
+		panic("初期化に失敗しました: os.GetenvでAPP項目を取得できませんでした。")
+	}
+
+	baseLogger, err := logger.New("info", "backend", environment)
 	if err != nil {
 		panic("ロガー初期化に失敗しました: " + err.Error())
 	}
@@ -37,7 +44,7 @@ func Run() {
 	routerLogger := baseLogger.With(logger.Component("router"))
 
 	// DBインスタンス生成
-	db, err := mysql.New(osw)
+	db, err := mysql.New(osw, baseLogger)
 	if err != nil {
 		serverLogger.Error("DB 初期化時にエラーが発生しました", logger.Err(err))
 		return
@@ -58,10 +65,9 @@ func Run() {
 		serverLogger.Error("環境変数 OPENAI_API_KEY の取得に失敗しました", logger.Err(err))
 		return
 	}
-	openaiLogger := baseLogger.With(logger.Component("openai_client"))
-	oa := openai.New(apiKey, openaiLimiter, openaiLogger)
+	oa := openai.New(apiKey, openaiLimiter, baseLogger)
 	gs := gmailService.New()
-	gc := gmail.New(gmailLimiter)
+	gc := gmail.New(gmailLimiter, baseLogger)
 
 	// DIを行う
 	container := di.BuildContainer(db, oa, gs, gc, osw, provider, baseLogger)

@@ -37,7 +37,7 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email domain.EmailAddre
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return domain.User{}, gorm.ErrRecordNotFound
 		}
-		reqLog.Error("failed to get user by email", logger.String("email", email.String()), logger.Err(err))
+		logDBQueryFailed(reqLog, "users", "get_user_by_email", err)
 		return domain.User{}, fmt.Errorf("failed to get user by email: %w", err)
 	}
 
@@ -90,7 +90,7 @@ func (r *Repository) CreateUser(ctx context.Context, user domain.User) (domain.U
 		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
 			return domain.User{}, gorm.ErrDuplicatedKey
 		}
-		reqLog.Error("failed to create user", logger.String("email", user.Email.String()), logger.Err(err))
+		logDBQueryFailed(reqLog, "users", "create_user", err)
 		return domain.User{}, fmt.Errorf("failed to create user: %w", err)
 	}
 
@@ -140,7 +140,7 @@ func (r *Repository) GetUserByID(ctx context.Context, id uint) (domain.User, err
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return domain.User{}, gorm.ErrRecordNotFound
 		}
-		reqLog.Error("failed to get user by id", logger.Uint("user_id", id), logger.Err(err))
+		logDBQueryFailed(reqLog, "users", "get_user_by_id", err, logger.Uint("user_id", id))
 		return domain.User{}, fmt.Errorf("failed to get user by id: %w", err)
 	}
 
@@ -182,7 +182,7 @@ func (r *Repository) DeleteUserByID(ctx context.Context, id uint) error {
 	result := r.db.WithContext(ctx).Delete(&userRecord{}, id)
 
 	if result.Error != nil {
-		reqLog.Error("failed to delete user", logger.Uint("user_id", id), logger.Err(result.Error))
+		logDBQueryFailed(reqLog, "users", "delete_user_by_id", result.Error, logger.Uint("user_id", id))
 		return fmt.Errorf("failed to delete user: %w", result.Error)
 	}
 

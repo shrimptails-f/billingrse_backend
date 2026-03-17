@@ -20,6 +20,7 @@ type contextKey string
 
 const (
 	requestIDContextKey contextKey = "request_id"
+	jobIDContextKey     contextKey = "job_id"
 	userIDContextKey    contextKey = "user_id"
 )
 
@@ -28,7 +29,7 @@ var ErrNilContext = errors.New("context is required")
 var _ Interface = (*Logger)(nil)
 
 // New creates a zap-backed logger that emits JSON logs to stdout.
-func New(level string) (*Logger, error) {
+func New(level string, service string, environment string) (*Logger, error) {
 	cfg := zap.NewProductionConfig()
 	cfg.Encoding = "json"
 	cfg.DisableStacktrace = true
@@ -51,6 +52,11 @@ func New(level string) (*Logger, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize zap logger: %w", err)
 	}
+
+	base = base.With(
+		Service(service),
+		Environment(environment),
+	)
 
 	return &Logger{base: base}, nil
 }
@@ -115,6 +121,10 @@ func withContextFields(base Interface, ctx context.Context) (Interface, error) {
 		log = log.With(RequestID(requestID))
 	}
 
+	if jobID, ok := JobIDFromContext(ctx); ok {
+		log = log.With(JobID(jobID))
+	}
+
 	if userID, ok := UserIDFromContext(ctx); ok {
 		log = log.With(UserID(userID))
 	}
@@ -147,6 +157,16 @@ func Any(key string, value interface{}) Field {
 // Component attaches a component name following the common log schema.
 func Component(value string) Field {
 	return String("component", value)
+}
+
+// Service attaches a service name following the common log schema.
+func Service(value string) Field {
+	return String("service", normalizeFixedFieldValue(value))
+}
+
+// Environment attaches an environment name following the common log schema.
+func Environment(value string) Field {
+	return String("environment", normalizeFixedFieldValue(value))
 }
 
 // RequestID attaches an HTTP request correlation ID.
@@ -213,6 +233,15 @@ func ContextWithRequestID(ctx context.Context, requestID string) (context.Contex
 	return context.WithValue(ctx, requestIDContextKey, requestID), nil
 }
 
+// ContextWithJobID stores job_id in context.Context.
+func ContextWithJobID(ctx context.Context, jobID string) (context.Context, error) {
+	if ctx == nil {
+		return nil, ErrNilContext
+	}
+
+	return context.WithValue(ctx, jobIDContextKey, jobID), nil
+}
+
 // ContextWithUserID stores user_id in context.Context.
 func ContextWithUserID(ctx context.Context, userID uint) (context.Context, error) {
 	if ctx == nil {
@@ -236,6 +265,20 @@ func RequestIDFromContext(ctx context.Context) (string, bool) {
 	return requestID, true
 }
 
+// JobIDFromContext retrieves job_id from context.Context.
+func JobIDFromContext(ctx context.Context) (string, bool) {
+	if ctx == nil {
+		return "", false
+	}
+
+	jobID, ok := ctx.Value(jobIDContextKey).(string)
+	if !ok || strings.TrimSpace(jobID) == "" {
+		return "", false
+	}
+
+	return jobID, true
+}
+
 // UserIDFromContext retrieves user_id from context.Context.
 func UserIDFromContext(ctx context.Context) (uint, bool) {
 	if ctx == nil {
@@ -248,6 +291,14 @@ func UserIDFromContext(ctx context.Context) (uint, bool) {
 	}
 
 	return userID, true
+}
+
+func normalizeFixedFieldValue(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "unknown"
+	}
+
+	return strings.TrimSpace(value)
 }
 
 func sanitizeStringValue(key string, value string) string {

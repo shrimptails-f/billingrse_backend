@@ -39,8 +39,8 @@ func ProvideAuthDependencies(container *dig.Container) {
 		return application.NewAuthUseCase(repo, osw, parseTokenTTL(osw), mailer, nil)
 	})
 
-	_ = container.Provide(func(osw *oswrapper.OsWrapper, repo *infrastructure.Repository) *middleware.AuthMiddleware {
-		return middleware.NewAuthMiddleware(osw, repo)
+	_ = container.Provide(func(osw *oswrapper.OsWrapper, repo *infrastructure.Repository, log logger.Interface) *middleware.AuthMiddleware {
+		return middleware.NewAuthMiddleware(osw, repo, log)
 	})
 }
 

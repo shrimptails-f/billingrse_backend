@@ -23,7 +23,7 @@ func New(apiKey string, limiter ratelimit.Limiter, log logger.Interface) *Client
 	if log == nil {
 		log = logger.NewNop()
 	}
-	log = log.With(logger.String("component", "openai_client"))
+	log = log.With(logger.Component("openai_client"))
 
 	client := openai.NewClient(
 		option.WithAPIKey(apiKey),
@@ -49,6 +49,21 @@ func New(apiKey string, limiter ratelimit.Limiter, log logger.Interface) *Client
 // }
 
 func (c *Client) Chat(ctx context.Context, prompt string) ([]cd.ParsedEmail, error) {
+	if ctx == nil {
+		return nil, logger.ErrNilContext
+	}
+
+	reqLog := c.log
+	if withContext, err := c.log.WithContext(ctx); err == nil {
+		reqLog = withContext
+	}
+
+	const (
+		provider  = "openai"
+		operation = "chat_completion"
+	)
+	model := string(openai.ChatModelGPT4_1Mini)
+
 	// schema := GenerateSchema[AnalysisResults]()
 
 	// schemaParam := openai.ResponseFormatJSONSchemaJSONSchemaParam{
@@ -86,17 +101,35 @@ func (c *Client) Chat(ctx context.Context, prompt string) ([]cd.ParsedEmail, err
 		return nil
 	})
 	if err != nil {
+		reqLog.Error("external_api_failed",
+			logger.String("provider", provider),
+			logger.String("operation", operation),
+			logger.String("model", model),
+			logger.Err(err),
+		)
 		return nil, err
 	}
 	raw := resp.Choices[0].Message.Content
 
 	var results []cd.ParsedEmail
 	if err := json.Unmarshal([]byte(raw), &results); err != nil {
-		c.log.Error("JSON→構造体変換失敗",
+		reqLog.Error("external_api_failed",
+			logger.String("provider", provider),
+			logger.String("operation", operation),
+			logger.String("model", model),
+			logger.String("reason", "response_parse_failed"),
+			logger.Int("response_bytes", len(raw)),
 			logger.Err(err),
-			logger.String("raw_content", raw))
+		)
 		return nil, err
 	}
+
+	reqLog.Info("external_api_succeeded",
+		logger.String("provider", provider),
+		logger.String("operation", operation),
+		logger.String("model", model),
+		logger.Int("result_count", len(results)),
+	)
 
 	return results, nil
 }

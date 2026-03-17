@@ -21,11 +21,12 @@ func TestLoginHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		usecase := new(mockAuthUseCase)
+		log := newCapturingTestLogger()
 		usecase.On("Login", mock.Anything, mock.MatchedBy(func(req domain.LoginRequest) bool {
 			return req.Email == "user@example.com" && req.Password == "password123"
 		})).Return("token", nil).Once()
 
-		controller := newTestAuthControllerWithVars(usecase, newTestLogger(), map[string]string{"APP": "local"})
+		controller := newTestAuthControllerWithVars(usecase, log, map[string]string{"APP": "local"})
 		router := gin.New()
 		router.POST("/auth/login", controller.Login)
 
@@ -51,6 +52,10 @@ func TestLoginHandler(t *testing.T) {
 		}
 
 		usecase.AssertExpectations(t)
+		if assert.Len(t, log.entries, 1) {
+			assert.Equal(t, "info", log.entries[0].level)
+			assert.Equal(t, "login_succeeded", log.entries[0].message)
+		}
 	})
 
 	t.Run("validation error", func(t *testing.T) {
@@ -75,12 +80,13 @@ func TestLoginHandler(t *testing.T) {
 	t.Run("invalid credentials", func(t *testing.T) {
 		t.Parallel()
 		usecase := new(mockAuthUseCase)
+		log := newCapturingTestLogger()
 		usecase.
 			On("Login", mock.Anything, mock.MatchedBy(func(req domain.LoginRequest) bool { return true })).
 			Return("", application.ErrInvalidCredentials).
 			Once()
 
-		controller := newTestAuthController(usecase, newTestLogger())
+		controller := newTestAuthController(usecase, log)
 		router := gin.New()
 		router.POST("/auth/login", controller.Login)
 
@@ -93,6 +99,10 @@ func TestLoginHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusUnauthorized, resp.Code)
 		usecase.AssertExpectations(t)
+		if assert.Len(t, log.entries, 1) {
+			assert.Equal(t, "info", log.entries[0].level)
+			assert.Equal(t, "login_failed", log.entries[0].message)
+		}
 	})
 
 	t.Run("internal error", func(t *testing.T) {
