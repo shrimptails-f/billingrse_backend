@@ -19,8 +19,17 @@ type loginRequest struct {
 // Login handles the POST /auth/login endpoint
 func (lc *AuthController) Login(c *gin.Context) {
 	var req loginRequest
+	reqLog, err := lc.logger.WithContext(c.Request.Context())
+	if err != nil {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
+		reqLog.Info("login_failed",
+			logger.String("reason", "invalid_request"),
+			logger.HTTPStatusCode(http.StatusBadRequest),
+		)
 		c.Status(http.StatusBadRequest)
 		return
 	}
@@ -31,10 +40,18 @@ func (lc *AuthController) Login(c *gin.Context) {
 	})
 	if err != nil {
 		if errors.Is(err, application.ErrInvalidCredentials) {
+			reqLog.Info("login_failed",
+				logger.String("reason", "invalid_credentials"),
+				logger.HTTPStatusCode(http.StatusUnauthorized),
+			)
 			c.Status(http.StatusUnauthorized)
 			return
 		}
-		lc.logger.Error("Login error", logger.Err(err))
+		reqLog.Error("login_failed",
+			logger.String("reason", "login_usecase_error"),
+			logger.HTTPStatusCode(http.StatusInternalServerError),
+			logger.Err(err),
+		)
 		c.Status(http.StatusInternalServerError)
 		return
 	}
@@ -42,14 +59,22 @@ func (lc *AuthController) Login(c *gin.Context) {
 	maxAge := 86400 // 1日の秒数
 	secure, err := lc.secureCookieEnabled()
 	if err != nil {
-		lc.logger.Error("failed to determine cookie security", logger.Err(err))
+		reqLog.Error("login_failed",
+			logger.String("reason", "cookie_security_resolution_failed"),
+			logger.HTTPStatusCode(http.StatusInternalServerError),
+			logger.Err(err),
+		)
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 
 	domain, err := lc.cookieDomain()
 	if err != nil {
-		lc.logger.Error("failed to determine cookie domain", logger.Err(err))
+		reqLog.Error("login_failed",
+			logger.String("reason", "cookie_domain_resolution_failed"),
+			logger.HTTPStatusCode(http.StatusInternalServerError),
+			logger.Err(err),
+		)
 		c.Status(http.StatusInternalServerError)
 		return
 	}
@@ -64,6 +89,7 @@ func (lc *AuthController) Login(c *gin.Context) {
 		secure, /*Secure*/
 		true,   /*HttpOnly*/
 	)
+	reqLog.Info("login_succeeded", logger.HTTPStatusCode(http.StatusNoContent))
 	c.Status(http.StatusNoContent)
 }
 

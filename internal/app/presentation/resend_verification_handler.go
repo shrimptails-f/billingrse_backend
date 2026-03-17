@@ -22,13 +22,18 @@ type resendVerificationResponse struct {
 // ResendVerificationEmail handles the POST /auth/email/resend endpoint
 func (lc *AuthController) ResendVerificationEmail(c *gin.Context) {
 	var req resendVerificationRequest
+	reqLog, err := lc.logger.WithContext(c.Request.Context())
+	if err != nil {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.Status(http.StatusBadRequest)
 		return
 	}
 
-	err := lc.usecase.ResendVerificationEmail(c.Request.Context(), domain.ResendVerificationRequest{
+	err = lc.usecase.ResendVerificationEmail(c.Request.Context(), domain.ResendVerificationRequest{
 		Email:    req.Email,
 		Password: req.Password,
 	})
@@ -69,7 +74,7 @@ func (lc *AuthController) ResendVerificationEmail(c *gin.Context) {
 			})
 			return
 		}
-		lc.logger.Error("ResendVerificationEmail error", logger.Err(err))
+		reqLog.Error("ResendVerificationEmail error", logger.Err(err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}

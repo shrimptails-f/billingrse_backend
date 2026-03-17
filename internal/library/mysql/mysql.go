@@ -2,7 +2,6 @@ package mysql
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -12,7 +11,6 @@ import (
 	"github.com/aidarkhanov/nanoid/v2"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 )
 
 type MySQL struct {
@@ -20,22 +18,15 @@ type MySQL struct {
 }
 
 // New はGORMを使用してMySQLデータベースに接続するための新しいMySQLインスタンスを生成します。
-func New(osw oswrapper.OsWapperInterface) (*MySQL, error) {
-	newLogger := gormlogger.New(
-		log.New(os.Stdout, "\r\n", log.LstdFlags),
-		gormlogger.Config{
-			SlowThreshold: time.Second,
-			LogLevel:      gormlogger.Info,
-			Colorful:      true,
-		},
-	)
+func New(osw oswrapper.OsWapperInterface, log logger.Interface) (*MySQL, error) {
+	newLogger := newGormLogger(log, time.Second)
 	// SQL非表示設定か確認する（オプション扱いのためエラーにはしない）
 	isHiddenSql, err := osw.GetEnv("IS_HIDDEN_SQL")
 	if err != nil {
 		return nil, err
 	}
 	if isHiddenSql == "true" {
-		newLogger = gormlogger.Default.LogMode(gormlogger.Silent)
+		newLogger = newErrorOnlyGormLogger(log, time.Second)
 	}
 
 	dbEnv, err := getdbEnv(osw, false)
@@ -57,22 +48,15 @@ func New(osw oswrapper.OsWapperInterface) (*MySQL, error) {
 }
 
 // NewTest はGORMを使用してMySQLデータベースに接続するための新しいMySQLインスタンスを生成します。
-func NewTest(osw oswrapper.OsWapperInterface) (*MySQL, error) {
-	newLogger := gormlogger.New(
-		log.New(os.Stdout, "\r\n", log.LstdFlags),
-		gormlogger.Config{
-			SlowThreshold: time.Second,
-			LogLevel:      gormlogger.Info,
-			Colorful:      true,
-		},
-	)
+func NewTest(osw oswrapper.OsWapperInterface, log logger.Interface) (*MySQL, error) {
+	newLogger := newGormLogger(log, time.Second)
 	// SQL非表示設定か確認する（オプション扱いのためエラーにはしない）
 	isHiddenSql, err := osw.GetEnv("IS_HIDDEN_SQL")
 	if err != nil {
 		return nil, err
 	}
 	if isHiddenSql == "true" {
-		newLogger = gormlogger.Default.LogMode(gormlogger.Silent)
+		newLogger = newErrorOnlyGormLogger(log, time.Second)
 	}
 
 	dbEnv, err := getdbEnv(osw, true)
@@ -98,16 +82,9 @@ func NewTest(osw oswrapper.OsWapperInterface) (*MySQL, error) {
 func CreateNewTestDB() (*MySQL, func() error, error) {
 	osw := oswrapper.New(nil)
 
-	newLogger := gormlogger.New(
-		log.New(os.Stdout, "\r\n", log.LstdFlags),
-		gormlogger.Config{
-			SlowThreshold: time.Second,
-			LogLevel:      gormlogger.Info,
-			Colorful:      true,
-		},
-	)
+	newLogger := newSilentGormLogger()
 	if os.Getenv("IS_HIDDEN_TEST_SQL") == "true" {
-		newLogger = gormlogger.Default.LogMode(gormlogger.Silent)
+		newLogger = newSilentGormLogger()
 	}
 	randomDbName, err := generateUniqueID()
 	if err != nil {
@@ -200,16 +177,9 @@ func createMySQLDatabase(dbName string, osw oswrapper.OsWapperInterface) (err er
 }
 
 func deleteMySQLDatabase(dbName string, osw oswrapper.OsWapperInterface) error {
-	newLogger := gormlogger.New(
-		log.New(os.Stdout, "\r\n", log.LstdFlags),
-		gormlogger.Config{
-			SlowThreshold: time.Second,
-			LogLevel:      gormlogger.Info,
-			Colorful:      true,
-		},
-	)
+	newLogger := newSilentGormLogger()
 	if os.Getenv("IS_HIDDEN_TEST_SQL") == "true" {
-		newLogger = gormlogger.Default.LogMode(gormlogger.Silent)
+		newLogger = newSilentGormLogger()
 	}
 
 	rootPassword, err := osw.GetEnv("MYSQL_PASSWORD")

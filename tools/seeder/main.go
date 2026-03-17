@@ -31,9 +31,9 @@ func main() {
 
 	var conn *mysql.MySQL
 	if os.Args[1] == "dev" {
-		conn, err = mysql.New(osw)
+		conn, err = mysql.New(osw, logger.NewNop())
 	} else if os.Args[1] == "test" {
-		conn, err = mysql.NewTest(osw)
+		conn, err = mysql.NewTest(osw, logger.NewNop())
 	}
 	if err != nil {
 		panic(err)

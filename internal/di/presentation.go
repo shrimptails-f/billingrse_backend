@@ -18,7 +18,7 @@ func ProvidePresentationDependencies(container *dig.Container) {
 		log logger.Interface,
 		osw oswrapper.OsWapperInterface,
 	) *presentation.AuthController {
-		return presentation.NewAuthController(usecase, log.With(logger.String("component", "auth_controller")), osw)
+		return presentation.NewAuthController(usecase, log, osw)
 	})
 
 }

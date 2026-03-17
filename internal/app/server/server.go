@@ -1,6 +1,7 @@
 package server
 
 import (
+	"business/internal/app/middleware"
 	v1 "business/internal/app/router"
 	"business/internal/di"
 	"business/internal/library/gmail"
@@ -11,14 +12,18 @@ import (
 	"business/internal/library/oswrapper"
 	"business/internal/library/ratelimit"
 	"business/internal/library/secret"
+	"business/internal/library/timewrapper"
 	"context"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
 func Run() {
-	g := gin.Default()
+	g := gin.New()
+	clock := timewrapper.NewClock()
 
 	ctx := context.Background()
 	secretClient, err := secret.New(ctx)
@@ -26,25 +31,31 @@ func Run() {
 		panic("シークレットクライアント初期化に失敗しました: " + err.Error())
 	}
 	osw := oswrapper.New(secretClient)
-	baseLogger, err := logger.New("info")
+	environment := strings.TrimSpace(os.Getenv("APP"))
+	if environment == "" {
+		panic("初期化に失敗しました: os.GetenvでAPP項目を取得できませんでした。")
+	}
+
+	baseLogger, err := logger.New("info", "backend", environment)
 	if err != nil {
 		panic("ロガー初期化に失敗しました: " + err.Error())
 	}
-	appLogger := baseLogger.With(logger.String("component", "server"))
-	defer appLogger.Sync()
-	routerLogger := appLogger.With(logger.String("component", "router"))
+	defer baseLogger.Sync()
+
+	serverLogger := baseLogger.With(logger.Component("server"))
+	routerLogger := baseLogger.With(logger.Component("router"))
 
 	// DBインスタンス生成
-	db, err := mysql.New(osw)
+	db, err := mysql.New(osw, baseLogger)
 	if err != nil {
-		appLogger.Error("DB 初期化時にエラーが発生しました", logger.Err(err))
+		serverLogger.Error("DB 初期化時にエラーが発生しました", logger.Err(err))
 		return
 	}
 
-	providerLogger := appLogger.With(logger.String("component", "ratelimit_provider"))
+	providerLogger := baseLogger.With(logger.Component("ratelimit_provider"))
 	provider, err := ratelimit.NewProviderFromEnv(osw, providerLogger)
 	if err != nil {
-		appLogger.Error("レートリミット初期化時にエラーが発生しました", logger.Err(err))
+		serverLogger.Error("レートリミット初期化時にエラーが発生しました", logger.Err(err))
 		return
 	}
 	gmailLimiter := provider.GetGmailLimiter()
@@ -53,20 +64,19 @@ func Run() {
 	// OpenAiクライアント作成
 	apiKey, err := osw.GetEnv("OPENAI_API_KEY")
 	if err != nil {
-		appLogger.Error("環境変数 OPENAI_API_KEY の取得に失敗しました", logger.Err(err))
+		serverLogger.Error("環境変数 OPENAI_API_KEY の取得に失敗しました", logger.Err(err))
 		return
 	}
-	openaiLogger := appLogger.With(logger.String("component", "openai_client"))
-	oa := openai.New(apiKey, openaiLimiter, openaiLogger)
+	oa := openai.New(apiKey, openaiLimiter, baseLogger)
 	gs := gmailService.New()
-	gc := gmail.New(gmailLimiter)
+	gc := gmail.New(gmailLimiter, baseLogger)
 
 	// DIを行う
-	container := di.BuildContainer(db, oa, gs, gc, osw, provider, appLogger)
+	container := di.BuildContainer(db, oa, gs, gc, osw, provider, baseLogger)
 	var isUseSSL string
 	isUseSSL, err = osw.GetEnv("USE_SSL")
 	if err != nil {
-		appLogger.Error("環境変数 USE_SSL の取得に失敗しました", logger.Err(err))
+		serverLogger.Error("環境変数 USE_SSL の取得に失敗しました", logger.Err(err))
 		return
 	}
 
@@ -74,18 +84,21 @@ func Run() {
 	if isUseSSL == "TRUE" || isUseSSL == "true" {
 		frontDmain, err = osw.GetEnv("FRONT_SSL_DOMAIN")
 		if err != nil {
-			appLogger.Error("環境変数 FRONT_SSL_DOMAIN の取得に失敗しました", logger.Err(err))
+			serverLogger.Error("環境変数 FRONT_SSL_DOMAIN の取得に失敗しました", logger.Err(err))
 			return
 		}
 	} else {
 		frontDmain, err = osw.GetEnv("FRONT_DOMAIN")
 		if err != nil {
-			appLogger.Error("環境変数 FRONT_DOMAIN の取得に失敗しました", logger.Err(err))
+			serverLogger.Error("環境変数 FRONT_DOMAIN の取得に失敗しました", logger.Err(err))
 			return
 		}
 
 	}
 
+	g.Use(middleware.RequestID())
+	g.Use(middleware.RequestSummary(baseLogger, clock))
+	g.Use(middleware.Recovery(baseLogger))
 	g.Use(func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", frontDmain)
 		c.Header("Access-Control-Allow-Credentials", "true")
@@ -101,6 +114,6 @@ func Run() {
 	})
 	router := v1.NewRouter(g, container, routerLogger)
 	addr := ":8080"
-	appLogger.Info("HTTP サーバーを起動します", logger.String("addr", addr))
+	serverLogger.Info("HTTP サーバーを起動します", logger.String("addr", addr))
 	router.Run(addr)
 }

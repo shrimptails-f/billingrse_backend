@@ -2,6 +2,7 @@ package gmail
 
 import (
 	cd "business/internal/common/domain"
+	"business/internal/library/logger"
 	"business/internal/library/ratelimit"
 	"business/internal/library/retry"
 	"context"
@@ -19,11 +20,17 @@ import (
 type Client struct {
 	svc     *gmail.Service
 	limiter ratelimit.Limiter
+	log     logger.Interface
 }
 
-func New(limiter ratelimit.Limiter) *Client {
+func New(limiter ratelimit.Limiter, log logger.Interface) *Client {
+	if log == nil {
+		log = logger.NewNop()
+	}
+
 	return &Client{
 		limiter: limiter,
+		log:     log.With(logger.Component("gmail_client")),
 	}
 }
 
@@ -31,10 +38,20 @@ func (c *Client) SetClient(svc *gmail.Service) *Client {
 	return &Client{
 		svc:     svc,
 		limiter: c.limiter,
+		log:     c.log,
 	}
 }
 
 func (c *Client) GetMessagesByLabelName(ctx context.Context, labelName string, startDate time.Time) ([]string, error) {
+	if ctx == nil {
+		return nil, logger.ErrNilContext
+	}
+
+	reqLog := c.log
+	if withContext, err := c.log.WithContext(ctx); err == nil {
+		reqLog = withContext
+	}
+
 	user := "me"
 
 	// ラベルID取得
@@ -48,6 +65,11 @@ func (c *Client) GetMessagesByLabelName(ctx context.Context, labelName string, s
 		return nil
 	})
 	if err != nil {
+		reqLog.Error("external_api_failed",
+			logger.String("provider", "gmail"),
+			logger.String("operation", "list_labels"),
+			logger.Err(err),
+		)
 		return nil, fmt.Errorf("ラベル取得に失敗しました。: %v", err)
 	}
 	var labelID string
@@ -88,6 +110,11 @@ func (c *Client) GetMessagesByLabelName(ctx context.Context, labelName string, s
 			return nil
 		})
 		if err != nil {
+			reqLog.Error("external_api_failed",
+				logger.String("provider", "gmail"),
+				logger.String("operation", "list_messages_by_label"),
+				logger.Err(err),
+			)
 			return nil, err
 		}
 
@@ -101,10 +128,25 @@ func (c *Client) GetMessagesByLabelName(ctx context.Context, labelName string, s
 
 	}
 
+	reqLog.Info("external_api_succeeded",
+		logger.String("provider", "gmail"),
+		logger.String("operation", "list_messages_by_label"),
+		logger.Int("message_count", len(messageIds)),
+	)
+
 	return messageIds, nil
 }
 
 func (c *Client) GetGmailDetail(ctx context.Context, id string) (cd.FetchedEmailDTO, error) {
+	if ctx == nil {
+		return cd.FetchedEmailDTO{}, logger.ErrNilContext
+	}
+
+	reqLog := c.log
+	if withContext, err := c.log.WithContext(ctx); err == nil {
+		reqLog = withContext
+	}
+
 	user := "me"
 
 	var full *gmail.Message
@@ -117,6 +159,12 @@ func (c *Client) GetGmailDetail(ctx context.Context, id string) (cd.FetchedEmail
 		return nil
 	})
 	if err != nil {
+		reqLog.Error("external_api_failed",
+			logger.String("provider", "gmail"),
+			logger.String("operation", "get_message"),
+			logger.String("gmail_message_id", id),
+			logger.Err(err),
+		)
 		return cd.FetchedEmailDTO{}, fmt.Errorf("gメール取得処理でエラーが発生しました。 %v", err)
 	}
 
@@ -128,6 +176,13 @@ func (c *Client) GetGmailDetail(ctx context.Context, id string) (cd.FetchedEmail
 		Date:    parseDate(getHeader(full.Payload.Headers, "Date")),
 		Body:    stripHTMLTags(extractBody(full.Payload)), // HTMLタグを削除する。
 	}
+
+	reqLog.Info("external_api_succeeded",
+		logger.String("provider", "gmail"),
+		logger.String("operation", "get_message"),
+		logger.String("gmail_message_id", id),
+	)
+
 	return msg, nil
 }
 
@@ -175,6 +230,12 @@ func extractBody(payload *gmail.MessagePart) string {
 }
 
 func (c *Client) execute(ctx context.Context, fn func(context.Context) error) error {
+	if ctx == nil {
+		return logger.ErrNilContext
+	}
+	if c.svc == nil {
+		return fmt.Errorf("gmail service is not configured")
+	}
 	if c.limiter == nil {
 		return fmt.Errorf("gmail rate limiter is not configured")
 	}

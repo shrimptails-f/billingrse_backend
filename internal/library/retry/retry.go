@@ -2,6 +2,7 @@ package retry
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -12,6 +13,7 @@ var (
 		3 * time.Second,
 		5 * time.Second,
 	}
+	errNilContext = errors.New("context is required")
 )
 
 // ShouldRetryFunc is a function type that determines whether an error should be retried.
@@ -32,7 +34,7 @@ func Do(ctx context.Context, backoff []time.Duration, operation func(context.Con
 // If shouldRetry returns false for an error, the retry loop stops immediately.
 func DoWithCondition(ctx context.Context, backoff []time.Duration, shouldRetry ShouldRetryFunc, operation func(context.Context) error) error {
 	if ctx == nil {
-		ctx = context.Background()
+		return errNilContext
 	}
 
 	// If backoff is nil or empty, attempt exactly once (no retries)

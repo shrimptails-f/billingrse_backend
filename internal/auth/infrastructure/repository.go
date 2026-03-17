@@ -21,8 +21,22 @@ func NewRepository(db *gorm.DB, log logger.Interface) *Repository {
 	}
 	return &Repository{
 		db:     db,
-		logger: log.With(logger.String("component", "auth_repository")),
+		logger: log.With(logger.Component("auth_repository")),
 	}
+}
+
+func logDBQueryFailed(log logger.Interface, table string, operation string, err error, fields ...logger.Field) {
+	if log == nil {
+		log = logger.NewNop()
+	}
+
+	baseFields := []logger.Field{
+		logger.String("table", table),
+		logger.String("operation", operation),
+		logger.Err(err),
+	}
+
+	log.Error("db_query_failed", append(baseFields, fields...)...)
 }
 
 // userRecord represents the database record structure for users table

@@ -25,12 +25,21 @@ func NewSMTPVerificationEmailSender(client sendMailerClient.Client, log logger.I
 	}
 	return &SMTPVerificationEmailSender{
 		client: client,
-		logger: log.With(logger.String("component", "auth_mailer")),
+		logger: log.With(logger.Component("auth_mailer")),
 	}
 }
 
 // SendVerificationEmail sends a verification email to the user
 func (s *SMTPVerificationEmailSender) SendVerificationEmail(ctx context.Context, user domain.User, verifyURL string) error {
+	if ctx == nil {
+		return logger.ErrNilContext
+	}
+
+	reqLog := s.logger
+	if withContext, err := s.logger.WithContext(ctx); err == nil {
+		reqLog = withContext
+	}
+
 	subject := "【重要】メールアドレスの確認をお願いします"
 	body := fmt.Sprintf(`%s 様
 
@@ -52,13 +61,20 @@ func (s *SMTPVerificationEmailSender) SendVerificationEmail(ctx context.Context,
 		Subject: subject,
 		Body:    body,
 	}); err != nil {
-		s.logger.Error("failed to send verification email",
-			logger.String("email", user.Email.String()),
+		reqLog.Error("external_api_failed",
+			logger.String("provider", "smtp"),
+			logger.String("operation", "send_verification_email"),
 			logger.Uint("user_id", user.ID),
 			logger.Err(err),
 		)
 		return fmt.Errorf("failed to send email: %w", err)
 	}
+
+	reqLog.Info("external_api_succeeded",
+		logger.String("provider", "smtp"),
+		logger.String("operation", "send_verification_email"),
+		logger.Uint("user_id", user.ID),
+	)
 
 	return nil
 }
