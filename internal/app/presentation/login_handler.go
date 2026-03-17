@@ -19,6 +19,11 @@ type loginRequest struct {
 // Login handles the POST /auth/login endpoint
 func (lc *AuthController) Login(c *gin.Context) {
 	var req loginRequest
+	reqLog, err := lc.logger.WithContext(c.Request.Context())
+	if err != nil {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.Status(http.StatusBadRequest)
@@ -34,7 +39,7 @@ func (lc *AuthController) Login(c *gin.Context) {
 			c.Status(http.StatusUnauthorized)
 			return
 		}
-		lc.logger.WithContext(c.Request.Context()).Error("Login error", logger.Err(err))
+		reqLog.Error("Login error", logger.Err(err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}
@@ -42,14 +47,14 @@ func (lc *AuthController) Login(c *gin.Context) {
 	maxAge := 86400 // 1日の秒数
 	secure, err := lc.secureCookieEnabled()
 	if err != nil {
-		lc.logger.WithContext(c.Request.Context()).Error("failed to determine cookie security", logger.Err(err))
+		reqLog.Error("failed to determine cookie security", logger.Err(err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 
 	domain, err := lc.cookieDomain()
 	if err != nil {
-		lc.logger.WithContext(c.Request.Context()).Error("failed to determine cookie domain", logger.Err(err))
+		reqLog.Error("failed to determine cookie domain", logger.Err(err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}

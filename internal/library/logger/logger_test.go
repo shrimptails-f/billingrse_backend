@@ -31,7 +31,6 @@ func TestParseLevel(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tt.want, parseLevel(tt.input))
@@ -45,7 +44,7 @@ func TestRequestIDFromContext(t *testing.T) {
 	t.Run("round trip", func(t *testing.T) {
 		t.Parallel()
 
-		ctx := ContextWithRequestID(context.Background(), "req-123")
+		ctx := mustContextWithRequestID(t, context.Background(), "req-123")
 
 		got, ok := RequestIDFromContext(ctx)
 
@@ -103,6 +102,15 @@ func TestRequestIDFromContext(t *testing.T) {
 		assert.False(t, ok)
 		assert.Equal(t, "", got)
 	})
+
+	t.Run("context with request id rejects nil context", func(t *testing.T) {
+		t.Parallel()
+
+		ctx, err := ContextWithRequestID(nil, "req-123")
+
+		require.ErrorIs(t, err, ErrNilContext)
+		assert.Nil(t, ctx)
+	})
 }
 
 func TestUserIDFromContext(t *testing.T) {
@@ -111,7 +119,7 @@ func TestUserIDFromContext(t *testing.T) {
 	t.Run("round trip", func(t *testing.T) {
 		t.Parallel()
 
-		ctx := ContextWithUserID(context.Background(), 42)
+		ctx := mustContextWithUserID(t, context.Background(), 42)
 
 		got, ok := UserIDFromContext(ctx)
 
@@ -147,16 +155,28 @@ func TestUserIDFromContext(t *testing.T) {
 		assert.False(t, ok)
 		assert.EqualValues(t, 0, got)
 	})
+
+	t.Run("context with user id rejects nil context", func(t *testing.T) {
+		t.Parallel()
+
+		ctx, err := ContextWithUserID(nil, 42)
+
+		require.ErrorIs(t, err, ErrNilContext)
+		assert.Nil(t, ctx)
+	})
 }
 
 func TestWithContextAddsRequestScopedFields(t *testing.T) {
 	t.Parallel()
 
 	base, logs := newObservedLogger(zapcore.DebugLevel)
-	ctx := ContextWithRequestID(context.Background(), "req-123")
-	ctx = ContextWithUserID(ctx, 42)
+	ctx := mustContextWithRequestID(t, context.Background(), "req-123")
+	ctx = mustContextWithUserID(t, ctx, 42)
 
-	base.WithContext(ctx).Info("hello")
+	reqLog, err := base.WithContext(ctx)
+	require.NoError(t, err)
+
+	reqLog.Info("hello")
 
 	entry := singleEntry(t, logs)
 	fields := entry.ContextMap()
@@ -171,9 +191,12 @@ func TestWithContextIgnoresBlankRequestID(t *testing.T) {
 
 	base, logs := newObservedLogger(zapcore.DebugLevel)
 	ctx := context.WithValue(context.Background(), requestIDContextKey, "   ")
-	ctx = ContextWithUserID(ctx, 7)
+	ctx = mustContextWithUserID(t, ctx, 7)
 
-	base.WithContext(ctx).Info("hello")
+	reqLog, err := base.WithContext(ctx)
+	require.NoError(t, err)
+
+	reqLog.Info("hello")
 
 	entry := singleEntry(t, logs)
 	fields := entry.ContextMap()
@@ -183,13 +206,14 @@ func TestWithContextIgnoresBlankRequestID(t *testing.T) {
 	assert.EqualValues(t, 7, fields["user_id"])
 }
 
-func TestWithContextWithNilContextReturnsBaseLogger(t *testing.T) {
+func TestWithContextReturnsBaseLoggerWhenContextHasNoFields(t *testing.T) {
 	t.Parallel()
 
 	base, logs := newObservedLogger(zapcore.DebugLevel)
 
-	got := base.WithContext(nil)
+	got, err := base.WithContext(context.TODO())
 
+	require.NoError(t, err)
 	assert.Same(t, base, got)
 
 	got.Info("hello")
@@ -199,14 +223,26 @@ func TestWithContextWithNilContextReturnsBaseLogger(t *testing.T) {
 	assert.Empty(t, entry.ContextMap())
 }
 
+func TestWithContextReturnsErrorForNilContext(t *testing.T) {
+	t.Parallel()
+
+	base, _ := newObservedLogger(zapcore.DebugLevel)
+
+	log, err := base.WithContext(nil)
+
+	require.ErrorIs(t, err, ErrNilContext)
+	assert.Nil(t, log)
+}
+
 func TestWithContextWithNilBaseDoesNotPanic(t *testing.T) {
 	t.Parallel()
 
-	ctx := ContextWithRequestID(context.Background(), "req-123")
+	ctx := mustContextWithRequestID(t, context.Background(), "req-123")
 
-	log := withContextFields(nil, ctx)
+	log, err := withContextFields(nil, ctx)
 
 	require.NotNil(t, log)
+	require.NoError(t, err)
 	assert.NotPanics(t, func() {
 		log.Info("hello")
 		_ = log.Sync()
@@ -233,7 +269,6 @@ func TestStringRedactsSensitiveKeys(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -344,9 +379,12 @@ func TestWithAndWithContextComposeFields(t *testing.T) {
 	t.Parallel()
 
 	base, logs := newObservedLogger(zapcore.DebugLevel)
-	ctx := ContextWithRequestID(context.Background(), "req-123")
+	ctx := mustContextWithRequestID(t, context.Background(), "req-123")
 
-	base.With(Component("auth_controller")).WithContext(ctx).Info("hello")
+	child, err := base.With(Component("auth_controller")).WithContext(ctx)
+	require.NoError(t, err)
+
+	child.Info("hello")
 
 	entry := singleEntry(t, logs)
 	fields := entry.ContextMap()
@@ -359,8 +397,8 @@ func TestNewNopMethodsDoNotPanic(t *testing.T) {
 	t.Parallel()
 
 	log := NewNop()
-	ctx := ContextWithRequestID(context.Background(), "req-123")
-	ctx = ContextWithUserID(ctx, 42)
+	ctx := mustContextWithRequestID(t, context.Background(), "req-123")
+	ctx = mustContextWithUserID(t, ctx, 42)
 
 	assert.NotPanics(t, func() {
 		log.Debug("debug")
@@ -368,7 +406,8 @@ func TestNewNopMethodsDoNotPanic(t *testing.T) {
 		log.Warn("warn")
 		log.Error("error", Err(errors.New("boom")))
 
-		child := log.With(Component("test_component")).WithContext(ctx)
+		child, err := log.With(Component("test_component")).WithContext(ctx)
+		require.NoError(t, err)
 		child.Info("child")
 		_ = child.Sync()
 	})
@@ -387,7 +426,6 @@ func TestNewCreatesUsableLogger(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -396,9 +434,10 @@ func TestNewCreatesUsableLogger(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, log)
 
-			ctx := ContextWithRequestID(context.Background(), "req-123")
-			child := log.With(Component("test_component")).WithContext(ctx)
+			ctx := mustContextWithRequestID(t, context.Background(), "req-123")
+			child, err := log.With(Component("test_component")).WithContext(ctx)
 
+			require.NoError(t, err)
 			require.NotNil(t, child)
 
 			_ = child.Sync()
@@ -428,4 +467,22 @@ func fieldToMap(t *testing.T, field Field) map[string]interface{} {
 	field.AddTo(encoder)
 
 	return encoder.Fields
+}
+
+func mustContextWithRequestID(t *testing.T, ctx context.Context, requestID string) context.Context {
+	t.Helper()
+
+	next, err := ContextWithRequestID(ctx, requestID)
+	require.NoError(t, err)
+
+	return next
+}
+
+func mustContextWithUserID(t *testing.T, ctx context.Context, userID uint) context.Context {
+	t.Helper()
+
+	next, err := ContextWithUserID(ctx, userID)
+	require.NoError(t, err)
+
+	return next
 }

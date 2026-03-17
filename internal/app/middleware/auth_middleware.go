@@ -71,7 +71,14 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 		}
 
 		c.Set("userID", claims.UserID)
-		c.Request = c.Request.WithContext(logger.ContextWithUserID(c.Request.Context(), claims.UserID))
+		requestCtx, err := logger.ContextWithUserID(c.Request.Context(), claims.UserID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			c.Abort()
+			return
+		}
+
+		c.Request = c.Request.WithContext(requestCtx)
 
 		// Check if email verification is required for this path
 		if m.requiresEmailVerification(c.Request.URL.Path) {

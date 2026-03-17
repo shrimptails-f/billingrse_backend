@@ -17,6 +17,6 @@ type Interface interface {
 	Error(message string, fields ...Field)
 	Fatal(message string, fields ...Field)
 	With(fields ...Field) Interface
-	WithContext(ctx context.Context) Interface
+	WithContext(ctx context.Context) (Interface, error)
 	Sync() error
 }

@@ -10,16 +10,22 @@ import (
 
 // Logout handles the POST /auth/logout endpoint
 func (lc *AuthController) Logout(c *gin.Context) {
+	reqLog, err := lc.logger.WithContext(c.Request.Context())
+	if err != nil {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+
 	secure, err := lc.secureCookieEnabled()
 	if err != nil {
-		lc.logger.WithContext(c.Request.Context()).Error("failed to determine cookie security", logger.Err(err))
+		reqLog.Error("failed to determine cookie security", logger.Err(err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 
 	domain, err := lc.cookieDomain()
 	if err != nil {
-		lc.logger.WithContext(c.Request.Context()).Error("failed to determine cookie domain", logger.Err(err))
+		reqLog.Error("failed to determine cookie domain", logger.Err(err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}

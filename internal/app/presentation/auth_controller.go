@@ -50,16 +50,22 @@ type errorDetail struct {
 
 // Check handles the GET /auth/check endpoint.
 func (lc *AuthController) Check(c *gin.Context) {
+	reqLog, err := lc.logger.WithContext(c.Request.Context())
+	if err != nil {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+
 	userID, exists := c.Get("userID")
 	if !exists {
-		lc.logger.WithContext(c.Request.Context()).Error("Check error: userID not found in context")
+		reqLog.Error("Check error: userID not found in context")
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 
 	uid, ok := userID.(uint)
 	if !ok {
-		lc.logger.WithContext(c.Request.Context()).Error("Check error: userID type assertion failed")
+		reqLog.Error("Check error: userID type assertion failed")
 		c.Status(http.StatusInternalServerError)
 		return
 	}

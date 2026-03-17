@@ -72,7 +72,13 @@ func TestRequestSummary_UsesContextFields(t *testing.T) {
 	router.Use(RequestSummary(logger.NewNop()))
 	router.GET("/ping", func(c *gin.Context) {
 		c.Set("userID", uint(42))
-		c.Request = c.Request.WithContext(logger.ContextWithUserID(c.Request.Context(), 42))
+		requestCtx, err := logger.ContextWithUserID(c.Request.Context(), 42)
+		if err != nil {
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+
+		c.Request = c.Request.WithContext(requestCtx)
 		c.Status(http.StatusNoContent)
 	})
 

@@ -29,7 +29,13 @@ func RequestID() gin.HandlerFunc {
 
 		c.Set(ginContextRequestID, requestID)
 		c.Header(requestIDHeader, requestID)
-		c.Request = c.Request.WithContext(logger.ContextWithRequestID(c.Request.Context(), requestID))
+		requestCtx, err := logger.ContextWithRequestID(c.Request.Context(), requestID)
+		if err != nil {
+			c.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
+
+		c.Request = c.Request.WithContext(requestCtx)
 		c.Next()
 	}
 }
@@ -46,7 +52,11 @@ func RequestSummary(log logger.Interface) gin.HandlerFunc {
 		start := time.Now()
 		c.Next()
 
-		reqLog := summaryLogger.WithContext(c.Request.Context())
+		reqLog, err := summaryLogger.WithContext(c.Request.Context())
+		if err != nil {
+			reqLog = summaryLogger
+		}
+
 		fields := []logger.Field{
 			logger.String("method", c.Request.Method),
 			logger.String("path", resolvedPath(c)),
@@ -74,7 +84,11 @@ func Recovery(log logger.Interface) gin.HandlerFunc {
 	recoveryLogger := log.With(logger.Component(recoveryLogComponent))
 
 	return gin.CustomRecoveryWithWriter(io.Discard, func(c *gin.Context, recovered interface{}) {
-		reqLog := recoveryLogger.WithContext(c.Request.Context())
+		reqLog, err := recoveryLogger.WithContext(c.Request.Context())
+		if err != nil {
+			reqLog = recoveryLogger
+		}
+
 		reqLog.Error(
 			"panic recovered",
 			logger.Recovered(recovered),

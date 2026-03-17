@@ -50,7 +50,7 @@ func NewLimiter(
 // Wait blocks until the limiter allows the next request or the context is canceled.
 func (r *Limiter) Wait(ctx context.Context) error {
 	if ctx == nil {
-		ctx = context.Background()
+		return logger.ErrNilContext
 	}
 
 	// Guard against nil client

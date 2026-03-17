@@ -17,6 +17,12 @@ type verifyEmailResponse struct {
 
 // VerifyEmail handles the GET /auth/email/verify endpoint
 func (lc *AuthController) VerifyEmail(c *gin.Context) {
+	reqLog, err := lc.logger.WithContext(c.Request.Context())
+	if err != nil {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+
 	token := c.Query("token")
 
 	if token == "" {
@@ -60,7 +66,7 @@ func (lc *AuthController) VerifyEmail(c *gin.Context) {
 			})
 			return
 		}
-		lc.logger.WithContext(c.Request.Context()).Error("VerifyEmail error", logger.Err(err))
+		reqLog.Error("VerifyEmail error", logger.Err(err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}

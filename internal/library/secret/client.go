@@ -30,6 +30,10 @@ func New(ctx context.Context) (Client, error) {
 }
 
 func getSecrets(ctx context.Context) (map[string]string, error) {
+	if ctx == nil {
+		return nil, errors.New("context is required")
+	}
+
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(defaultRegion))
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
@@ -66,6 +70,10 @@ func getSecrets(ctx context.Context) (map[string]string, error) {
 // GetValue は指定されたキーの値を返します。
 // このクライアントは 1 つのシークレット（初期化時に指定）だけを扱います。
 func (c *secretClient) GetValue(ctx context.Context, key string) (string, error) {
+	if ctx == nil {
+		return "", errors.New("context is required")
+	}
+
 	if key == "" {
 		return "", errors.New("key is required")
 	}

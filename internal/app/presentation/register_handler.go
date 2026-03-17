@@ -24,6 +24,11 @@ type registerResponse struct {
 // Register handles the POST /auth/register endpoint
 func (lc *AuthController) Register(c *gin.Context) {
 	var req registerRequest
+	reqLog, err := lc.logger.WithContext(c.Request.Context())
+	if err != nil {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.Status(http.StatusBadRequest)
@@ -63,7 +68,7 @@ func (lc *AuthController) Register(c *gin.Context) {
 			})
 			return
 		}
-		lc.logger.WithContext(c.Request.Context()).Error("Register error", logger.Err(err))
+		reqLog.Error("Register error", logger.Err(err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}

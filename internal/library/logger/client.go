@@ -2,6 +2,7 @@ package logger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime/debug"
 	"strings"
@@ -21,6 +22,8 @@ const (
 	requestIDContextKey contextKey = "request_id"
 	userIDContextKey    contextKey = "user_id"
 )
+
+var ErrNilContext = errors.New("context is required")
 
 var _ Interface = (*Logger)(nil)
 
@@ -58,7 +61,7 @@ func NewNop() Interface {
 }
 
 // WithContext enriches a logger with common request-scoped fields from context.Context.
-func (l *Logger) WithContext(ctx context.Context) Interface {
+func (l *Logger) WithContext(ctx context.Context) (Interface, error) {
 	return withContextFields(l, ctx)
 }
 
@@ -97,13 +100,13 @@ func (l *Logger) Sync() error {
 	return l.base.Sync()
 }
 
-func withContextFields(base Interface, ctx context.Context) Interface {
+func withContextFields(base Interface, ctx context.Context) (Interface, error) {
 	if base == nil {
 		base = NewNop()
 	}
 
 	if ctx == nil {
-		return base
+		return nil, ErrNilContext
 	}
 
 	log := base
@@ -116,7 +119,7 @@ func withContextFields(base Interface, ctx context.Context) Interface {
 		log = log.With(UserID(userID))
 	}
 
-	return log
+	return log, nil
 }
 
 func parseLevel(level string) zapcore.Level {
@@ -202,13 +205,21 @@ func StackTrace() Field {
 }
 
 // ContextWithRequestID stores request_id in context.Context.
-func ContextWithRequestID(ctx context.Context, requestID string) context.Context {
-	return context.WithValue(ctx, requestIDContextKey, requestID)
+func ContextWithRequestID(ctx context.Context, requestID string) (context.Context, error) {
+	if ctx == nil {
+		return nil, ErrNilContext
+	}
+
+	return context.WithValue(ctx, requestIDContextKey, requestID), nil
 }
 
 // ContextWithUserID stores user_id in context.Context.
-func ContextWithUserID(ctx context.Context, userID uint) context.Context {
-	return context.WithValue(ctx, userIDContextKey, userID)
+func ContextWithUserID(ctx context.Context, userID uint) (context.Context, error) {
+	if ctx == nil {
+		return nil, ErrNilContext
+	}
+
+	return context.WithValue(ctx, userIDContextKey, userID), nil
 }
 
 // RequestIDFromContext retrieves request_id from context.Context.

@@ -22,8 +22,8 @@ func (l *testLogger) Fatal(message string, fields ...logger.Field) {}
 func (l *testLogger) With(fields ...logger.Field) logger.Interface {
 	return l
 }
-func (l *testLogger) WithContext(ctx context.Context) logger.Interface {
-	return l
+func (l *testLogger) WithContext(ctx context.Context) (logger.Interface, error) {
+	return l, nil
 }
 func (l *testLogger) Sync() error {
 	return nil
