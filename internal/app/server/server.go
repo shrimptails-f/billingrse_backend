@@ -12,6 +12,7 @@ import (
 	"business/internal/library/oswrapper"
 	"business/internal/library/ratelimit"
 	"business/internal/library/secret"
+	"business/internal/library/timewrapper"
 	"context"
 	"net/http"
 	"os"
@@ -22,6 +23,7 @@ import (
 
 func Run() {
 	g := gin.New()
+	clock := timewrapper.NewClock()
 
 	ctx := context.Background()
 	secretClient, err := secret.New(ctx)
@@ -95,7 +97,7 @@ func Run() {
 	}
 
 	g.Use(middleware.RequestID())
-	g.Use(middleware.RequestSummary(baseLogger))
+	g.Use(middleware.RequestSummary(baseLogger, clock))
 	g.Use(middleware.Recovery(baseLogger))
 	g.Use(func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", frontDmain)

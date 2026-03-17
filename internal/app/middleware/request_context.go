@@ -2,10 +2,10 @@ package middleware
 
 import (
 	"business/internal/library/logger"
+	"business/internal/library/timewrapper"
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -41,15 +41,18 @@ func RequestID() gin.HandlerFunc {
 }
 
 // RequestSummary writes an HTTP request summary log after the handler chain completes.
-func RequestSummary(log logger.Interface) gin.HandlerFunc {
+func RequestSummary(log logger.Interface, clock timewrapper.ClockInterface) gin.HandlerFunc {
 	if log == nil {
 		log = logger.NewNop()
+	}
+	if clock == nil {
+		clock = timewrapper.NewClock()
 	}
 
 	summaryLogger := log.With(logger.Component(requestLogComponent))
 
 	return func(c *gin.Context) {
-		start := time.Now()
+		start := clock.Now()
 		reqLog, err := summaryLogger.WithContext(c.Request.Context())
 		if err != nil {
 			reqLog = summaryLogger
@@ -72,7 +75,7 @@ func RequestSummary(log logger.Interface) gin.HandlerFunc {
 			logger.String("method", c.Request.Method),
 			logger.String("path", resolvedPath(c)),
 			logger.HTTPStatusCode(c.Writer.Status()),
-			logger.Int("latency_ms", int(time.Since(start).Milliseconds())),
+			logger.Int("latency_ms", int(clock.Now().Sub(start).Milliseconds())),
 		}
 
 		switch status := c.Writer.Status(); {
