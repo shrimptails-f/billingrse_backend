@@ -70,3 +70,21 @@ type emailVerificationTokenRecord struct {
 func (emailVerificationTokenRecord) TableName() string {
 	return "email_verification_tokens"
 }
+
+// refreshTokenRecord represents the database record structure for auth_refresh_tokens table.
+type refreshTokenRecord struct {
+	ID                uint       `gorm:"column:id"`
+	UserID            uint       `gorm:"column:user_id;index"`
+	TokenDigest       string     `gorm:"column:token_digest;size:64;uniqueIndex:uni_auth_refresh_tokens_token_digest"`
+	ExpiresAt         time.Time  `gorm:"column:expires_at"`
+	LastUsedAt        *time.Time `gorm:"column:last_used_at"`
+	RevokedAt         *time.Time `gorm:"column:revoked_at"`
+	ReplacedByTokenID *uint      `gorm:"column:replaced_by_token_id;index"`
+	CreatedAt         time.Time  `gorm:"column:created_at"`
+	UpdatedAt         time.Time  `gorm:"column:updated_at"`
+}
+
+// TableName specifies the table name for refreshTokenRecord.
+func (refreshTokenRecord) TableName() string {
+	return "auth_refresh_tokens"
+}

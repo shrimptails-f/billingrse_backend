@@ -28,7 +28,7 @@ func newAuthRepoTestEnv(t *testing.T) *authRepoTestEnv {
 	}
 	require.NoError(t, err)
 
-	err = mysqlConn.DB.AutoMigrate(&userRecord{}, &emailVerificationTokenRecord{})
+	err = mysqlConn.DB.AutoMigrate(&userRecord{}, &emailVerificationTokenRecord{}, &refreshTokenRecord{})
 	require.NoError(t, err)
 
 	return &authRepoTestEnv{

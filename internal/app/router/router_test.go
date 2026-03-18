@@ -33,6 +33,16 @@ func (s *stubAuthUseCase) Login(ctx context.Context, req domain.LoginRequest) (s
 	return "dummy-token", nil
 }
 
+func (s *stubAuthUseCase) LoginTokens(ctx context.Context, req domain.LoginRequest) (domain.AuthTokens, error) {
+	return domain.AuthTokens{
+		AccessToken:           "dummy-token",
+		TokenType:             "Bearer",
+		ExpiresIn:             900,
+		RefreshToken:          "dummy-refresh-token",
+		RefreshTokenExpiresIn: 2592000,
+	}, nil
+}
+
 func (s *stubAuthUseCase) Register(ctx context.Context, req domain.RegisterRequest) (domain.User, error) {
 	return domain.User{}, nil
 }
@@ -42,6 +52,20 @@ func (s *stubAuthUseCase) VerifyEmail(ctx context.Context, req domain.VerifyEmai
 }
 
 func (s *stubAuthUseCase) ResendVerificationEmail(ctx context.Context, req domain.ResendVerificationRequest) error {
+	return nil
+}
+
+func (s *stubAuthUseCase) Refresh(ctx context.Context, req domain.RefreshRequest) (domain.AuthTokens, error) {
+	return domain.AuthTokens{
+		AccessToken:           "dummy-token",
+		TokenType:             "Bearer",
+		ExpiresIn:             900,
+		RefreshToken:          "dummy-refresh-token",
+		RefreshTokenExpiresIn: 2592000,
+	}, nil
+}
+
+func (s *stubAuthUseCase) Logout(ctx context.Context, req domain.LogoutRequest) error {
 	return nil
 }
 
@@ -82,6 +106,7 @@ func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 		"GET /api/v1",
 		"GET /",
 		"POST /api/v1/auth/login",
+		"POST /api/v1/auth/refresh",
 		"POST /api/v1/auth/logout",
 		"POST /api/v1/auth/register",
 		"POST /api/v1/auth/email/verify",

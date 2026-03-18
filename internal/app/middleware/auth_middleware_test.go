@@ -46,6 +46,10 @@ func generateToken(secret string, userID uint, expiresAt time.Time) string {
 	return signedToken
 }
 
+func authHeader(token string) string {
+	return "Bearer " + token
+}
+
 func assertStandardErrorResponse(t *testing.T, resp *httptest.ResponseRecorder, status int, code, message string) {
 	t.Helper()
 	assert.Equal(t, status, resp.Code)
@@ -53,7 +57,6 @@ func assertStandardErrorResponse(t *testing.T, resp *httptest.ResponseRecorder, 
 }
 
 func TestAuthMiddleware_Success(t *testing.T) {
-
 	secret := "test-secret"
 	osw := newStubOsWrapper(secret)
 	users := new(mockUserProvider)
@@ -85,7 +88,7 @@ func TestAuthMiddleware_Success(t *testing.T) {
 
 	token := generateToken(secret, 123, time.Now().Add(time.Hour))
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	req.AddCookie(&http.Cookie{Name: "access_token", Value: "   " + token + "   "}) // should trim whitespace
+	req.Header.Set("Authorization", authHeader(token))
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -95,28 +98,16 @@ func TestAuthMiddleware_Success(t *testing.T) {
 	users.AssertExpectations(t)
 }
 
-func TestAuthMiddleware_SuccessWithCookie(t *testing.T) {
-
+func TestAuthMiddleware_IgnoresAccessTokenCookie(t *testing.T) {
 	secret := "test-secret"
 	osw := newStubOsWrapper(secret)
 	users := new(mockUserProvider)
-	verifiedAt := time.Now()
-	users.On("GetUserByID", mock.Anything, uint(123)).Return(domain.User{
-		ID:              123,
-		EmailVerifiedAt: &verifiedAt,
-	}, nil)
-
 	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
 
 	router := gin.New()
 	router.Use(middleware.Authenticate())
 	router.GET("/protected", func(c *gin.Context) {
-		userID, exists := c.Get("userID")
-		if !exists {
-			httpresponse.AbortInternalServerError(c)
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"user_id": userID})
+		c.JSON(http.StatusOK, gin.H{})
 	})
 
 	token := generateToken(secret, 123, time.Now().Add(time.Hour))
@@ -126,13 +117,10 @@ func TestAuthMiddleware_SuccessWithCookie(t *testing.T) {
 
 	router.ServeHTTP(resp, req)
 
-	assert.Equal(t, http.StatusOK, resp.Code)
-	assert.JSONEq(t, `{"user_id":123}`, resp.Body.String())
-	users.AssertExpectations(t)
+	assertStandardErrorResponse(t, resp, http.StatusUnauthorized, errorCodeMissingToken, errorMessageMissingToken)
 }
 
 func TestAuthMiddleware_MissingTokenNoCredentials(t *testing.T) {
-
 	osw := newStubOsWrapper("test-secret")
 	users := new(mockUserProvider)
 	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
@@ -151,31 +139,7 @@ func TestAuthMiddleware_MissingTokenNoCredentials(t *testing.T) {
 	assertStandardErrorResponse(t, resp, http.StatusUnauthorized, errorCodeMissingToken, errorMessageMissingToken)
 }
 
-func TestAuthMiddleware_IgnoresAuthorizationHeader(t *testing.T) {
-
-	secret := "test-secret"
-	osw := newStubOsWrapper(secret)
-	users := new(mockUserProvider)
-	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
-
-	router := gin.New()
-	router.Use(middleware.Authenticate())
-	router.GET("/protected", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{})
-	})
-
-	token := generateToken(secret, 123, time.Now().Add(time.Hour))
-	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	req.Header.Set("Authorization", "Bearer "+token) // Authorization header should be ignored
-	resp := httptest.NewRecorder()
-
-	router.ServeHTTP(resp, req)
-
-	assertStandardErrorResponse(t, resp, http.StatusUnauthorized, errorCodeMissingToken, errorMessageMissingToken)
-}
-
-func TestAuthMiddleware_EmptyCookieValue(t *testing.T) {
-
+func TestAuthMiddleware_InvalidAuthorizationHeader(t *testing.T) {
 	osw := newStubOsWrapper("test-secret")
 	users := new(mockUserProvider)
 	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
@@ -187,17 +151,16 @@ func TestAuthMiddleware_EmptyCookieValue(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	req.AddCookie(&http.Cookie{Name: "access_token", Value: "   "})
+	req.Header.Set("Authorization", "Token something")
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
 
-	assertStandardErrorResponse(t, resp, http.StatusUnauthorized, errorCodeMissingToken, errorMessageMissingToken)
+	assertStandardErrorResponse(t, resp, http.StatusUnauthorized, errorCodeInvalidToken, errorMessageInvalidToken)
 }
 
 func TestAuthMiddleware_SecretKeyNotSet(t *testing.T) {
-
-	osw := mocklibrary.NewOsWrapperMock(nil) // No JWT_SECRET_KEY
+	osw := mocklibrary.NewOsWrapperMock(nil)
 	users := new(mockUserProvider)
 	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
 
@@ -207,8 +170,9 @@ func TestAuthMiddleware_SecretKeyNotSet(t *testing.T) {
 		c.JSON(http.StatusOK, gin.H{})
 	})
 
+	token := generateToken("test-secret", 123, time.Now().Add(time.Hour))
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	req.AddCookie(&http.Cookie{Name: "access_token", Value: "some-token"})
+	req.Header.Set("Authorization", authHeader(token))
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -217,7 +181,6 @@ func TestAuthMiddleware_SecretKeyNotSet(t *testing.T) {
 }
 
 func TestAuthMiddleware_InvalidSigningMethod(t *testing.T) {
-
 	secret := "test-secret"
 	osw := newStubOsWrapper(secret)
 	users := new(mockUserProvider)
@@ -239,7 +202,7 @@ func TestAuthMiddleware_InvalidSigningMethod(t *testing.T) {
 	signedToken, _ := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
 
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	req.AddCookie(&http.Cookie{Name: "access_token", Value: signedToken})
+	req.Header.Set("Authorization", authHeader(signedToken))
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -248,7 +211,6 @@ func TestAuthMiddleware_InvalidSigningMethod(t *testing.T) {
 }
 
 func TestAuthMiddleware_ExpiredToken(t *testing.T) {
-
 	secret := "test-secret"
 	osw := newStubOsWrapper(secret)
 	users := new(mockUserProvider)
@@ -261,9 +223,8 @@ func TestAuthMiddleware_ExpiredToken(t *testing.T) {
 	})
 
 	token := generateToken(secret, 123, time.Now().Add(-time.Hour))
-
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	req.AddCookie(&http.Cookie{Name: "access_token", Value: token})
+	req.Header.Set("Authorization", authHeader(token))
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -272,7 +233,6 @@ func TestAuthMiddleware_ExpiredToken(t *testing.T) {
 }
 
 func TestAuthMiddleware_InvalidToken(t *testing.T) {
-
 	osw := newStubOsWrapper("test-secret")
 	users := new(mockUserProvider)
 	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
@@ -284,7 +244,7 @@ func TestAuthMiddleware_InvalidToken(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	req.AddCookie(&http.Cookie{Name: "access_token", Value: "invalid.token.here"})
+	req.Header.Set("Authorization", authHeader("invalid.token.here"))
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -293,12 +253,11 @@ func TestAuthMiddleware_InvalidToken(t *testing.T) {
 }
 
 func TestAuthMiddleware_EmailVerificationRequired(t *testing.T) {
-
 	secret := "test-secret"
 	osw := newStubOsWrapper(secret)
 	users := new(mockUserProvider)
 	users.On("GetUserByID", mock.Anything, uint(123)).Return(domain.User{
-		ID: 123, // Not verified
+		ID: 123,
 	}, nil)
 
 	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
@@ -311,7 +270,7 @@ func TestAuthMiddleware_EmailVerificationRequired(t *testing.T) {
 
 	token := generateToken(secret, 123, time.Now().Add(time.Hour))
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	req.AddCookie(&http.Cookie{Name: "access_token", Value: token})
+	req.Header.Set("Authorization", authHeader(token))
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -321,7 +280,6 @@ func TestAuthMiddleware_EmailVerificationRequired(t *testing.T) {
 }
 
 func TestAuthMiddleware_SkipEmailVerificationForAuthPaths(t *testing.T) {
-
 	secret := "test-secret"
 	osw := newStubOsWrapper(secret)
 	users := new(mockUserProvider)
@@ -345,22 +303,19 @@ func TestAuthMiddleware_SkipEmailVerificationForAuthPaths(t *testing.T) {
 
 			token := generateToken(secret, 123, time.Now().Add(time.Hour))
 			req := httptest.NewRequest(http.MethodPost, path, nil)
-			req.AddCookie(&http.Cookie{Name: "access_token", Value: token})
+			req.Header.Set("Authorization", authHeader(token))
 			resp := httptest.NewRecorder()
 
 			router.ServeHTTP(resp, req)
 
-			// Should not check email verification for these paths
 			assert.Equal(t, http.StatusOK, resp.Code)
 		})
 	}
 
-	// users.GetUserByID should not have been called for any of these paths
 	users.AssertNotCalled(t, "GetUserByID", mock.Anything, mock.Anything)
 }
 
 func TestAuthMiddleware_UserNotFoundDuringEmailVerificationCheck(t *testing.T) {
-
 	secret := "test-secret"
 	osw := newStubOsWrapper(secret)
 	users := new(mockUserProvider)
@@ -376,7 +331,7 @@ func TestAuthMiddleware_UserNotFoundDuringEmailVerificationCheck(t *testing.T) {
 
 	token := generateToken(secret, 123, time.Now().Add(time.Hour))
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	req.AddCookie(&http.Cookie{Name: "access_token", Value: token})
+	req.Header.Set("Authorization", authHeader(token))
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -386,7 +341,6 @@ func TestAuthMiddleware_UserNotFoundDuringEmailVerificationCheck(t *testing.T) {
 }
 
 func TestAuthMiddleware_MissingTokenLogsPermissionDenied(t *testing.T) {
-
 	osw := newStubOsWrapper("test-secret")
 	users := new(mockUserProvider)
 	spy := &capturingLogger{}

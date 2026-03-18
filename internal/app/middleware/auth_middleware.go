@@ -39,7 +39,7 @@ func NewAuthMiddleware(osw oswrapper.OsWapperInterface, users UserProvider, log 
 	}
 }
 
-// Authenticate returns a Gin middleware validating JWT tokens from the access_token cookie.
+// Authenticate returns a Gin middleware validating JWT tokens from the Authorization header.
 func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		reqLog := m.log
@@ -47,14 +47,26 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 			reqLog = requestLog
 		}
 
-		cookieToken, err := c.Cookie("access_token")
-		if err != nil || strings.TrimSpace(cookieToken) == "" {
+		tokenString := strings.TrimSpace(c.GetHeader("Authorization"))
+		if tokenString == "" {
 			reqLog.Info("permission_denied", permissionDeniedFields(c, "missing_token")...)
 			httpresponse.AbortUnauthorized(c, errorCodeMissingToken, errorMessageMissingToken)
 			return
 		}
 
-		tokenString := strings.TrimSpace(cookieToken)
+		if strings.HasPrefix(strings.ToLower(tokenString), "bearer ") {
+			tokenString = strings.TrimSpace(tokenString[7:])
+		} else {
+			reqLog.Info("permission_denied", permissionDeniedFields(c, "invalid_token")...)
+			httpresponse.AbortUnauthorized(c, errorCodeInvalidToken, errorMessageInvalidToken)
+			return
+		}
+
+		if tokenString == "" {
+			reqLog.Info("permission_denied", permissionDeniedFields(c, "invalid_token")...)
+			httpresponse.AbortUnauthorized(c, errorCodeInvalidToken, errorMessageInvalidToken)
+			return
+		}
 
 		jwtSecret, err := m.osw.GetEnv("JWT_SECRET_KEY")
 		if err != nil {
@@ -95,9 +107,7 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 			reqLog = requestLog
 		}
 
-		// Check if email verification is required for this path
 		if m.requiresEmailVerification(c.Request.URL.Path) {
-			// Get user to check email verification status
 			user, err := m.users.GetUserByID(c.Request.Context(), claims.UserID)
 			if err != nil {
 				reqLog.Info("permission_denied", permissionDeniedFields(c, "user_not_found")...)
@@ -105,7 +115,6 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 				return
 			}
 
-			// Check if email is verified
 			if !user.IsEmailVerified() {
 				reqLog.Info("permission_denied", permissionDeniedFields(c, "email_verification_required")...)
 				httpresponse.AbortUnauthorized(c, errorCodeEmailVerificationRequired, errorMessageEmailVerificationRequired)

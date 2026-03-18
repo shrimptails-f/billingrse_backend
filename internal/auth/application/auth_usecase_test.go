@@ -77,6 +77,29 @@ func (m *mockAuthRepository) DeleteTokenByID(ctx context.Context, tokenID uint) 
 	return args.Error(0)
 }
 
+func (m *mockAuthRepository) CreateRefreshToken(ctx context.Context, token domain.RefreshToken) (domain.RefreshToken, error) {
+	args := m.Called(ctx, token)
+	refreshToken, _ := args.Get(0).(domain.RefreshToken)
+	return refreshToken, args.Error(1)
+}
+
+func (m *mockAuthRepository) FindActiveRefreshTokenByDigest(ctx context.Context, digest string, now time.Time) (domain.RefreshToken, error) {
+	args := m.Called(ctx, digest, now)
+	refreshToken, _ := args.Get(0).(domain.RefreshToken)
+	return refreshToken, args.Error(1)
+}
+
+func (m *mockAuthRepository) RotateRefreshToken(ctx context.Context, currentID uint, next domain.RefreshToken, now time.Time) (domain.RefreshToken, error) {
+	args := m.Called(ctx, currentID, next, now)
+	refreshToken, _ := args.Get(0).(domain.RefreshToken)
+	return refreshToken, args.Error(1)
+}
+
+func (m *mockAuthRepository) RevokeRefreshTokenByDigest(ctx context.Context, digest string, now time.Time) error {
+	args := m.Called(ctx, digest, now)
+	return args.Error(0)
+}
+
 func (m *mockAuthRepository) DeleteUserByID(ctx context.Context, id uint) error {
 	args := m.Called(ctx, id)
 	return args.Error(0)

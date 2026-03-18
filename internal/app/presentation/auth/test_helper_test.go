@@ -19,6 +19,23 @@ func (m *mockAuthUseCase) Login(ctx context.Context, req domain.LoginRequest) (s
 	return args.String(0), args.Error(1)
 }
 
+func (m *mockAuthUseCase) LoginTokens(ctx context.Context, req domain.LoginRequest) (domain.AuthTokens, error) {
+	args := m.Called(ctx, req)
+	token, _ := args.Get(0).(domain.AuthTokens)
+	return token, args.Error(1)
+}
+
+func (m *mockAuthUseCase) Refresh(ctx context.Context, req domain.RefreshRequest) (domain.AuthTokens, error) {
+	args := m.Called(ctx, req)
+	token, _ := args.Get(0).(domain.AuthTokens)
+	return token, args.Error(1)
+}
+
+func (m *mockAuthUseCase) Logout(ctx context.Context, req domain.LogoutRequest) error {
+	args := m.Called(ctx, req)
+	return args.Error(0)
+}
+
 func (m *mockAuthUseCase) Register(ctx context.Context, req domain.RegisterRequest) (domain.User, error) {
 	args := m.Called(ctx, req)
 	return args.Get(0).(domain.User), args.Error(1)
