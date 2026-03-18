@@ -26,7 +26,8 @@
       - 複数形は `List` を付与（`agentList`, `ListAgentsResponse`）。
       - 関数動詞は既存規約（`GetXxx`, `SaveXxx`, `UpdateXxx`, `ListXxx`, `CreateXxx`）に揃える。
       - interface 名はパッケージ既存の命名を踏襲しつつ、移行可能であれば `FooUseCase`（interface）＋`fooUseCase`（具象 struct）形式へ段階的に寄せてもよい。既存コードの互換性を壊さない範囲で徐々に統一する。
-      - Controller のリクエスト/レスポンス構造体はハンドラファイル内に置く。ただし、HTTP の形がドメイン DTO と完全に一致する場合（例: Agent API が `domain.ListAgentsResponse` をそのまま返す）は既存 DTO を再利用してよい。差異がある場合のみローカル struct を定義し、JSON タグを API に合わせる。
+      - `internal/app/presentation/{feature}` のように機能別ディレクトリを切り、controller とその HTTP DTO を同じ feature 配下へ置く。
+      - Controller のリクエスト/レスポンス構造体は controller ファイル内に置く。ただし、HTTP の形がドメイン DTO と完全に一致する場合（例: Agent API が `domain.ListAgentsResponse` をそのまま返す）は既存 DTO を再利用してよい。差異がある場合のみローカル struct を定義し、JSON タグを API に合わせる。
       - モックはローカル規約（例: `mockEmailCredentialUsecase`, `MockAgentUsecase`）を守り、既に testify/mock を使っているパッケージではそれに従う。
     </common>
 
@@ -83,7 +84,7 @@
   <testing_rules>
     - テストファイル名は `xxx_test.go`。
     - 関数名は Go 標準の `TestXxx` 形式、またはパッケージで既に採用されているアンダースコア形式（例: `Test_LoginHandler_InvalidCredentials`）に合わせる。
-    - 既に `t.Parallel()` を使っているパッケージ（library や repository, usecase 等）では引き続き並列化する。Gin Handler テストなど状態共有があるものは直列のままでよい。
+    - 既に `t.Parallel()` を使っているパッケージ（library や repository, usecase 等）では引き続き並列化する。Gin controller テストなど状態共有があるものは直列のままでよい。
     - 複数パターンを検証する場合はテーブルドリブンテストを推奨。
     - MySQL を用いるテストは `mysql.CreateNewTestDB()` を使い、戻り値のクリーンアップ関数で DB を削除する。必要に応じて `mysql.Transactional` でトランザクションを張る。
     - 既に testify の `assert` / `require` / `mock` を使用しているパッケージではそれに従い、新規パッケージは標準ライブラリ or testify いずれかを選んで統一する。

@@ -38,12 +38,12 @@
   <layers>
     <presentation>
       - 配置:
-        - internal/app/presentation（コントローラと HTTP DTO）
+        - internal/app/presentation/{feature}（機能別の controller と HTTP DTO）
         - internal/app/middleware（JWT 検証・ユーザー情報注入）
         - internal/app/router（ルート登録と dig 解決）
         - internal/app/server（プロセス起動）
       - 役割:
-        - Gin のリクエストをアプリケーション層 DTO に変換し、バリデーションを行った上で 1 Handler = 1 UseCase を呼び出す。
+        - Gin のリクエストをアプリケーション層 DTO に変換し、バリデーションを行った上で 1 controller method = 1 UseCase を呼び出す。
         - 受け取ったエラーを HTTP ステータスへマッピングし、logger.Interface で構造化ログを出力する。
         - 具体型ではなく振る舞いに依存したい場合は Controller 内で小さな interface を定義する（例: AgentUsecase）。
         - ミドルウェアは oswrapper 経由で JWT 秘密鍵を取得し、トークン検証後に `userID` を Gin コンテキストへ保存する。

@@ -2,8 +2,6 @@ package v1_test
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"time"
 
 	"business/internal/auth/domain"
@@ -17,19 +15,6 @@ func (s *stubAuthUserProvider) GetUserByID(ctx context.Context, id uint) (domain
 		ID:              id,
 		EmailVerifiedAt: &verifiedAt,
 	}, nil
-}
-
-type stubOsWrapper struct{}
-
-func (s *stubOsWrapper) ReadFile(path string) (string, error) {
-	return "", errors.New("not implemented")
-}
-
-func (s *stubOsWrapper) GetEnv(key string) (string, error) {
-	if key == "JWT_SECRET_KEY" {
-		return "test-secret", nil
-	}
-	return "", fmt.Errorf("environment variable %s not set", key)
 }
 
 type stubAuthUseCase struct{}

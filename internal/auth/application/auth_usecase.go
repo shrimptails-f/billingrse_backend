@@ -3,6 +3,7 @@ package application
 import (
 	"business/internal/auth/domain"
 	"business/internal/library/oswrapper"
+	"business/internal/library/timewrapper"
 	"context"
 	"errors"
 	"time"
@@ -16,6 +17,9 @@ var ErrInvalidInput = errors.New("invalid input")
 
 // ErrEmailAlreadyExists is returned when attempting to register with an existing email.
 var ErrEmailAlreadyExists = errors.New("email already exists")
+
+// ErrFailedToCheckExists is failed login
+var ErrFailedToCheckExists = errors.New("failed to check existing user")
 
 // ErrMailSendFailed is returned when email sending fails
 var ErrMailSendFailed = errors.New("mail send failed")
@@ -94,18 +98,18 @@ type AuthUseCase struct {
 	osw      oswrapper.OsWapperInterface
 	tokenTTL time.Duration
 	mailer   VerificationEmailSender
-	clock    func() time.Time
+	clock    timewrapper.ClockInterface
 }
 
 // NewAuthUseCase creates a new AuthUseCase instance
-func NewAuthUseCase(repo AuthRepository, osw oswrapper.OsWapperInterface, tokenTTL time.Duration, mailer VerificationEmailSender, clock func() time.Time) AuthUseCaseInterface {
+func NewAuthUseCase(repo AuthRepository, osw oswrapper.OsWapperInterface, mailer VerificationEmailSender, clock timewrapper.ClockInterface) AuthUseCaseInterface {
 	if clock == nil {
-		clock = time.Now
+		clock = timewrapper.NewClock()
 	}
 	return &AuthUseCase{
 		repo:     repo,
 		osw:      osw,
-		tokenTTL: tokenTTL,
+		tokenTTL: defaultTokenTTL,
 		mailer:   mailer,
 		clock:    clock,
 	}

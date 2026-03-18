@@ -40,7 +40,7 @@ func (uc *AuthUseCase) ResendVerificationEmail(ctx context.Context, req domain.R
 	}
 
 	// Check rate limiting
-	now := uc.clock()
+	now := uc.clock.Now()
 	latestToken, err := uc.repo.GetLatestTokenForUser(ctx, user.ID)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return fmt.Errorf("failed to get latest token: %w", err)

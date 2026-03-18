@@ -1,4 +1,4 @@
-package presentation
+package auth
 
 import (
 	"business/internal/auth/application"
@@ -21,8 +21,8 @@ type registerResponse struct {
 	User    userResponse `json:"user"`
 }
 
-// Register handles the POST /auth/register endpoint
-func (lc *AuthController) Register(c *gin.Context) {
+// Register handles account registration for the POST /auth/register endpoint.
+func (lc *Controller) Register(c *gin.Context) {
 	var req registerRequest
 	reqLog, err := lc.logger.WithContext(c.Request.Context())
 	if err != nil {

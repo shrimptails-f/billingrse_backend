@@ -3,9 +3,9 @@ package middleware
 import (
 	"business/internal/auth/domain"
 	"business/internal/library/logger"
+	mocklibrary "business/test/mock/library"
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,30 +17,10 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-type stubOsWrapper struct {
-	env map[string]string
-}
-
-func (s *stubOsWrapper) ReadFile(path string) (string, error) {
-	return "", errors.New("not implemented")
-}
-
-func (s *stubOsWrapper) GetEnv(key string) (string, error) {
-	if s.env == nil {
-		return "", fmt.Errorf("environment variable %s not set", key)
-	}
-	if value, ok := s.env[key]; ok && value != "" {
-		return value, nil
-	}
-	return "", fmt.Errorf("environment variable %s not set", key)
-}
-
-func newStubOsWrapper(secret string) *stubOsWrapper {
-	return &stubOsWrapper{
-		env: map[string]string{
-			"JWT_SECRET_KEY": secret,
-		},
-	}
+func newStubOsWrapper(secret string) *mocklibrary.OsWrapperMock {
+	return mocklibrary.NewOsWrapperMock(map[string]string{
+		"JWT_SECRET_KEY": secret,
+	})
 }
 
 type mockUserProvider struct {
@@ -213,7 +193,7 @@ func TestAuthMiddleware_EmptyCookieValue(t *testing.T) {
 
 func TestAuthMiddleware_SecretKeyNotSet(t *testing.T) {
 
-	osw := &stubOsWrapper{env: map[string]string{}} // No JWT_SECRET_KEY
+	osw := mocklibrary.NewOsWrapperMock(nil) // No JWT_SECRET_KEY
 	users := new(mockUserProvider)
 	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
 

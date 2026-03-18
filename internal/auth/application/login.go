@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/gorm"
@@ -45,7 +44,7 @@ func (uc *AuthUseCase) Login(ctx context.Context, req domain.LoginRequest) (stri
 		issuer = strings.TrimSpace(issuer)
 	}
 
-	now := time.Now()
+	now := uc.clock.Now()
 	claims := &domain.AuthClaims{
 		UserID: user.ID,
 		RegisteredClaims: jwt.RegisteredClaims{

@@ -27,7 +27,7 @@ func (uc *AuthUseCase) VerifyEmail(ctx context.Context, req domain.VerifyEmailRe
 	}
 
 	// Check if expired
-	now := uc.clock()
+	now := uc.clock.Now()
 	if now.After(token.ExpiresAt) {
 		return domain.User{}, ErrVerificationTokenExpired
 	}

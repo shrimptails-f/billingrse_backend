@@ -3,11 +3,11 @@ package application
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
 	"business/internal/auth/domain"
+	mocklibrary "business/test/mock/library"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
@@ -91,30 +91,22 @@ func (m *mockVerificationEmailSender) SendVerificationEmail(ctx context.Context,
 	return args.Error(0)
 }
 
-type stubOsWrapper struct {
-	env map[string]string
+type stubClock struct {
+	now time.Time
 }
 
-func (s *stubOsWrapper) ReadFile(path string) (string, error) {
-	return "", errors.New("not implemented")
+func newStubOsWrapper(secret string) *mocklibrary.OsWrapperMock {
+	return mocklibrary.NewOsWrapperMock(map[string]string{
+		"JWT_SECRET_KEY": secret,
+	})
 }
 
-func (s *stubOsWrapper) GetEnv(key string) (string, error) {
-	if s.env == nil {
-		return "", fmt.Errorf("environment variable %s not set", key)
-	}
-	if value, ok := s.env[key]; ok && value != "" {
-		return value, nil
-	}
-	return "", fmt.Errorf("environment variable %s not set", key)
+func (s *stubClock) Now() time.Time {
+	return s.now
 }
 
-func newStubOsWrapper(secret string) *stubOsWrapper {
-	return &stubOsWrapper{
-		env: map[string]string{
-			"JWT_SECRET_KEY": secret,
-		},
-	}
+func (s *stubClock) After(d time.Duration) <-chan time.Time {
+	return time.After(d)
 }
 
 func TestAuthUseCase_Success(t *testing.T) {
@@ -122,6 +114,7 @@ func TestAuthUseCase_Success(t *testing.T) {
 	secret := "test-secret"
 	stubOS := newStubOsWrapper(secret)
 	repo := new(mockAuthRepository)
+	fixedTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	hashedPassword, err := domain.NewPasswordHashFromPlaintext("password123")
 	assert.NoError(t, err)
@@ -133,7 +126,7 @@ func TestAuthUseCase_Success(t *testing.T) {
 	}, nil)
 
 	mailer := new(mockVerificationEmailSender)
-	uc := NewAuthUseCase(repo, stubOS, time.Hour, mailer, nil)
+	uc := NewAuthUseCase(repo, stubOS, mailer, &stubClock{now: fixedTime})
 
 	token, err := uc.Login(context.Background(), domain.LoginRequest{
 		Email:    "user@example.com",
@@ -143,7 +136,8 @@ func TestAuthUseCase_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, token)
 
-	parsedToken, err := jwt.ParseWithClaims(token, &domain.AuthClaims{}, func(token *jwt.Token) (interface{}, error) {
+	parser := jwt.NewParser(jwt.WithoutClaimsValidation())
+	parsedToken, err := parser.ParseWithClaims(token, &domain.AuthClaims{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(secret), nil
 	})
 	assert.NoError(t, err)
@@ -151,6 +145,8 @@ func TestAuthUseCase_Success(t *testing.T) {
 	claims, ok := parsedToken.Claims.(*domain.AuthClaims)
 	assert.True(t, ok)
 	assert.Equal(t, uint(1), claims.UserID)
+	assert.True(t, claims.IssuedAt.Time.Equal(fixedTime))
+	assert.True(t, claims.ExpiresAt.Time.Equal(fixedTime.Add(defaultTokenTTL)))
 
 	repo.AssertExpectations(t)
 }
@@ -161,7 +157,7 @@ func TestAuthUseCase_UserNotFound(t *testing.T) {
 	repo.On("GetUserByEmail", mock.Anything, domain.EmailAddress("missing@example.com")).Return(domain.User{}, gorm.ErrRecordNotFound)
 
 	mailer := new(mockVerificationEmailSender)
-	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), time.Hour, mailer, nil)
+	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), mailer, nil)
 	token, err := uc.Login(context.Background(), domain.LoginRequest{
 		Email:    "missing@example.com",
 		Password: "password123",
@@ -184,7 +180,7 @@ func TestAuthUseCase_InvalidPassword(t *testing.T) {
 	}, nil)
 
 	mailer := new(mockVerificationEmailSender)
-	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), time.Hour, mailer, nil)
+	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), mailer, nil)
 	token, err := uc.Login(context.Background(), domain.LoginRequest{
 		Email:    "user@example.com",
 		Password: "wrong-password",
@@ -200,7 +196,7 @@ func TestAuthUseCase_RepositoryError(t *testing.T) {
 	repo.On("GetUserByEmail", mock.Anything, domain.EmailAddress("user@example.com")).Return(domain.User{}, errors.New("db error"))
 
 	mailer := new(mockVerificationEmailSender)
-	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), time.Hour, mailer, nil)
+	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), mailer, nil)
 	token, err := uc.Login(context.Background(), domain.LoginRequest{
 		Email:    "user@example.com",
 		Password: "password123",
@@ -234,8 +230,8 @@ func TestAuthUseCase_RegisterSuccess(t *testing.T) {
 		return url == "https://example.com/signup/verify?token=test-token"
 	})).Return(nil).Once()
 
-	stubOS := &stubOsWrapper{env: map[string]string{"FRONT_DOMAIN": "https://example.com"}}
-	uc := NewAuthUseCase(repo, stubOS, time.Hour, mailer, func() time.Time { return fixedTime })
+	stubOS := mocklibrary.NewOsWrapperMock(map[string]string{"FRONT_DOMAIN": "https://example.com"})
+	uc := NewAuthUseCase(repo, stubOS, mailer, &stubClock{now: fixedTime})
 
 	user, err := uc.Register(context.Background(), domain.RegisterRequest{
 		Email:    "new@example.com",
@@ -258,7 +254,7 @@ func TestAuthUseCase_RegisterEmailExists(t *testing.T) {
 	mailer := new(mockVerificationEmailSender)
 	repo.On("GetUserByEmail", mock.Anything, domain.EmailAddress("dup@example.com")).Return(domain.User{ID: 1}, nil).Once()
 
-	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), time.Hour, mailer, nil)
+	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), mailer, nil)
 	user, err := uc.Register(context.Background(), domain.RegisterRequest{
 		Email:    "dup@example.com",
 		Name:     "Dup",
@@ -276,7 +272,7 @@ func TestAuthUseCase_RegisterLookupError(t *testing.T) {
 	mailer := new(mockVerificationEmailSender)
 	repo.On("GetUserByEmail", mock.Anything, domain.EmailAddress("user@example.com")).Return(domain.User{}, errors.New("db failure")).Once()
 
-	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), time.Hour, mailer, nil)
+	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), mailer, nil)
 	user, err := uc.Register(context.Background(), domain.RegisterRequest{
 		Email:    "user@example.com",
 		Name:     "User",
@@ -284,7 +280,7 @@ func TestAuthUseCase_RegisterLookupError(t *testing.T) {
 	})
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "db failure")
+	assert.ErrorIs(t, err, ErrFailedToCheckExists)
 	assert.Equal(t, uint(0), user.ID)
 	repo.AssertExpectations(t)
 }
@@ -296,7 +292,7 @@ func TestAuthUseCase_RegisterDuplicatedKey(t *testing.T) {
 	repo.On("GetUserByEmail", mock.Anything, domain.EmailAddress("user@example.com")).Return(domain.User{}, gorm.ErrRecordNotFound).Once()
 	repo.On("CreateUser", mock.Anything, mock.Anything).Return(domain.User{}, gorm.ErrDuplicatedKey).Once()
 
-	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), time.Hour, mailer, nil)
+	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), mailer, nil)
 	user, err := uc.Register(context.Background(), domain.RegisterRequest{
 		Email:    "user@example.com",
 		Name:     "User",
@@ -315,7 +311,7 @@ func TestAuthUseCase_RegisterCreateError(t *testing.T) {
 	repo.On("GetUserByEmail", mock.Anything, domain.EmailAddress("user@example.com")).Return(domain.User{}, gorm.ErrRecordNotFound).Once()
 	repo.On("CreateUser", mock.Anything, mock.Anything).Return(domain.User{}, errors.New("insert failed")).Once()
 
-	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), time.Hour, mailer, nil)
+	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), mailer, nil)
 	user, err := uc.Register(context.Background(), domain.RegisterRequest{
 		Email:    "user@example.com",
 		Name:     "User",
@@ -344,8 +340,8 @@ func TestAuthUseCase_RegisterTokenCreationFailed(t *testing.T) {
 	repo.On("CreateEmailVerificationToken", mock.Anything, mock.Anything).Return(domain.EmailVerificationToken{}, errors.New("token creation failed")).Once()
 	repo.On("DeleteUserByID", mock.Anything, uint(1)).Return(nil).Once()
 
-	stubOS := &stubOsWrapper{env: map[string]string{"FRONT_DOMAIN": "https://example.com"}}
-	uc := NewAuthUseCase(repo, stubOS, time.Hour, mailer, func() time.Time { return fixedTime })
+	stubOS := mocklibrary.NewOsWrapperMock(map[string]string{"FRONT_DOMAIN": "https://example.com"})
+	uc := NewAuthUseCase(repo, stubOS, mailer, &stubClock{now: fixedTime})
 
 	user, err := uc.Register(context.Background(), domain.RegisterRequest{
 		Email:    "new@example.com",
@@ -377,8 +373,8 @@ func TestAuthUseCase_RegisterMailSendFailed(t *testing.T) {
 	repo.On("DeleteTokenByID", mock.Anything, uint(1)).Return(nil).Once()
 	repo.On("DeleteUserByID", mock.Anything, uint(1)).Return(nil).Once()
 
-	stubOS := &stubOsWrapper{env: map[string]string{"FRONT_DOMAIN": "https://example.com"}}
-	uc := NewAuthUseCase(repo, stubOS, time.Hour, mailer, func() time.Time { return fixedTime })
+	stubOS := mocklibrary.NewOsWrapperMock(map[string]string{"FRONT_DOMAIN": "https://example.com"})
+	uc := NewAuthUseCase(repo, stubOS, mailer, &stubClock{now: fixedTime})
 
 	user, err := uc.Register(context.Background(), domain.RegisterRequest{
 		Email:    "new@example.com",
@@ -413,7 +409,7 @@ func TestAuthUseCase_VerifyEmailSuccess(t *testing.T) {
 		EmailVerifiedAt: &fixedTime,
 	}, nil).Once()
 
-	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), time.Hour, mailer, func() time.Time { return fixedTime })
+	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), mailer, &stubClock{now: fixedTime})
 
 	user, err := uc.VerifyEmail(context.Background(), domain.VerifyEmailRequest{Token: "valid-token"})
 
@@ -430,7 +426,7 @@ func TestAuthUseCase_VerifyEmailInvalidToken(t *testing.T) {
 
 	repo.On("GetEmailVerificationToken", mock.Anything, "invalid-token").Return(domain.EmailVerificationToken{}, gorm.ErrRecordNotFound).Once()
 
-	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), time.Hour, mailer, nil)
+	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), mailer, nil)
 
 	user, err := uc.VerifyEmail(context.Background(), domain.VerifyEmailRequest{Token: "invalid-token"})
 
@@ -455,7 +451,7 @@ func TestAuthUseCase_VerifyEmailExpired(t *testing.T) {
 
 	repo.On("GetEmailVerificationToken", mock.Anything, "expired-token").Return(token, nil).Once()
 
-	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), time.Hour, mailer, func() time.Time { return fixedTime })
+	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), mailer, &stubClock{now: fixedTime})
 
 	user, err := uc.VerifyEmail(context.Background(), domain.VerifyEmailRequest{Token: "expired-token"})
 
@@ -482,7 +478,7 @@ func TestAuthUseCase_VerifyEmailConsumed(t *testing.T) {
 
 	repo.On("GetEmailVerificationToken", mock.Anything, "consumed-token").Return(token, nil).Once()
 
-	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), time.Hour, mailer, func() time.Time { return fixedTime })
+	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), mailer, &stubClock{now: fixedTime})
 
 	user, err := uc.VerifyEmail(context.Background(), domain.VerifyEmailRequest{Token: "consumed-token"})
 
@@ -522,8 +518,8 @@ func TestAuthUseCase_ResendVerificationEmailSuccess(t *testing.T) {
 		return url == "https://example.com/auth/email/verify?token=new-token"
 	})).Return(nil).Once()
 
-	stubOS := &stubOsWrapper{env: map[string]string{"EMAIL_VERIFICATION_BASE_URL": "https://example.com"}}
-	uc := NewAuthUseCase(repo, stubOS, time.Hour, mailer, func() time.Time { return fixedTime })
+	stubOS := mocklibrary.NewOsWrapperMock(map[string]string{"EMAIL_VERIFICATION_BASE_URL": "https://example.com"})
+	uc := NewAuthUseCase(repo, stubOS, mailer, &stubClock{now: fixedTime})
 
 	err = uc.ResendVerificationEmail(context.Background(), domain.ResendVerificationRequest{
 		Email:    "user@example.com",
@@ -542,7 +538,7 @@ func TestAuthUseCase_ResendVerificationEmailInvalidCredentials(t *testing.T) {
 
 	repo.On("GetUserByEmail", mock.Anything, domain.EmailAddress("missing@example.com")).Return(domain.User{}, gorm.ErrRecordNotFound).Once()
 
-	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), time.Hour, mailer, nil)
+	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), mailer, nil)
 
 	err := uc.ResendVerificationEmail(context.Background(), domain.ResendVerificationRequest{
 		Email:    "missing@example.com",
@@ -569,7 +565,7 @@ func TestAuthUseCase_ResendVerificationEmailWrongPassword(t *testing.T) {
 
 	repo.On("GetUserByEmail", mock.Anything, domain.EmailAddress("user@example.com")).Return(user, nil).Once()
 
-	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), time.Hour, mailer, nil)
+	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), mailer, nil)
 
 	err = uc.ResendVerificationEmail(context.Background(), domain.ResendVerificationRequest{
 		Email:    "user@example.com",
@@ -598,7 +594,7 @@ func TestAuthUseCase_ResendVerificationEmailAlreadyVerified(t *testing.T) {
 
 	repo.On("GetUserByEmail", mock.Anything, domain.EmailAddress("user@example.com")).Return(user, nil).Once()
 
-	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), time.Hour, mailer, nil)
+	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), mailer, nil)
 
 	err = uc.ResendVerificationEmail(context.Background(), domain.ResendVerificationRequest{
 		Email:    "user@example.com",
@@ -635,7 +631,7 @@ func TestAuthUseCase_ResendVerificationEmailRateLimited(t *testing.T) {
 	repo.On("GetUserByEmail", mock.Anything, domain.EmailAddress("user@example.com")).Return(user, nil).Once()
 	repo.On("GetLatestTokenForUser", mock.Anything, uint(1)).Return(recentToken, nil).Once()
 
-	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), time.Hour, mailer, func() time.Time { return fixedTime })
+	uc := NewAuthUseCase(repo, newStubOsWrapper("secret"), mailer, &stubClock{now: fixedTime})
 
 	err = uc.ResendVerificationEmail(context.Background(), domain.ResendVerificationRequest{
 		Email:    "user@example.com",
@@ -676,8 +672,8 @@ func TestAuthUseCase_ResendVerificationEmailMailSendFailed(t *testing.T) {
 	mailer.On("SendVerificationEmail", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("smtp error")).Once()
 	repo.On("DeleteTokenByID", mock.Anything, uint(2)).Return(nil).Once()
 
-	stubOS := &stubOsWrapper{env: map[string]string{"EMAIL_VERIFICATION_BASE_URL": "https://example.com"}}
-	uc := NewAuthUseCase(repo, stubOS, time.Hour, mailer, func() time.Time { return fixedTime })
+	stubOS := mocklibrary.NewOsWrapperMock(map[string]string{"EMAIL_VERIFICATION_BASE_URL": "https://example.com"})
+	uc := NewAuthUseCase(repo, stubOS, mailer, &stubClock{now: fixedTime})
 
 	err = uc.ResendVerificationEmail(context.Background(), domain.ResendVerificationRequest{
 		Email:    "user@example.com",
