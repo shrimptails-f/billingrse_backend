@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"business/internal/app/httpresponse"
 	"business/internal/auth/domain"
 	"business/internal/library/logger"
 	"business/internal/library/oswrapper"
@@ -49,8 +50,7 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 		cookieToken, err := c.Cookie("access_token")
 		if err != nil || strings.TrimSpace(cookieToken) == "" {
 			reqLog.Info("permission_denied", permissionDeniedFields(c, "missing_token")...)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
-			c.Abort()
+			httpresponse.AbortUnauthorized(c, errorCodeMissingToken, errorMessageMissingToken)
 			return
 		}
 
@@ -59,8 +59,7 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 		jwtSecret, err := m.osw.GetEnv("JWT_SECRET_KEY")
 		if err != nil {
 			reqLog.Error("failed to load jwt secret", logger.Err(err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-			c.Abort()
+			httpresponse.AbortInternalServerError(c)
 			return
 		}
 
@@ -72,16 +71,14 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 		})
 		if err != nil || !token.Valid {
 			reqLog.Info("permission_denied", permissionDeniedFields(c, "invalid_token")...)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			c.Abort()
+			httpresponse.AbortUnauthorized(c, errorCodeInvalidToken, errorMessageInvalidToken)
 			return
 		}
 
 		claims, ok := token.Claims.(*domain.AuthClaims)
 		if !ok {
 			reqLog.Info("permission_denied", permissionDeniedFields(c, "invalid_token_claims")...)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
-			c.Abort()
+			httpresponse.AbortUnauthorized(c, errorCodeInvalidTokenClaims, errorMessageInvalidTokenClaims)
 			return
 		}
 
@@ -89,8 +86,7 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 		requestCtx, err := logger.ContextWithUserID(c.Request.Context(), claims.UserID)
 		if err != nil {
 			reqLog.Error("failed to attach user context", logger.Err(err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-			c.Abort()
+			httpresponse.AbortInternalServerError(c)
 			return
 		}
 
@@ -105,21 +101,14 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 			user, err := m.users.GetUserByID(c.Request.Context(), claims.UserID)
 			if err != nil {
 				reqLog.Info("permission_denied", permissionDeniedFields(c, "user_not_found")...)
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
-				c.Abort()
+				httpresponse.AbortUnauthorized(c, errorCodeUserNotFound, errorMessageUserNotFound)
 				return
 			}
 
 			// Check if email is verified
 			if !user.IsEmailVerified() {
 				reqLog.Info("permission_denied", permissionDeniedFields(c, "email_verification_required")...)
-				c.JSON(http.StatusUnauthorized, gin.H{
-					"error": gin.H{
-						"code":    "email_verification_required",
-						"message": "メールアドレスの認証が完了していません。確認メールのリンクから認証を完了してください。",
-					},
-				})
-				c.Abort()
+				httpresponse.AbortUnauthorized(c, errorCodeEmailVerificationRequired, errorMessageEmailVerificationRequired)
 				return
 			}
 		}
@@ -138,18 +127,18 @@ func permissionDeniedFields(c *gin.Context, reason string) []logger.Field {
 
 // requiresEmailVerification checks if the given path requires email verification
 func (m *AuthMiddleware) requiresEmailVerification(path string) bool {
-	// Skip email verification check for these paths
-	skipPaths := []string{
-		"/auth/register",
-		"/auth/login",
-		"/auth/email/verify",
-		"/auth/email/resend",
+	normalizedPath := strings.TrimPrefix(strings.TrimSpace(path), "/api/v1")
+
+	// Skip email verification check for auth public paths.
+	skipPaths := map[string]struct{}{
+		"/auth/register":     {},
+		"/auth/login":        {},
+		"/auth/email/verify": {},
+		"/auth/email/resend": {},
 	}
 
-	for _, skipPath := range skipPaths {
-		if path == skipPath {
-			return false
-		}
+	if _, ok := skipPaths[normalizedPath]; ok {
+		return false
 	}
 
 	return true

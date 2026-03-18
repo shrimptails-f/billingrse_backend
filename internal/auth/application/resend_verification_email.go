@@ -82,13 +82,13 @@ func (uc *AuthUseCase) ResendVerificationEmail(ctx context.Context, req domain.R
 	}
 
 	// Send verification email
-	baseURL, envErr := uc.osw.GetEnv("EMAIL_VERIFICATION_BASE_URL")
+	baseURL, envErr := uc.osw.GetEnv("FRONT_DOMAIN")
 	if envErr != nil || strings.TrimSpace(baseURL) == "" {
 		baseURL = "https://local.auth.example.com"
 	} else {
 		baseURL = strings.TrimSpace(baseURL)
 	}
-	verifyURL := fmt.Sprintf("%s/auth/email/verify?token=%s", baseURL, tokenToUse.Token)
+	verifyURL := fmt.Sprintf("%s/signup/verify?token=%s", baseURL, tokenToUse.Token)
 
 	err = uc.mailer.SendVerificationEmail(ctx, user, verifyURL)
 	if err != nil {

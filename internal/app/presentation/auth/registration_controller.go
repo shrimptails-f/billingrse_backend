@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"business/internal/app/httpresponse"
 	"business/internal/auth/application"
 	"business/internal/auth/domain"
 	"business/internal/library/logger"
@@ -21,17 +22,17 @@ type registerResponse struct {
 	User    userResponse `json:"user"`
 }
 
-// Register handles account registration for the POST /auth/register endpoint.
+// Register handles account registration for the POST /api/v1/auth/register endpoint.
 func (lc *Controller) Register(c *gin.Context) {
 	var req registerRequest
 	reqLog, err := lc.logger.WithContext(c.Request.Context())
 	if err != nil {
-		c.Status(http.StatusInternalServerError)
+		httpresponse.WriteInternalServerError(c)
 		return
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.Status(http.StatusBadRequest)
+		httpresponse.WriteInvalidRequest(c)
 		return
 	}
 
@@ -42,34 +43,19 @@ func (lc *Controller) Register(c *gin.Context) {
 	})
 	if err != nil {
 		if errors.Is(err, application.ErrEmailAlreadyExists) {
-			c.JSON(http.StatusBadRequest, errorResponse{
-				Error: errorDetail{
-					Code:    "email_already_exists",
-					Message: "このメールアドレスは既に登録されています。",
-				},
-			})
+			httpresponse.WriteError(c, http.StatusConflict, "email_already_exists", "このメールアドレスは既に登録されています。")
 			return
 		}
 		if errors.Is(err, application.ErrInvalidInput) {
-			c.JSON(http.StatusBadRequest, errorResponse{
-				Error: errorDetail{
-					Code:    "invalid_input",
-					Message: "入力値が不正です。",
-				},
-			})
+			httpresponse.WriteError(c, http.StatusBadRequest, "invalid_input", "入力値が不正です。")
 			return
 		}
 		if errors.Is(err, application.ErrMailSendFailed) {
-			c.JSON(http.StatusInternalServerError, errorResponse{
-				Error: errorDetail{
-					Code:    "mail_send_failed",
-					Message: "メール送信に失敗しました。しばらくしてから再度お試しください。",
-				},
-			})
+			httpresponse.WriteServiceUnavailable(c, "mail_send_failed", "メール送信に失敗しました。しばらくしてから再度お試しください。")
 			return
 		}
 		reqLog.Error("Register error", logger.Err(err))
-		c.Status(http.StatusInternalServerError)
+		httpresponse.WriteInternalServerError(c)
 		return
 	}
 

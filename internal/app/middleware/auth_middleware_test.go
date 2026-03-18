@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"business/internal/app/httpresponse"
 	"business/internal/auth/domain"
 	"business/internal/library/logger"
 	mocklibrary "business/test/mock/library"
@@ -45,6 +46,12 @@ func generateToken(secret string, userID uint, expiresAt time.Time) string {
 	return signedToken
 }
 
+func assertStandardErrorResponse(t *testing.T, resp *httptest.ResponseRecorder, status int, code, message string) {
+	t.Helper()
+	assert.Equal(t, status, resp.Code)
+	assert.JSONEq(t, `{"error":{"code":"`+code+`","message":"`+message+`"}}`, resp.Body.String())
+}
+
 func TestAuthMiddleware_Success(t *testing.T) {
 
 	secret := "test-secret"
@@ -63,13 +70,13 @@ func TestAuthMiddleware_Success(t *testing.T) {
 	router.GET("/protected", func(c *gin.Context) {
 		userID, exists := c.Get("userID")
 		if !exists {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "userID not found"})
+			httpresponse.AbortInternalServerError(c)
 			return
 		}
 
 		contextUserID, ok := logger.UserIDFromContext(c.Request.Context())
 		if !ok {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "context userID not found"})
+			httpresponse.AbortInternalServerError(c)
 			return
 		}
 
@@ -106,7 +113,7 @@ func TestAuthMiddleware_SuccessWithCookie(t *testing.T) {
 	router.GET("/protected", func(c *gin.Context) {
 		userID, exists := c.Get("userID")
 		if !exists {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "userID not found"})
+			httpresponse.AbortInternalServerError(c)
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"user_id": userID})
@@ -141,8 +148,7 @@ func TestAuthMiddleware_MissingTokenNoCredentials(t *testing.T) {
 
 	router.ServeHTTP(resp, req)
 
-	assert.Equal(t, http.StatusUnauthorized, resp.Code)
-	assert.JSONEq(t, `{"error":"missing token"}`, resp.Body.String())
+	assertStandardErrorResponse(t, resp, http.StatusUnauthorized, errorCodeMissingToken, errorMessageMissingToken)
 }
 
 func TestAuthMiddleware_IgnoresAuthorizationHeader(t *testing.T) {
@@ -165,8 +171,7 @@ func TestAuthMiddleware_IgnoresAuthorizationHeader(t *testing.T) {
 
 	router.ServeHTTP(resp, req)
 
-	assert.Equal(t, http.StatusUnauthorized, resp.Code)
-	assert.JSONEq(t, `{"error":"missing token"}`, resp.Body.String())
+	assertStandardErrorResponse(t, resp, http.StatusUnauthorized, errorCodeMissingToken, errorMessageMissingToken)
 }
 
 func TestAuthMiddleware_EmptyCookieValue(t *testing.T) {
@@ -187,8 +192,7 @@ func TestAuthMiddleware_EmptyCookieValue(t *testing.T) {
 
 	router.ServeHTTP(resp, req)
 
-	assert.Equal(t, http.StatusUnauthorized, resp.Code)
-	assert.JSONEq(t, `{"error":"missing token"}`, resp.Body.String())
+	assertStandardErrorResponse(t, resp, http.StatusUnauthorized, errorCodeMissingToken, errorMessageMissingToken)
 }
 
 func TestAuthMiddleware_SecretKeyNotSet(t *testing.T) {
@@ -209,8 +213,7 @@ func TestAuthMiddleware_SecretKeyNotSet(t *testing.T) {
 
 	router.ServeHTTP(resp, req)
 
-	assert.Equal(t, http.StatusInternalServerError, resp.Code)
-	assert.JSONEq(t, `{"error":"internal server error"}`, resp.Body.String())
+	assertStandardErrorResponse(t, resp, http.StatusInternalServerError, errorCodeInternalServerError, errorMessageInternalServerError)
 }
 
 func TestAuthMiddleware_InvalidSigningMethod(t *testing.T) {
@@ -241,8 +244,7 @@ func TestAuthMiddleware_InvalidSigningMethod(t *testing.T) {
 
 	router.ServeHTTP(resp, req)
 
-	assert.Equal(t, http.StatusUnauthorized, resp.Code)
-	assert.JSONEq(t, `{"error":"invalid token"}`, resp.Body.String())
+	assertStandardErrorResponse(t, resp, http.StatusUnauthorized, errorCodeInvalidToken, errorMessageInvalidToken)
 }
 
 func TestAuthMiddleware_ExpiredToken(t *testing.T) {
@@ -266,8 +268,7 @@ func TestAuthMiddleware_ExpiredToken(t *testing.T) {
 
 	router.ServeHTTP(resp, req)
 
-	assert.Equal(t, http.StatusUnauthorized, resp.Code)
-	assert.JSONEq(t, `{"error":"invalid token"}`, resp.Body.String())
+	assertStandardErrorResponse(t, resp, http.StatusUnauthorized, errorCodeInvalidToken, errorMessageInvalidToken)
 }
 
 func TestAuthMiddleware_InvalidToken(t *testing.T) {
@@ -288,8 +289,7 @@ func TestAuthMiddleware_InvalidToken(t *testing.T) {
 
 	router.ServeHTTP(resp, req)
 
-	assert.Equal(t, http.StatusUnauthorized, resp.Code)
-	assert.JSONEq(t, `{"error":"invalid token"}`, resp.Body.String())
+	assertStandardErrorResponse(t, resp, http.StatusUnauthorized, errorCodeInvalidToken, errorMessageInvalidToken)
 }
 
 func TestAuthMiddleware_EmailVerificationRequired(t *testing.T) {
@@ -316,9 +316,7 @@ func TestAuthMiddleware_EmailVerificationRequired(t *testing.T) {
 
 	router.ServeHTTP(resp, req)
 
-	assert.Equal(t, http.StatusUnauthorized, resp.Code)
-	assert.Contains(t, resp.Body.String(), "email_verification_required")
-	assert.Contains(t, resp.Body.String(), "メールアドレスの認証が完了していません")
+	assertStandardErrorResponse(t, resp, http.StatusUnauthorized, errorCodeEmailVerificationRequired, errorMessageEmailVerificationRequired)
 	users.AssertExpectations(t)
 }
 
@@ -331,10 +329,10 @@ func TestAuthMiddleware_SkipEmailVerificationForAuthPaths(t *testing.T) {
 	middleware := NewAuthMiddleware(osw, users, logger.NewNop())
 
 	testCases := []string{
-		"/auth/register",
-		"/auth/login",
-		"/auth/email/verify",
-		"/auth/email/resend",
+		"/api/v1/auth/register",
+		"/api/v1/auth/login",
+		"/api/v1/auth/email/verify",
+		"/api/v1/auth/email/resend",
 	}
 
 	for _, path := range testCases {
@@ -383,8 +381,7 @@ func TestAuthMiddleware_UserNotFoundDuringEmailVerificationCheck(t *testing.T) {
 
 	router.ServeHTTP(resp, req)
 
-	assert.Equal(t, http.StatusUnauthorized, resp.Code)
-	assert.JSONEq(t, `{"error":"user not found"}`, resp.Body.String())
+	assertStandardErrorResponse(t, resp, http.StatusUnauthorized, errorCodeUserNotFound, errorMessageUserNotFound)
 	users.AssertExpectations(t)
 }
 
@@ -406,7 +403,7 @@ func TestAuthMiddleware_MissingTokenLogsPermissionDenied(t *testing.T) {
 
 	router.ServeHTTP(resp, req)
 
-	assert.Equal(t, http.StatusUnauthorized, resp.Code)
+	assertStandardErrorResponse(t, resp, http.StatusUnauthorized, errorCodeMissingToken, errorMessageMissingToken)
 	if assert.Len(t, spy.entries, 1) {
 		assert.Equal(t, "info", spy.entries[0].level)
 		assert.Equal(t, "permission_denied", spy.entries[0].message)

@@ -11,6 +11,9 @@ import (
 )
 
 func NewRouter(g *gin.Engine, container *dig.Container, log logger.Interface) (*gin.Engine, error) {
+	g.GET("/api/v1", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
 	g.GET("/", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
@@ -25,15 +28,15 @@ func NewRouter(g *gin.Engine, container *dig.Container, log logger.Interface) (*
 		log.Error("failed to resolve auth controller or auth middleware", logger.Err(err))
 		return g, err
 	}
-	authGroup := g.Group("/auth")
-	{
-		authGroup.POST("/login", authController.Login)
-		authGroup.POST("/logout", authController.Logout)
-		authGroup.POST("/register", authController.Register)
-		authGroup.GET("/email/verify", authController.VerifyEmail)
-		authGroup.POST("/email/resend", authController.ResendVerificationEmail)
-		authGroup.GET("/check", authMiddleware.Authenticate(), authController.Check)
+	registerAuthRoutes := func(group *gin.RouterGroup) {
+		group.POST("/login", authController.Login)
+		group.POST("/logout", authController.Logout)
+		group.POST("/register", authController.Register)
+		group.POST("/email/verify", authController.VerifyEmail)
+		group.POST("/email/resend", authController.ResendVerificationEmail)
+		group.GET("/check", authMiddleware.Authenticate(), authController.Check)
 	}
+	registerAuthRoutes(g.Group("/api/v1/auth"))
 
 	return g, nil
 }

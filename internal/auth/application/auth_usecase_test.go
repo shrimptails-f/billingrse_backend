@@ -515,10 +515,10 @@ func TestAuthUseCase_ResendVerificationEmailSuccess(t *testing.T) {
 	repo.On("GetActiveTokenForUser", mock.Anything, uint(1), fixedTime).Return(domain.EmailVerificationToken{}, gorm.ErrRecordNotFound).Once()
 	repo.On("CreateEmailVerificationToken", mock.Anything, mock.Anything).Return(domain.EmailVerificationToken{ID: 2, UserID: 1, Token: "new-token"}, nil).Once()
 	mailer.On("SendVerificationEmail", mock.Anything, mock.Anything, mock.MatchedBy(func(url string) bool {
-		return url == "https://example.com/auth/email/verify?token=new-token"
+		return url == "https://example.com/signup/verify?token=new-token"
 	})).Return(nil).Once()
 
-	stubOS := mocklibrary.NewOsWrapperMock(map[string]string{"EMAIL_VERIFICATION_BASE_URL": "https://example.com"})
+	stubOS := mocklibrary.NewOsWrapperMock(map[string]string{"FRONT_DOMAIN": "https://example.com"})
 	uc := NewAuthUseCase(repo, stubOS, mailer, &stubClock{now: fixedTime})
 
 	err = uc.ResendVerificationEmail(context.Background(), domain.ResendVerificationRequest{
@@ -672,7 +672,7 @@ func TestAuthUseCase_ResendVerificationEmailMailSendFailed(t *testing.T) {
 	mailer.On("SendVerificationEmail", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("smtp error")).Once()
 	repo.On("DeleteTokenByID", mock.Anything, uint(2)).Return(nil).Once()
 
-	stubOS := mocklibrary.NewOsWrapperMock(map[string]string{"EMAIL_VERIFICATION_BASE_URL": "https://example.com"})
+	stubOS := mocklibrary.NewOsWrapperMock(map[string]string{"FRONT_DOMAIN": "https://example.com"})
 	uc := NewAuthUseCase(repo, stubOS, mailer, &stubClock{now: fixedTime})
 
 	err = uc.ResendVerificationEmail(context.Background(), domain.ResendVerificationRequest{

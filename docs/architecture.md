@@ -9,6 +9,10 @@
     - DI コンテナ: go.uber.org/dig
   </context>
 
+  <related_documents>
+    - HTTP API の詳細ルールは [こちら](./api_design.md) を参照してください
+  </related_documents>
+
   <directory_structure>
     <root_packages>
       - cmd/

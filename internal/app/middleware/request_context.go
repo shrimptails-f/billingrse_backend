@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"business/internal/app/httpresponse"
 	"business/internal/library/logger"
 	"business/internal/library/timewrapper"
 	"io"
@@ -31,7 +32,7 @@ func RequestID() gin.HandlerFunc {
 		c.Header(requestIDHeader, requestID)
 		requestCtx, err := logger.ContextWithRequestID(c.Request.Context(), requestID)
 		if err != nil {
-			c.AbortWithStatus(http.StatusInternalServerError)
+			httpresponse.AbortInternalServerError(c)
 			return
 		}
 
@@ -113,7 +114,7 @@ func Recovery(log logger.Interface) gin.HandlerFunc {
 			logger.HTTPStatusCode(http.StatusInternalServerError),
 			logger.StackTrace(),
 		)
-		c.AbortWithStatus(http.StatusInternalServerError)
+		httpresponse.AbortInternalServerError(c)
 	})
 }
 

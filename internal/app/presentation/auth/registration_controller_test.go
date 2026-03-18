@@ -32,10 +32,10 @@ func TestRegistrationController(t *testing.T) {
 
 		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
-		router.POST("/auth/register", controller.Register)
+		router.POST("/api/v1/auth/register", controller.Register)
 
 		reqBody := []byte(`{"email":"new@example.com","name":"New User","password":"password123"}`)
-		req := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewBuffer(reqBody))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBuffer(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		resp := httptest.NewRecorder()
 
@@ -53,16 +53,17 @@ func TestRegistrationController(t *testing.T) {
 		usecase := new(mockAuthUseCase)
 		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
-		router.POST("/auth/register", controller.Register)
+		router.POST("/api/v1/auth/register", controller.Register)
 
 		reqBody := []byte(`{"email":"invalid","name":"","password":""}`)
-		req := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewBuffer(reqBody))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBuffer(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		resp := httptest.NewRecorder()
 
 		router.ServeHTTP(resp, req)
 
 		assert.Equal(t, http.StatusBadRequest, resp.Code)
+		assert.JSONEq(t, `{"error":{"code":"invalid_request","message":"入力値が不正です。"}}`, resp.Body.String())
 		usecase.AssertExpectations(t)
 	})
 
@@ -73,17 +74,17 @@ func TestRegistrationController(t *testing.T) {
 
 		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
-		router.POST("/auth/register", controller.Register)
+		router.POST("/api/v1/auth/register", controller.Register)
 
 		reqBody := []byte(`{"email":"dup@example.com","name":"Dup","password":"password123"}`)
-		req := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewBuffer(reqBody))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBuffer(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		resp := httptest.NewRecorder()
 
 		router.ServeHTTP(resp, req)
 
-		assert.Equal(t, http.StatusBadRequest, resp.Code)
-		assert.Contains(t, resp.Body.String(), "email_already_exists")
+		assert.Equal(t, http.StatusConflict, resp.Code)
+		assert.JSONEq(t, `{"error":{"code":"email_already_exists","message":"このメールアドレスは既に登録されています。"}}`, resp.Body.String())
 		usecase.AssertExpectations(t)
 	})
 
@@ -94,17 +95,17 @@ func TestRegistrationController(t *testing.T) {
 
 		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
-		router.POST("/auth/register", controller.Register)
+		router.POST("/api/v1/auth/register", controller.Register)
 
 		reqBody := []byte(`{"email":"user@example.com","name":"User","password":"password123"}`)
-		req := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewBuffer(reqBody))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBuffer(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		resp := httptest.NewRecorder()
 
 		router.ServeHTTP(resp, req)
 
-		assert.Equal(t, http.StatusInternalServerError, resp.Code)
-		assert.Contains(t, resp.Body.String(), "mail_send_failed")
+		assert.Equal(t, http.StatusServiceUnavailable, resp.Code)
+		assert.JSONEq(t, `{"error":{"code":"mail_send_failed","message":"メール送信に失敗しました。しばらくしてから再度お試しください。"}}`, resp.Body.String())
 		usecase.AssertExpectations(t)
 	})
 
@@ -115,16 +116,17 @@ func TestRegistrationController(t *testing.T) {
 
 		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
-		router.POST("/auth/register", controller.Register)
+		router.POST("/api/v1/auth/register", controller.Register)
 
 		reqBody := []byte(`{"email":"user@example.com","name":"User","password":"password123"}`)
-		req := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewBuffer(reqBody))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBuffer(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		resp := httptest.NewRecorder()
 
 		router.ServeHTTP(resp, req)
 
 		assert.Equal(t, http.StatusInternalServerError, resp.Code)
+		assert.JSONEq(t, `{"error":{"code":"internal_server_error","message":"サーバー内部でエラーが発生しました。しばらくしてから再度お試しください。"}}`, resp.Body.String())
 		usecase.AssertExpectations(t)
 	})
 }

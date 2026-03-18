@@ -2,9 +2,19 @@ package v1_test
 
 import (
 	"context"
+	"testing"
 	"time"
 
+	"business/internal/app/middleware"
+	authpresentation "business/internal/app/presentation/auth"
+	v1 "business/internal/app/router"
 	"business/internal/auth/domain"
+	"business/internal/library/logger"
+	mocklibrary "business/test/mock/library"
+
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"go.uber.org/dig"
 )
 
 type stubAuthUserProvider struct{}
@@ -38,3 +48,59 @@ func (s *stubAuthUseCase) ResendVerificationEmail(ctx context.Context, req domai
 type stubAgentUsecase struct{}
 
 type stubEmailCredentialUsecase struct{}
+
+func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
+	t.Parallel()
+
+	g := gin.New()
+	container := dig.New()
+	osw := mocklibrary.NewOsWrapperMock(map[string]string{
+		"APP":            "local",
+		"DOMAIN":         "localhost",
+		"JWT_SECRET_KEY": "test-secret",
+	})
+	log := logger.NewNop()
+
+	err := container.Provide(func() *authpresentation.Controller {
+		return authpresentation.NewController(&stubAuthUseCase{}, log, osw)
+	})
+	assert.NoError(t, err)
+	err = container.Provide(func() *middleware.AuthMiddleware {
+		return middleware.NewAuthMiddleware(osw, &stubAuthUserProvider{}, log)
+	})
+	assert.NoError(t, err)
+
+	_, err = v1.NewRouter(g, container, log)
+	assert.NoError(t, err)
+
+	routes := map[string]struct{}{}
+	for _, route := range g.Routes() {
+		routes[route.Method+" "+route.Path] = struct{}{}
+	}
+
+	expectedRoutes := []string{
+		"GET /api/v1",
+		"GET /",
+		"POST /api/v1/auth/login",
+		"POST /api/v1/auth/logout",
+		"POST /api/v1/auth/register",
+		"POST /api/v1/auth/email/verify",
+		"POST /api/v1/auth/email/resend",
+		"GET /api/v1/auth/check",
+	}
+	for _, route := range expectedRoutes {
+		assert.Contains(t, routes, route)
+	}
+
+	unexpectedRoutes := []string{
+		"POST /auth/login",
+		"POST /auth/logout",
+		"POST /auth/register",
+		"POST /auth/email/verify",
+		"POST /auth/email/resend",
+		"GET /auth/check",
+	}
+	for _, route := range unexpectedRoutes {
+		assert.NotContains(t, routes, route)
+	}
+}
