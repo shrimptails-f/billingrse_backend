@@ -16,6 +16,7 @@
     - プレゼンテーション／アプリケーション／messaging 層は `oswrapper` を通じて環境変数を読む。`internal/library` 配下のみ `os.Getenv` を直接使用してよい。
     - ログは必ず `logger.Interface` を使い、`log.With(logger.String("component", ...))` でコンポーネント名を付与する。
     - `panic` は初期化失敗や不変条件を守るための最終手段（例: ロガー初期化、SMTP クライアント DI、mysql.Transactional の Begin 失敗）に限定し、ビジネスロジックは `error` で返却する。
+      - WEBサーバー起動前はENV取得等で失敗した場合はpanicとする。ENV取得等のラッパーは使用しなくてもOKとする。
     - テストは独立性を保ち、既存の `t.Parallel()` 方針や Red→Green→Refactor を意識する。
   </guiding_principles>
 
