@@ -41,6 +41,7 @@ TODO:
 ## ディレクトリ構成
 ### 詳細
 アーキテクチャ詳細は[こちら](./docs/architecture.md)を参照してください。
+HTTP API 設計ルールは[こちら](./docs/api_design.md)を参照してください。
 
 ## 開発・品質
 - テスト: `task test`（`go test -race -cover` + `coverage.html` 出力、`t.Parallel()` で並列安全性検証）

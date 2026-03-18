@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"business/internal/app/httpresponse"
 	"net/http"
 	"net/url"
 
@@ -41,6 +42,6 @@ func CsrfOriginCheck(allowedOrigins ...string) gin.HandlerFunc {
 			return
 		}
 
-		c.AbortWithStatus(http.StatusForbidden)
+		httpresponse.AbortForbidden(c, errorCodeCSRFOriginNotAllowed, errorMessageCSRFOriginNotAllowed)
 	}
 }

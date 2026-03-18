@@ -28,10 +28,10 @@ func TestLoginController(t *testing.T) {
 
 		controller := newTestControllerWithVars(usecase, log, map[string]string{"APP": "local"})
 		router := gin.New()
-		router.POST("/auth/login", controller.Login)
+		router.POST("/api/v1/auth/login", controller.Login)
 
 		reqBody := []byte(`{"email":"user@example.com","password":"password123"}`)
-		req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBuffer(reqBody))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBuffer(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		resp := httptest.NewRecorder()
 
@@ -63,17 +63,17 @@ func TestLoginController(t *testing.T) {
 		usecase := new(mockAuthUseCase)
 		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
-		router.POST("/auth/login", controller.Login)
+		router.POST("/api/v1/auth/login", controller.Login)
 
 		reqBody := []byte(`{"email":"","password":""}`)
-		req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBuffer(reqBody))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBuffer(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		resp := httptest.NewRecorder()
 
 		router.ServeHTTP(resp, req)
 
 		assert.Equal(t, http.StatusBadRequest, resp.Code)
-		assert.Empty(t, resp.Body.String())
+		assert.JSONEq(t, `{"error":{"code":"invalid_request","message":"入力値が不正です。"}}`, resp.Body.String())
 		usecase.AssertExpectations(t)
 	})
 
@@ -88,16 +88,17 @@ func TestLoginController(t *testing.T) {
 
 		controller := newTestController(usecase, log)
 		router := gin.New()
-		router.POST("/auth/login", controller.Login)
+		router.POST("/api/v1/auth/login", controller.Login)
 
 		reqBody := []byte(`{"email":"user@example.com","password":"wrong"}`)
-		req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBuffer(reqBody))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBuffer(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		resp := httptest.NewRecorder()
 
 		router.ServeHTTP(resp, req)
 
 		assert.Equal(t, http.StatusUnauthorized, resp.Code)
+		assert.JSONEq(t, `{"error":{"code":"invalid_credentials","message":"メールアドレスまたはパスワードが正しくありません。"}}`, resp.Body.String())
 		usecase.AssertExpectations(t)
 		if assert.Len(t, log.Entries, 1) {
 			assert.Equal(t, "info", log.Entries[0].Level)
@@ -115,16 +116,17 @@ func TestLoginController(t *testing.T) {
 
 		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
-		router.POST("/auth/login", controller.Login)
+		router.POST("/api/v1/auth/login", controller.Login)
 
 		reqBody := []byte(`{"email":"user@example.com","password":"password"}`)
-		req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBuffer(reqBody))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBuffer(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		resp := httptest.NewRecorder()
 
 		router.ServeHTTP(resp, req)
 
 		assert.Equal(t, http.StatusInternalServerError, resp.Code)
+		assert.JSONEq(t, `{"error":{"code":"internal_server_error","message":"サーバー内部でエラーが発生しました。しばらくしてから再度お試しください。"}}`, resp.Body.String())
 		usecase.AssertExpectations(t)
 	})
 }
@@ -133,9 +135,9 @@ func TestLogoutControllerClearsCookie(t *testing.T) {
 	t.Parallel()
 	controller := newTestController(new(mockAuthUseCase), newTestLogger())
 	router := gin.New()
-	router.POST("/auth/logout", controller.Logout)
+	router.POST("/api/v1/auth/logout", controller.Logout)
 
-	req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -158,9 +160,9 @@ func TestLogoutControllerMarksSecureWhenNeeded(t *testing.T) {
 	t.Parallel()
 	controller := newTestControllerWithVars(new(mockAuthUseCase), newTestLogger(), map[string]string{"APP": "production"})
 	router := gin.New()
-	router.POST("/auth/logout", controller.Logout)
+	router.POST("/api/v1/auth/logout", controller.Logout)
 
-	req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -180,9 +182,9 @@ func TestCheckController(t *testing.T) {
 			c.Set("userID", uint(123))
 			c.Next()
 		})
-		router.GET("/auth/check", controller.Check)
+		router.GET("/api/v1/auth/check", controller.Check)
 
-		req := httptest.NewRequest(http.MethodGet, "/auth/check", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/check", nil)
 		resp := httptest.NewRecorder()
 
 		router.ServeHTTP(resp, req)
@@ -195,15 +197,15 @@ func TestCheckController(t *testing.T) {
 		usecase := new(mockAuthUseCase)
 		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
-		router.GET("/auth/check", controller.Check)
+		router.GET("/api/v1/auth/check", controller.Check)
 
-		req := httptest.NewRequest(http.MethodGet, "/auth/check", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/check", nil)
 		resp := httptest.NewRecorder()
 
 		router.ServeHTTP(resp, req)
 
 		assert.Equal(t, http.StatusInternalServerError, resp.Code)
-		assert.Empty(t, resp.Body.String())
+		assert.JSONEq(t, `{"error":{"code":"internal_server_error","message":"サーバー内部でエラーが発生しました。しばらくしてから再度お試しください。"}}`, resp.Body.String())
 	})
 
 	t.Run("userID wrong type", func(t *testing.T) {
@@ -214,14 +216,14 @@ func TestCheckController(t *testing.T) {
 			c.Set("userID", "not-a-uint")
 			c.Next()
 		})
-		router.GET("/auth/check", controller.Check)
+		router.GET("/api/v1/auth/check", controller.Check)
 
-		req := httptest.NewRequest(http.MethodGet, "/auth/check", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/check", nil)
 		resp := httptest.NewRecorder()
 
 		router.ServeHTTP(resp, req)
 
 		assert.Equal(t, http.StatusInternalServerError, resp.Code)
-		assert.Empty(t, resp.Body.String())
+		assert.JSONEq(t, `{"error":{"code":"internal_server_error","message":"サーバー内部でエラーが発生しました。しばらくしてから再度お試しください。"}}`, resp.Body.String())
 	})
 }

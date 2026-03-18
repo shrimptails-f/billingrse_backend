@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"business/internal/app/httpresponse"
 	"business/internal/library/logger"
 	"context"
 	"net/http"
@@ -20,13 +21,13 @@ func TestRequestID_GeneratesRequestIDAndPropagatesToContext(t *testing.T) {
 	router.GET("/ping", func(c *gin.Context) {
 		requestID, exists := c.Get("request_id")
 		if !exists {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "request_id not found"})
+			httpresponse.AbortInternalServerError(c)
 			return
 		}
 
 		contextRequestID, ok := logger.RequestIDFromContext(c.Request.Context())
 		if !ok {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "context request_id not found"})
+			httpresponse.AbortInternalServerError(c)
 			return
 		}
 
@@ -70,6 +71,22 @@ func TestRequestID_UsesInboundRequestID(t *testing.T) {
 	assert.JSONEq(t, `{"request_id":"req-123","context_request_id":"req-123"}`, resp.Body.String())
 }
 
+func TestRecovery_WritesStandardErrorResponse(t *testing.T) {
+	router := gin.New()
+	router.Use(Recovery(logger.NewNop()))
+	router.GET("/panic", func(c *gin.Context) {
+		panic("boom")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/panic", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	assert.Equal(t, http.StatusInternalServerError, resp.Code)
+	assert.JSONEq(t, `{"error":{"code":"internal_server_error","message":"サーバー内部でエラーが発生しました。しばらくしてから再度お試しください。"}}`, resp.Body.String())
+}
+
 func TestRequestSummary_UsesContextFields(t *testing.T) {
 	router := gin.New()
 	router.Use(RequestID())
@@ -78,7 +95,7 @@ func TestRequestSummary_UsesContextFields(t *testing.T) {
 		c.Set("userID", uint(42))
 		requestCtx, err := logger.ContextWithUserID(c.Request.Context(), 42)
 		if err != nil {
-			c.Status(http.StatusInternalServerError)
+			httpresponse.AbortInternalServerError(c)
 			return
 		}
 

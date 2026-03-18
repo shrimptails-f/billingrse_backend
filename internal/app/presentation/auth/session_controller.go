@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"business/internal/app/httpresponse"
 	"business/internal/auth/application"
 	"business/internal/auth/domain"
 	"business/internal/library/logger"
@@ -20,12 +21,12 @@ type checkResponse struct {
 	UserID uint `json:"user_id"`
 }
 
-// Login handles the POST /auth/login endpoint.
+// Login handles the POST /api/v1/auth/login endpoint.
 func (lc *Controller) Login(c *gin.Context) {
 	var req loginRequest
 	reqLog, err := lc.logger.WithContext(c.Request.Context())
 	if err != nil {
-		c.Status(http.StatusInternalServerError)
+		httpresponse.WriteInternalServerError(c)
 		return
 	}
 
@@ -34,7 +35,7 @@ func (lc *Controller) Login(c *gin.Context) {
 			logger.String("reason", "invalid_request"),
 			logger.HTTPStatusCode(http.StatusBadRequest),
 		)
-		c.Status(http.StatusBadRequest)
+		httpresponse.WriteInvalidRequest(c)
 		return
 	}
 
@@ -48,7 +49,7 @@ func (lc *Controller) Login(c *gin.Context) {
 				logger.String("reason", "invalid_credentials"),
 				logger.HTTPStatusCode(http.StatusUnauthorized),
 			)
-			c.Status(http.StatusUnauthorized)
+			httpresponse.WriteError(c, http.StatusUnauthorized, "invalid_credentials", "メールアドレスまたはパスワードが正しくありません。")
 			return
 		}
 		reqLog.Error("login_failed",
@@ -56,7 +57,7 @@ func (lc *Controller) Login(c *gin.Context) {
 			logger.HTTPStatusCode(http.StatusInternalServerError),
 			logger.Err(err),
 		)
-		c.Status(http.StatusInternalServerError)
+		httpresponse.WriteInternalServerError(c)
 		return
 	}
 
@@ -68,7 +69,7 @@ func (lc *Controller) Login(c *gin.Context) {
 			logger.HTTPStatusCode(http.StatusInternalServerError),
 			logger.Err(err),
 		)
-		c.Status(http.StatusInternalServerError)
+		httpresponse.WriteInternalServerError(c)
 		return
 	}
 
@@ -79,7 +80,7 @@ func (lc *Controller) Login(c *gin.Context) {
 			logger.HTTPStatusCode(http.StatusInternalServerError),
 			logger.Err(err),
 		)
-		c.Status(http.StatusInternalServerError)
+		httpresponse.WriteInternalServerError(c)
 		return
 	}
 
@@ -134,25 +135,25 @@ func (lc *Controller) cookieDomain() (string, error) {
 	return domain, nil
 }
 
-// Logout handles the POST /auth/logout endpoint.
+// Logout handles the POST /api/v1/auth/logout endpoint.
 func (lc *Controller) Logout(c *gin.Context) {
 	reqLog, err := lc.logger.WithContext(c.Request.Context())
 	if err != nil {
-		c.Status(http.StatusInternalServerError)
+		httpresponse.WriteInternalServerError(c)
 		return
 	}
 
 	secure, err := lc.secureCookieEnabled()
 	if err != nil {
 		reqLog.Error("failed to determine cookie security", logger.Err(err))
-		c.Status(http.StatusInternalServerError)
+		httpresponse.WriteInternalServerError(c)
 		return
 	}
 
 	domain, err := lc.cookieDomain()
 	if err != nil {
 		reqLog.Error("failed to determine cookie domain", logger.Err(err))
-		c.Status(http.StatusInternalServerError)
+		httpresponse.WriteInternalServerError(c)
 		return
 	}
 
@@ -169,25 +170,25 @@ func (lc *Controller) Logout(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// Check handles the GET /auth/check endpoint.
+// Check handles the GET /api/v1/auth/check endpoint.
 func (lc *Controller) Check(c *gin.Context) {
 	reqLog, err := lc.logger.WithContext(c.Request.Context())
 	if err != nil {
-		c.Status(http.StatusInternalServerError)
+		httpresponse.WriteInternalServerError(c)
 		return
 	}
 
 	userID, exists := c.Get("userID")
 	if !exists {
 		reqLog.Error("Check error: userID not found in context")
-		c.Status(http.StatusInternalServerError)
+		httpresponse.WriteInternalServerError(c)
 		return
 	}
 
 	uid, ok := userID.(uint)
 	if !ok {
 		reqLog.Error("Check error: userID type assertion failed")
-		c.Status(http.StatusInternalServerError)
+		httpresponse.WriteInternalServerError(c)
 		return
 	}
 

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -18,7 +19,7 @@ import (
 func TestVerifyEmailController(t *testing.T) {
 	t.Parallel()
 
-	t.Run("success", func(t *testing.T) {
+	t.Run("POST success", func(t *testing.T) {
 		t.Parallel()
 		usecase := new(mockAuthUseCase)
 		now := time.Now()
@@ -34,9 +35,10 @@ func TestVerifyEmailController(t *testing.T) {
 
 		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
-		router.GET("/auth/email/verify", controller.VerifyEmail)
+		router.POST("/api/v1/auth/email/verify", controller.VerifyEmail)
 
-		req := httptest.NewRequest(http.MethodGet, "/auth/email/verify?token=valid-token-123", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/email/verify", bytes.NewBuffer([]byte(`{"token":"valid-token-123"}`)))
+		req.Header.Set("Content-Type", "application/json")
 		resp := httptest.NewRecorder()
 
 		router.ServeHTTP(resp, req)
@@ -48,81 +50,101 @@ func TestVerifyEmailController(t *testing.T) {
 		usecase.AssertExpectations(t)
 	})
 
-	t.Run("missing token", func(t *testing.T) {
+	t.Run("POST missing token", func(t *testing.T) {
 		t.Parallel()
 		usecase := new(mockAuthUseCase)
 		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
-		router.GET("/auth/email/verify", controller.VerifyEmail)
+		router.POST("/api/v1/auth/email/verify", controller.VerifyEmail)
 
-		req := httptest.NewRequest(http.MethodGet, "/auth/email/verify", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/email/verify", bytes.NewBuffer([]byte(`{}`)))
+		req.Header.Set("Content-Type", "application/json")
 		resp := httptest.NewRecorder()
 
 		router.ServeHTTP(resp, req)
 
 		assert.Equal(t, http.StatusBadRequest, resp.Code)
-		assert.Contains(t, resp.Body.String(), "missing_token")
-		assert.Contains(t, resp.Body.String(), "トークンが指定されていません")
+		assert.JSONEq(t, `{"error":{"code":"missing_token","message":"トークンが指定されていません。"}}`, resp.Body.String())
 		usecase.AssertExpectations(t)
 	})
 
-	t.Run("invalid token", func(t *testing.T) {
+	t.Run("POST invalid token", func(t *testing.T) {
 		t.Parallel()
 		usecase := new(mockAuthUseCase)
 		usecase.On("VerifyEmail", mock.Anything, mock.Anything).Return(domain.User{}, application.ErrInvalidToken).Once()
 
 		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
-		router.GET("/auth/email/verify", controller.VerifyEmail)
+		router.POST("/api/v1/auth/email/verify", controller.VerifyEmail)
 
-		req := httptest.NewRequest(http.MethodGet, "/auth/email/verify?token=invalid-token", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/email/verify", bytes.NewBuffer([]byte(`{"token":"invalid-token"}`)))
+		req.Header.Set("Content-Type", "application/json")
 		resp := httptest.NewRecorder()
 
 		router.ServeHTTP(resp, req)
 
 		assert.Equal(t, http.StatusBadRequest, resp.Code)
-		assert.Contains(t, resp.Body.String(), "invalid_token")
-		assert.Contains(t, resp.Body.String(), "無効なトークンです")
+		assert.JSONEq(t, `{"error":{"code":"invalid_token","message":"無効なトークンです。"}}`, resp.Body.String())
 		usecase.AssertExpectations(t)
 	})
 
-	t.Run("token expired", func(t *testing.T) {
+	t.Run("POST token expired", func(t *testing.T) {
 		t.Parallel()
 		usecase := new(mockAuthUseCase)
 		usecase.On("VerifyEmail", mock.Anything, mock.Anything).Return(domain.User{}, application.ErrTokenExpired).Once()
 
 		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
-		router.GET("/auth/email/verify", controller.VerifyEmail)
+		router.POST("/api/v1/auth/email/verify", controller.VerifyEmail)
 
-		req := httptest.NewRequest(http.MethodGet, "/auth/email/verify?token=expired-token", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/email/verify", bytes.NewBuffer([]byte(`{"token":"expired-token"}`)))
+		req.Header.Set("Content-Type", "application/json")
 		resp := httptest.NewRecorder()
 
 		router.ServeHTTP(resp, req)
 
-		assert.Equal(t, http.StatusBadRequest, resp.Code)
-		assert.Contains(t, resp.Body.String(), "token_expired")
-		assert.Contains(t, resp.Body.String(), "有効期限が切れています")
+		assert.Equal(t, http.StatusConflict, resp.Code)
+		assert.JSONEq(t, `{"error":{"code":"token_expired","message":"トークンの有効期限が切れています。再送信をお試しください。"}}`, resp.Body.String())
 		usecase.AssertExpectations(t)
 	})
 
-	t.Run("token already used", func(t *testing.T) {
+	t.Run("POST token already used", func(t *testing.T) {
 		t.Parallel()
 		usecase := new(mockAuthUseCase)
 		usecase.On("VerifyEmail", mock.Anything, mock.Anything).Return(domain.User{}, application.ErrTokenAlreadyUsed).Once()
 
 		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
-		router.GET("/auth/email/verify", controller.VerifyEmail)
+		router.POST("/api/v1/auth/email/verify", controller.VerifyEmail)
 
-		req := httptest.NewRequest(http.MethodGet, "/auth/email/verify?token=used-token", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/email/verify", bytes.NewBuffer([]byte(`{"token":"used-token"}`)))
+		req.Header.Set("Content-Type", "application/json")
 		resp := httptest.NewRecorder()
 
 		router.ServeHTTP(resp, req)
 
-		assert.Equal(t, http.StatusBadRequest, resp.Code)
-		assert.Contains(t, resp.Body.String(), "token_already_used")
-		assert.Contains(t, resp.Body.String(), "既に使用済みです")
+		assert.Equal(t, http.StatusConflict, resp.Code)
+		assert.JSONEq(t, `{"error":{"code":"token_already_used","message":"このトークンは既に使用済みです。"}}`, resp.Body.String())
+		usecase.AssertExpectations(t)
+	})
+
+	t.Run("POST internal error", func(t *testing.T) {
+		t.Parallel()
+		usecase := new(mockAuthUseCase)
+		usecase.On("VerifyEmail", mock.Anything, mock.Anything).Return(domain.User{}, errors.New("db error")).Once()
+
+		controller := newTestController(usecase, newTestLogger())
+		router := gin.New()
+		router.POST("/api/v1/auth/email/verify", controller.VerifyEmail)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/email/verify", bytes.NewBuffer([]byte(`{"token":"internal-error-token"}`)))
+		req.Header.Set("Content-Type", "application/json")
+		resp := httptest.NewRecorder()
+
+		router.ServeHTTP(resp, req)
+
+		assert.Equal(t, http.StatusInternalServerError, resp.Code)
+		assert.JSONEq(t, `{"error":{"code":"internal_server_error","message":"サーバー内部でエラーが発生しました。しばらくしてから再度お試しください。"}}`, resp.Body.String())
 		usecase.AssertExpectations(t)
 	})
 }
@@ -139,10 +161,10 @@ func TestResendVerificationEmailController(t *testing.T) {
 
 		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
-		router.POST("/auth/email/resend", controller.ResendVerificationEmail)
+		router.POST("/api/v1/auth/email/resend", controller.ResendVerificationEmail)
 
 		reqBody := []byte(`{"email":"test@example.com","password":"password123"}`)
-		req := httptest.NewRequest(http.MethodPost, "/auth/email/resend", bytes.NewBuffer(reqBody))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/email/resend", bytes.NewBuffer(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		resp := httptest.NewRecorder()
 
@@ -160,17 +182,17 @@ func TestResendVerificationEmailController(t *testing.T) {
 
 		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
-		router.POST("/auth/email/resend", controller.ResendVerificationEmail)
+		router.POST("/api/v1/auth/email/resend", controller.ResendVerificationEmail)
 
 		reqBody := []byte(`{"email":"test@example.com","password":"wrong"}`)
-		req := httptest.NewRequest(http.MethodPost, "/auth/email/resend", bytes.NewBuffer(reqBody))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/email/resend", bytes.NewBuffer(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		resp := httptest.NewRecorder()
 
 		router.ServeHTTP(resp, req)
 
 		assert.Equal(t, http.StatusUnauthorized, resp.Code)
-		assert.Contains(t, resp.Body.String(), "invalid_credentials")
+		assert.JSONEq(t, `{"error":{"code":"invalid_credentials","message":"メールアドレスまたはパスワードが正しくありません。"}}`, resp.Body.String())
 		usecase.AssertExpectations(t)
 	})
 
@@ -181,17 +203,17 @@ func TestResendVerificationEmailController(t *testing.T) {
 
 		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
-		router.POST("/auth/email/resend", controller.ResendVerificationEmail)
+		router.POST("/api/v1/auth/email/resend", controller.ResendVerificationEmail)
 
 		reqBody := []byte(`{"email":"verified@example.com","password":"password123"}`)
-		req := httptest.NewRequest(http.MethodPost, "/auth/email/resend", bytes.NewBuffer(reqBody))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/email/resend", bytes.NewBuffer(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		resp := httptest.NewRecorder()
 
 		router.ServeHTTP(resp, req)
 
-		assert.Equal(t, http.StatusBadRequest, resp.Code)
-		assert.Contains(t, resp.Body.String(), "already_verified")
+		assert.Equal(t, http.StatusForbidden, resp.Code)
+		assert.JSONEq(t, `{"error":{"code":"already_verified","message":"このメールアドレスは既に認証済みです。"}}`, resp.Body.String())
 		usecase.AssertExpectations(t)
 	})
 
@@ -202,17 +224,17 @@ func TestResendVerificationEmailController(t *testing.T) {
 
 		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
-		router.POST("/auth/email/resend", controller.ResendVerificationEmail)
+		router.POST("/api/v1/auth/email/resend", controller.ResendVerificationEmail)
 
 		reqBody := []byte(`{"email":"test@example.com","password":"password123"}`)
-		req := httptest.NewRequest(http.MethodPost, "/auth/email/resend", bytes.NewBuffer(reqBody))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/email/resend", bytes.NewBuffer(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		resp := httptest.NewRecorder()
 
 		router.ServeHTTP(resp, req)
 
 		assert.Equal(t, http.StatusTooManyRequests, resp.Code)
-		assert.Contains(t, resp.Body.String(), "rate_limit_exceeded")
+		assert.JSONEq(t, `{"error":{"code":"rate_limit_exceeded","message":"再送信の回数制限に達しました。15分後に再度お試しください。"}}`, resp.Body.String())
 		usecase.AssertExpectations(t)
 	})
 
@@ -223,17 +245,38 @@ func TestResendVerificationEmailController(t *testing.T) {
 
 		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
-		router.POST("/auth/email/resend", controller.ResendVerificationEmail)
+		router.POST("/api/v1/auth/email/resend", controller.ResendVerificationEmail)
 
 		reqBody := []byte(`{"email":"test@example.com","password":"password123"}`)
-		req := httptest.NewRequest(http.MethodPost, "/auth/email/resend", bytes.NewBuffer(reqBody))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/email/resend", bytes.NewBuffer(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		resp := httptest.NewRecorder()
+
+		router.ServeHTTP(resp, req)
+
+		assert.Equal(t, http.StatusServiceUnavailable, resp.Code)
+		assert.JSONEq(t, `{"error":{"code":"mail_send_failed","message":"メール送信に失敗しました。しばらくしてから再度お試しください。"}}`, resp.Body.String())
+		usecase.AssertExpectations(t)
+	})
+
+	t.Run("internal error", func(t *testing.T) {
+		t.Parallel()
+		usecase := new(mockAuthUseCase)
+		usecase.On("ResendVerificationEmail", mock.Anything, mock.Anything).Return(errors.New("db error")).Once()
+
+		controller := newTestController(usecase, newTestLogger())
+		router := gin.New()
+		router.POST("/api/v1/auth/email/resend", controller.ResendVerificationEmail)
+
+		reqBody := []byte(`{"email":"test@example.com","password":"password123"}`)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/email/resend", bytes.NewBuffer(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		resp := httptest.NewRecorder()
 
 		router.ServeHTTP(resp, req)
 
 		assert.Equal(t, http.StatusInternalServerError, resp.Code)
-		assert.Contains(t, resp.Body.String(), "mail_send_failed")
+		assert.JSONEq(t, `{"error":{"code":"internal_server_error","message":"サーバー内部でエラーが発生しました。しばらくしてから再度お試しください。"}}`, resp.Body.String())
 		usecase.AssertExpectations(t)
 	})
 }
