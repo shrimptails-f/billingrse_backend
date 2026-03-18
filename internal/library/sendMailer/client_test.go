@@ -1,7 +1,7 @@
 //go:build integration
 // +build integration
 
-package sendMailerClient
+package sendMailer
 
 import (
 	mocklibrary "business/test/mock/library"

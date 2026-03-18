@@ -3,22 +3,22 @@ package mailer
 import (
 	"business/internal/auth/domain"
 	"business/internal/library/logger"
-	"business/internal/library/sendMailerClient"
+	"business/internal/library/sendMailer"
 	"context"
 	"fmt"
 )
 
 // SMTPVerificationEmailSender sends verification emails via SMTP
 type SMTPVerificationEmailSender struct {
-	client sendMailerClient.Client
+	client sendMailer.Client
 	logger logger.Interface
 }
 
 // NewSMTPVerificationEmailSender creates a new SMTP email sender.
 // If logger is nil, it defaults to logger.NewNop().
-func NewSMTPVerificationEmailSender(client sendMailerClient.Client, log logger.Interface) *SMTPVerificationEmailSender {
+func NewSMTPVerificationEmailSender(client sendMailer.Client, log logger.Interface) *SMTPVerificationEmailSender {
 	if client == nil {
-		panic("mailer: sendMailerClient.Client is required")
+		panic("mailer: sendMailer.Client is required")
 	}
 	if log == nil {
 		log = logger.NewNop()
@@ -56,7 +56,7 @@ func (s *SMTPVerificationEmailSender) SendVerificationEmail(ctx context.Context,
 よろしくお願いいたします。
 `, user.Name.String(), verifyURL)
 
-	if err := s.client.Send(ctx, sendMailerClient.Message{
+	if err := s.client.Send(ctx, sendMailer.Message{
 		To:      user.Email.String(),
 		Subject: subject,
 		Body:    body,

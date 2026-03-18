@@ -21,7 +21,7 @@
           - middleware/           // JWT 認証や共通ミドルウェア
           - presentation/         // Controller・HTTP DTO・ローカル interface・Gin ベースのテスト
         - di/                     // dig モジュール（auth.go, agent.go, emailstore.go, messaging.go, presentation.go 等）
-        - library/                // 共通ラッパー: logger, mysql, gmail/gmailService, openai, oswrapper, ratelimit, redis, retry, sendMailerClient, crypto, timewrapper
+        - library/                // 共通ラッパー: logger, mysql, gmail/gmailService, openai, oswrapper, ratelimit, redis, retry, sendMailer, crypto, timewrapper
         - auth/                   // 認証ドメイン（domain/application/infrastructure）
         - agent/                  // AI エージェントトークン（domain/application/infrastructure）
         - emailcredential/        // Gmail OAuth 資格情報管理
@@ -145,7 +145,7 @@
       - `crypto`: HKDF ベースの Vault（agent / emailcredential で利用）。
       - `oswrapper`: 環境変数取得とファイル読み込みの抽象化。
       - `ratelimit`: Redis バックエンドのリミッター Provider（Gmail/OpenAI 用）。
-      - `redis`, `retry`, `sendMailerClient`, `timewrapper` などのユーティリティ。
+      - `redis`, `retry`, `sendMailer`, `timewrapper` などのユーティリティ。
     - 方針:
       - これらのライブラリパッケージはインフラ境界そのものであるため `os.Getenv` を直接利用してよい。アプリケーション/プレゼンテーション層は必ずラッパーの interface を DI で受け取る。
   </library_layer>

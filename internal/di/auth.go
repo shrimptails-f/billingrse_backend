@@ -8,7 +8,7 @@ import (
 	"business/internal/library/logger"
 	"business/internal/library/mysql"
 	"business/internal/library/oswrapper"
-	"business/internal/library/sendMailerClient"
+	"business/internal/library/sendMailer"
 	"business/internal/library/timewrapper"
 
 	"go.uber.org/dig"
@@ -20,11 +20,11 @@ func ProvideAuthDependencies(container *dig.Container) {
 		return infrastructure.NewRepository(conn.DB, log)
 	})
 
-	_ = container.Provide(func(osw *oswrapper.OsWrapper) sendMailerClient.Client {
-		return sendMailerClient.New(osw)
+	_ = container.Provide(func(osw *oswrapper.OsWrapper) sendMailer.Client {
+		return sendMailer.New(osw)
 	})
 
-	_ = container.Provide(func(client sendMailerClient.Client, log logger.Interface) application.VerificationEmailSender {
+	_ = container.Provide(func(client sendMailer.Client, log logger.Interface) application.VerificationEmailSender {
 		return mailer.NewSMTPVerificationEmailSender(client, log)
 	})
 
