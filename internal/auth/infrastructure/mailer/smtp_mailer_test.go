@@ -3,7 +3,7 @@ package mailer
 import (
 	"business/internal/auth/domain"
 	"business/internal/library/logger"
-	"business/internal/library/sendMailerClient"
+	"business/internal/library/sendMailer"
 	"context"
 	"errors"
 	"testing"
@@ -43,11 +43,11 @@ func TestSMTPVerificationEmailSender_SendVerificationEmail_ClientError(t *testin
 }
 
 type spySMTPClient struct {
-	msg sendMailerClient.Message
+	msg sendMailer.Message
 	err error
 }
 
-func (s *spySMTPClient) Send(ctx context.Context, msg sendMailerClient.Message) error {
+func (s *spySMTPClient) Send(ctx context.Context, msg sendMailer.Message) error {
 	s.msg = msg
 	return s.err
 }

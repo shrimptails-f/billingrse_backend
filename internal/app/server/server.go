@@ -112,7 +112,11 @@ func Run() {
 
 		c.Next()
 	})
-	router := v1.NewRouter(g, container, routerLogger)
+	router, err := v1.NewRouter(g, container, routerLogger)
+	if err != nil {
+		routerLogger.Error("failed to start router", logger.Err(err))
+		return
+	}
 	addr := ":8080"
 	serverLogger.Info("HTTP サーバーを起動します", logger.String("addr", addr))
 	router.Run(addr)

@@ -1,4 +1,4 @@
-package mocktools
+package mocklibrary
 
 import "fmt"
 
@@ -6,6 +6,7 @@ import "fmt"
 // for tests that need to control environment variables and file reads.
 type OsWrapperMock struct {
 	env         map[string]string
+	presentEnv  map[string]struct{}
 	files       map[string]string
 	readFileErr error
 }
@@ -13,8 +14,9 @@ type OsWrapperMock struct {
 // NewOsWrapperMock returns a mock initialized with the provided environment variables.
 func NewOsWrapperMock(env map[string]string) *OsWrapperMock {
 	mock := &OsWrapperMock{
-		env:   map[string]string{},
-		files: map[string]string{},
+		env:        map[string]string{},
+		presentEnv: map[string]struct{}{},
+		files:      map[string]string{},
 	}
 	return mock.WithEnv(env)
 }
@@ -29,7 +31,22 @@ func (m *OsWrapperMock) WithEnv(env map[string]string) *OsWrapperMock {
 	}
 	for k, v := range env {
 		m.env[k] = v
+		if v == "" {
+			delete(m.presentEnv, k)
+			continue
+		}
+		m.presentEnv[k] = struct{}{}
 	}
+	return m
+}
+
+// WithEnvValue registers a key as explicitly present, even when the value is empty.
+func (m *OsWrapperMock) WithEnvValue(key, value string) *OsWrapperMock {
+	if m == nil {
+		return m
+	}
+	m.env[key] = value
+	m.presentEnv[key] = struct{}{}
 	return m
 }
 
@@ -66,6 +83,9 @@ func (m *OsWrapperMock) ReadFile(path string) (string, error) {
 func (m *OsWrapperMock) GetEnv(key string) (string, error) {
 	if m == nil {
 		return "", fmt.Errorf("environment variable %s not set", key)
+	}
+	if _, ok := m.presentEnv[key]; ok {
+		return m.env[key], nil
 	}
 	if value, ok := m.env[key]; ok && value != "" {
 		return value, nil

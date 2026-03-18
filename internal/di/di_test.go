@@ -1,81 +1,99 @@
 package di
 
-// import (
-// 	"business/internal/app/presentation"
-// 	"business/internal/library/gmail"
-// 	"business/internal/library/gmailService"
-// 	"business/internal/library/logger"
-// 	"business/internal/library/mysql"
-// 	"business/internal/library/openai"
-// 	"business/internal/library/oswrapper"
-// 	"business/internal/library/ratelimit"
-// 	"business/internal/library/timewrapper"
-// 	"context"
-// 	"testing"
+import (
+	"business/internal/app/middleware"
+	authpresentation "business/internal/app/presentation/auth"
+	"business/internal/auth/application"
+	"business/internal/library/gmail"
+	"business/internal/library/gmailService"
+	"business/internal/library/logger"
+	"business/internal/library/mysql"
+	"business/internal/library/openai"
+	"business/internal/library/oswrapper"
+	"business/internal/library/ratelimit"
+	"business/internal/library/timewrapper"
+	"testing"
 
-// 	"github.com/stretchr/testify/assert"
-// )
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/dig"
+)
 
-// type noopLimiter struct{}
+type limiterDeps struct {
+	dig.In
 
-// func (n noopLimiter) Wait(ctx context.Context) error {
-// 	return nil
-// }
+	GmailLimiter  ratelimit.Limiter `name:"gmailLimiter"`
+	OpenAILimiter ratelimit.Limiter `name:"openaiLimiter"`
+}
 
-// func TestBuildContainer_NoError(t *testing.T) {
-// 	// ダミー（空実装）具象を生成
-// 	conn := &mysql.MySQL{}
-// 	oa := &openai.Client{}
-// 	gs := &gmailService.Client{}
-// 	gc := &gmail.Client{}
-// 	osw := &oswrapper.OsWrapper{}
+func newBuildContainerTestDeps() (*mysql.MySQL, *openai.Client, *gmailService.Client, *gmail.Client, *oswrapper.OsWrapper, *ratelimit.Provider, logger.Interface) {
+	conn := &mysql.MySQL{}
+	oa := &openai.Client{}
+	gs := &gmailService.Client{}
+	gc := &gmail.Client{}
+	osw := &oswrapper.OsWrapper{}
+	log := logger.NewNop()
+	provider := ratelimit.NewProvider(nil, timewrapper.NewClock(), osw, log)
 
-// 	log, err := logger.New("info")
-// 	assert.NoError(t, err)
+	return conn, oa, gs, gc, osw, provider, log
+}
 
-// 	provider := ratelimit.NewProvider(nil, timewrapper.NewClock(), osw, log)
+func TestProvideCommonDependencies_RegistersDependencies(t *testing.T) {
+	t.Parallel()
 
-// 	container := BuildContainer(conn, oa, gs, gc, osw, provider, log)
+	conn, oa, gs, gc, osw, provider, log := newBuildContainerTestDeps()
+	container := dig.New()
 
-// 	// invokeだけを行い、実行はしない（副作用なし）
-// 	err = container.Invoke(func(
-// 		_ *mysql.MySQL,
-// 		_ *openai.Client,
-// 		_ *gmailService.Client,
-// 		_ *oswrapper.OsWrapper,
-// 	) {
-// 		// 何もしない
-// 	})
+	ProvideCommonDependencies(container, conn, oa, gs, gc, osw, provider, log)
 
-// 	assert.NoError(t, err)
-// }
+	err := container.Invoke(func(
+		gotConn *mysql.MySQL,
+		gotOA *openai.Client,
+		gotGS *gmailService.Client,
+		gotGC *gmail.Client,
+		gotOSW *oswrapper.OsWrapper,
+		gotOSWInterface oswrapper.OsWapperInterface,
+		gotProvider *ratelimit.Provider,
+		gotLog logger.Interface,
+		gotClock timewrapper.ClockInterface,
+		limiters limiterDeps,
+	) {
+		require.NotNil(t, gotOSWInterface)
 
-// func TestBuildContainer_WithPresentationLayer(t *testing.T) {
-// 	// 必須の環境変数を設定
-// 	t.Setenv("AGENT_TOKEN_KEY_V1", "this-is-a-32-byte-key-material!!")
-// 	t.Setenv("AGENT_TOKEN_SALT", "agent-salt")
-// 	t.Setenv("EMAIL_TOKEN_KEY_V1", "this-is-a-32-byte-key-material!!")
-// 	t.Setenv("EMAIL_TOKEN_SALT", "email-salt")
+		resolvedOSW, ok := gotOSWInterface.(*oswrapper.OsWrapper)
+		require.True(t, ok)
 
-// 	// ダミー（空実装）具象を生成
-// 	conn := &mysql.MySQL{}
-// 	oa := &openai.Client{}
-// 	gs := &gmailService.Client{}
-// 	gc := &gmail.Client{}
-// 	osw := &oswrapper.OsWrapper{}
+		assert.Same(t, conn, gotConn)
+		assert.Same(t, oa, gotOA)
+		assert.Same(t, gs, gotGS)
+		assert.Same(t, gc, gotGC)
+		assert.Same(t, osw, gotOSW)
+		assert.Same(t, osw, resolvedOSW)
+		assert.Same(t, provider, gotProvider)
+		assert.Same(t, log, gotLog)
+		assert.NotNil(t, gotClock)
+		assert.NotNil(t, limiters.GmailLimiter)
+		assert.NotNil(t, limiters.OpenAILimiter)
+	})
 
-// 	log, err := logger.New("info")
-// 	assert.NoError(t, err)
+	require.NoError(t, err)
+}
 
-// 	provider := ratelimit.NewProvider(nil, timewrapper.NewClock(), osw, log)
+func TestBuildContainer_ResolvesAuthPresentation(t *testing.T) {
+	t.Parallel()
 
-// 	container := BuildContainer(conn, oa, gs, gc, osw, provider, log)
+	conn, oa, gs, gc, osw, provider, log := newBuildContainerTestDeps()
+	container := BuildContainer(conn, oa, gs, gc, osw, provider, log)
 
-// 	// presentation層の依存注入をテスト
-// 	err = container.Invoke(func(controller *presentation.AnalyzeEmailController) {
-// 		// controllerが正常に注入されることを確認
-// 		assert.NotNil(t, controller)
-// 	})
+	err := container.Invoke(func(
+		controller *authpresentation.Controller,
+		authMiddleware *middleware.AuthMiddleware,
+		usecase application.AuthUseCaseInterface,
+	) {
+		assert.NotNil(t, controller)
+		assert.NotNil(t, authMiddleware)
+		assert.NotNil(t, usecase)
+	})
 
-// 	assert.NoError(t, err)
-// }
+	require.NoError(t, err)
+}

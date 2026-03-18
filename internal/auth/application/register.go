@@ -30,8 +30,8 @@ func (uc *AuthUseCase) Register(ctx context.Context, req domain.RegisterRequest)
 	if err == nil {
 		return domain.User{}, ErrEmailAlreadyExists
 	}
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return domain.User{}, fmt.Errorf("failed to check existing user: %w", err)
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return domain.User{}, ErrFailedToCheckExists
 	}
 
 	passwordHash, err := domain.NewPasswordHashFromPlaintext(req.Password)
@@ -52,7 +52,7 @@ func (uc *AuthUseCase) Register(ctx context.Context, req domain.RegisterRequest)
 	}
 
 	// Check for existing active token
-	now := uc.clock()
+	now := uc.clock.Now()
 	existingToken, err := uc.repo.GetActiveTokenForUser(ctx, user.ID, now)
 	var tokenToUse domain.EmailVerificationToken
 

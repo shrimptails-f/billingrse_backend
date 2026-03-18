@@ -5,7 +5,6 @@ package redisclient
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,6 +12,7 @@ import (
 
 	"business/internal/library/oswrapper"
 	"business/internal/library/redis/script"
+	mocklibrary "business/test/mock/library"
 
 	"github.com/alicebob/miniredis/v2"
 	goredis "github.com/redis/go-redis/v9"
@@ -84,12 +84,9 @@ func TestNewClient_BuildsURLFromEnv(t *testing.T) {
 				mergedEnv[k] = v
 			}
 
-			osw := &stubOsWrapper{
-				vars: mergedEnv,
-				files: map[string]string{
-					scriptPath: "-- rate limit script",
-				},
-			}
+			osw := newRedisTestOsWrapper(mergedEnv, map[string]string{
+				scriptPath: "-- rate limit script",
+			})
 
 			clientInterface, err := New(Config{}, osw, nil)
 			require.NoError(t, err)
@@ -109,19 +106,16 @@ func TestNewClient_BuildsURLFromEnv(t *testing.T) {
 func TestNewClient_UsesProvidedURL(t *testing.T) {
 	t.Parallel()
 	scriptPath := "/tmp/rate_limit_stub.lua"
-	osw := &stubOsWrapper{
-		vars: map[string]string{
-			"REDIS_HOST":             "redis",
-			"REDIS_PORT":             "6379",
-			"REDIS_PASSWORD":         "redis_local_password",
-			"REDIS_DB":               "3",
-			"SCRIPT_SHA_RATE_LIMIT":  "test-sha",
-			"RATE_LIMIT_SCRIPT_PATH": scriptPath,
-		},
-		files: map[string]string{
-			scriptPath: "-- rate limit script",
-		},
-	}
+	osw := newRedisTestOsWrapper(map[string]string{
+		"REDIS_HOST":             "redis",
+		"REDIS_PORT":             "6379",
+		"REDIS_PASSWORD":         "redis_local_password",
+		"REDIS_DB":               "3",
+		"SCRIPT_SHA_RATE_LIMIT":  "test-sha",
+		"RATE_LIMIT_SCRIPT_PATH": scriptPath,
+	}, map[string]string{
+		scriptPath: "-- rate limit script",
+	})
 
 	clientInterface, err := New(Config{}, osw, nil)
 	require.NoError(t, err)
@@ -142,51 +136,19 @@ func TestNewClient_InvalidURL(t *testing.T) {
 	require.Error(t, err)
 }
 
-type stubOsWrapper struct {
-	vars  map[string]string
-	files map[string]string
-}
-
-func (s *stubOsWrapper) ReadFile(path string) (string, error) {
-	if s.files == nil {
-		return "", fmt.Errorf("file %s not configured", path)
-	}
-	if data, ok := s.files[path]; ok {
-		return data, nil
-	}
-	return "", fmt.Errorf("file %s not configured", path)
-}
-
-func (s *stubOsWrapper) GetEnv(key string) (string, error) {
-	if s.vars != nil {
-		if v, ok := s.vars[key]; ok {
-			return v, nil
+func newRedisTestOsWrapper(env, files map[string]string) *mocklibrary.OsWrapperMock {
+	osw := mocklibrary.NewOsWrapperMock(nil)
+	for key, value := range env {
+		if value == "" {
+			osw.WithEnvValue(key, value)
+			continue
 		}
+		osw.WithEnv(map[string]string{key: value})
 	}
-	return "", fmt.Errorf("environment variable %s not set", key)
-}
-
-type envOverrideOsWrapper struct {
-	base oswrapper.OsWapperInterface
-	env  map[string]string
-}
-
-func newEnvOverrideOsWrapper(env map[string]string) oswrapper.OsWapperInterface {
-	return &envOverrideOsWrapper{
-		base: oswrapper.New(nil),
-		env:  env,
+	for path, body := range files {
+		osw.WithFile(path, body)
 	}
-}
-
-func (m *envOverrideOsWrapper) ReadFile(path string) (string, error) {
-	return m.base.ReadFile(path)
-}
-
-func (m *envOverrideOsWrapper) GetEnv(key string) (string, error) {
-	if v, ok := m.env[key]; ok && v != "" {
-		return v, nil
-	}
-	return m.base.GetEnv(key)
+	return osw
 }
 
 // setupTestScriptFile creates a temporary rate_limit.lua script for testing and
@@ -203,9 +165,14 @@ func setupTestScriptFile(t *testing.T) string {
 	_, err = os.Stat(absPath)
 	require.NoError(t, err, "rate_limit.lua not found at %s", absPath)
 
+	body, err := os.ReadFile(absPath)
+	require.NoError(t, err, "failed to read rate_limit.lua")
+
 	// Override the os wrapper to return the custom script path
-	SetDefaultOsWrapper(newEnvOverrideOsWrapper(map[string]string{
+	SetDefaultOsWrapper(newRedisTestOsWrapper(map[string]string{
 		"RATE_LIMIT_SCRIPT_PATH": absPath,
+	}, map[string]string{
+		absPath: string(body),
 	}))
 	t.Cleanup(func() { SetDefaultOsWrapper(nil) })
 

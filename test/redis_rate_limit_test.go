@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	config "business/internal/library/ratelimit/config"
 	redisclient "business/internal/library/redis"
 	"business/internal/library/timewrapper"
+	mocklibrary "business/test/mock/library"
 
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
@@ -33,7 +35,7 @@ func TestRedisRateLimiter(t *testing.T) {
 	redisEnvTestMu.Lock()
 	defer redisEnvTestMu.Unlock()
 	envVars := loadRedisConnectionEnv()
-	redisEnvWrapper := newOverrideOsWrapper(envVars)
+	redisEnvWrapper := newRedisEnvWrapper(t, envVars)
 	redisclient.SetDefaultOsWrapper(redisEnvWrapper)
 	t.Cleanup(func() {
 		redisclient.SetDefaultOsWrapper(nil)
@@ -154,7 +156,7 @@ func TestRedisRateLimiter(t *testing.T) {
 	})
 
 	t.Run("returns error when Redis is unavailable", func(t *testing.T) {
-		invalidWrapper := newOverrideOsWrapper(map[string]string{
+		invalidWrapper := newRedisEnvWrapper(t, map[string]string{
 			"REDIS_HOST": "invalid-host",
 			"REDIS_PORT": "9999",
 			"REDIS_DB":   "0",
@@ -291,30 +293,29 @@ func loadRedisConnectionEnv() map[string]string {
 	}
 }
 
-type overrideOsWrapper struct {
-	base oswrapper.OsWapperInterface
-	vars map[string]string
-}
+func newRedisEnvWrapper(t *testing.T, vars map[string]string) *mocklibrary.OsWrapperMock {
+	t.Helper()
 
-func newOverrideOsWrapper(vars map[string]string) oswrapper.OsWapperInterface {
-	return &overrideOsWrapper{
-		base: oswrapper.New(nil),
-		vars: vars,
-	}
-}
+	scriptPath := filepath.Join("..", "internal", "library", "redis", "script", "scripts", "rate_limit.lua")
+	absPath, err := filepath.Abs(scriptPath)
+	require.NoError(t, err, "failed to resolve rate_limit.lua path")
 
-func (o *overrideOsWrapper) ReadFile(path string) (string, error) {
-	return o.base.ReadFile(path)
-}
+	body, err := os.ReadFile(absPath)
+	require.NoError(t, err, "failed to read rate_limit.lua")
 
-func (o *overrideOsWrapper) GetEnv(key string) (string, error) {
-	if v, ok := o.vars[key]; ok {
-		if v == "" {
-			return "", fmt.Errorf("environment variable %s not set", key)
+	osw := mocklibrary.NewOsWrapperMock(map[string]string{
+		"RATE_LIMIT_SCRIPT_PATH": absPath,
+	}).WithFile(absPath, string(body))
+
+	for key, value := range vars {
+		if value == "" {
+			osw.WithEnvValue(key, value)
+			continue
 		}
-		return v, nil
+		osw.WithEnv(map[string]string{key: value})
 	}
-	return o.base.GetEnv(key)
+
+	return osw
 }
 
 func envOrDefault(key, defaultValue string) string {

@@ -21,7 +21,7 @@
           - middleware/           // JWT 認証や共通ミドルウェア
           - presentation/         // Controller・HTTP DTO・ローカル interface・Gin ベースのテスト
         - di/                     // dig モジュール（auth.go, agent.go, emailstore.go, messaging.go, presentation.go 等）
-        - library/                // 共通ラッパー: logger, mysql, gmail/gmailService, openai, oswrapper, ratelimit, redis, retry, sendMailerClient, crypto, timewrapper
+        - library/                // 共通ラッパー: logger, mysql, gmail/gmailService, openai, oswrapper, ratelimit, redis, retry, sendMailer, crypto, timewrapper
         - auth/                   // 認証ドメイン（domain/application/infrastructure）
         - agent/                  // AI エージェントトークン（domain/application/infrastructure）
         - emailcredential/        // Gmail OAuth 資格情報管理
@@ -38,12 +38,12 @@
   <layers>
     <presentation>
       - 配置:
-        - internal/app/presentation（コントローラと HTTP DTO）
+        - internal/app/presentation/{feature}（機能別の controller と HTTP DTO）
         - internal/app/middleware（JWT 検証・ユーザー情報注入）
         - internal/app/router（ルート登録と dig 解決）
         - internal/app/server（プロセス起動）
       - 役割:
-        - Gin のリクエストをアプリケーション層 DTO に変換し、バリデーションを行った上で 1 Handler = 1 UseCase を呼び出す。
+        - Gin のリクエストをアプリケーション層 DTO に変換し、バリデーションを行った上で 1 controller method = 1 UseCase を呼び出す。
         - 受け取ったエラーを HTTP ステータスへマッピングし、logger.Interface で構造化ログを出力する。
         - 具体型ではなく振る舞いに依存したい場合は Controller 内で小さな interface を定義する（例: AgentUsecase）。
         - ミドルウェアは oswrapper 経由で JWT 秘密鍵を取得し、トークン検証後に `userID` を Gin コンテキストへ保存する。
@@ -145,7 +145,7 @@
       - `crypto`: HKDF ベースの Vault（agent / emailcredential で利用）。
       - `oswrapper`: 環境変数取得とファイル読み込みの抽象化。
       - `ratelimit`: Redis バックエンドのリミッター Provider（Gmail/OpenAI 用）。
-      - `redis`, `retry`, `sendMailerClient`, `timewrapper` などのユーティリティ。
+      - `redis`, `retry`, `sendMailer`, `timewrapper` などのユーティリティ。
     - 方針:
       - これらのライブラリパッケージはインフラ境界そのものであるため `os.Getenv` を直接利用してよい。アプリケーション/プレゼンテーション層は必ずラッパーの interface を DI で受け取る。
   </library_layer>

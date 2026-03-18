@@ -1,10 +1,10 @@
 //go:build integration
 // +build integration
 
-package sendMailerClient
+package sendMailer
 
 import (
-	mocktools "business/test/mock/tools"
+	mocklibrary "business/test/mock/library"
 	"context"
 	"errors"
 	"net/smtp"
@@ -14,7 +14,7 @@ import (
 )
 
 func TestSMTPClient_Send_UsesEnvConfig(t *testing.T) {
-	osw := mocktools.NewOsWrapperMock(map[string]string{
+	osw := mocklibrary.NewOsWrapperMock(map[string]string{
 		"SMTP_HOST":          "mailhog",
 		"SMTP_PORT":          "1025",
 		"EMAIL_FROM_ADDRESS": "custom@example.com",
@@ -53,7 +53,7 @@ func TestSMTPClient_Send_UsesEnvConfig(t *testing.T) {
 
 func TestSMTPClient_Send_ReturnsSendMailError(t *testing.T) {
 	expectedErr := errors.New("smtp failure")
-	osw := mocktools.NewOsWrapperMock(nil)
+	osw := mocklibrary.NewOsWrapperMock(nil)
 
 	client := &smtpClient{
 		osw: osw,
@@ -71,7 +71,7 @@ func TestSMTPClient_Send_ReturnsSendMailError(t *testing.T) {
 }
 
 func TestSMTPClient_Send_ContextCanceled(t *testing.T) {
-	osw := mocktools.NewOsWrapperMock(nil)
+	osw := mocklibrary.NewOsWrapperMock(nil)
 	client := &smtpClient{
 		osw: osw,
 		sendMail: func(string, smtp.Auth, string, []string, []byte) error {

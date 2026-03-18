@@ -1,4 +1,4 @@
-package sendMailerClient
+package sendMailer
 
 import "context"
 

@@ -1,4 +1,4 @@
-package presentation
+package auth
 
 import (
 	"bytes"
@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func TestRegisterHandler(t *testing.T) {
+func TestRegistrationController(t *testing.T) {
 	t.Parallel()
 
 	t.Run("success", func(t *testing.T) {
@@ -30,7 +30,7 @@ func TestRegisterHandler(t *testing.T) {
 			return req.Email == "new@example.com" && req.Name == "New User" && req.Password == "password123"
 		})).Return(user, nil).Once()
 
-		controller := newTestAuthController(usecase, newTestLogger())
+		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
 		router.POST("/auth/register", controller.Register)
 
@@ -51,7 +51,7 @@ func TestRegisterHandler(t *testing.T) {
 	t.Run("validation error", func(t *testing.T) {
 		t.Parallel()
 		usecase := new(mockAuthUseCase)
-		controller := newTestAuthController(usecase, newTestLogger())
+		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
 		router.POST("/auth/register", controller.Register)
 
@@ -71,7 +71,7 @@ func TestRegisterHandler(t *testing.T) {
 		usecase := new(mockAuthUseCase)
 		usecase.On("Register", mock.Anything, mock.Anything).Return(domain.User{}, application.ErrEmailAlreadyExists).Once()
 
-		controller := newTestAuthController(usecase, newTestLogger())
+		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
 		router.POST("/auth/register", controller.Register)
 
@@ -92,7 +92,7 @@ func TestRegisterHandler(t *testing.T) {
 		usecase := new(mockAuthUseCase)
 		usecase.On("Register", mock.Anything, mock.Anything).Return(domain.User{}, application.ErrMailSendFailed).Once()
 
-		controller := newTestAuthController(usecase, newTestLogger())
+		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
 		router.POST("/auth/register", controller.Register)
 
@@ -113,7 +113,7 @@ func TestRegisterHandler(t *testing.T) {
 		usecase := new(mockAuthUseCase)
 		usecase.On("Register", mock.Anything, mock.Anything).Return(domain.User{}, errors.New("db error")).Once()
 
-		controller := newTestAuthController(usecase, newTestLogger())
+		controller := newTestController(usecase, newTestLogger())
 		router := gin.New()
 		router.POST("/auth/register", controller.Register)
 

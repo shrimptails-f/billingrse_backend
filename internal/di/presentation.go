@@ -1,7 +1,7 @@
 package di
 
 import (
-	"business/internal/app/presentation"
+	authpresentation "business/internal/app/presentation/auth"
 	authapp "business/internal/auth/application"
 	"business/internal/library/logger"
 	"business/internal/library/oswrapper"
@@ -12,13 +12,13 @@ import (
 // ProvidePresentationDependencies プレゼンテーション層の依存注入設定
 func ProvidePresentationDependencies(container *dig.Container) {
 
-	// AuthControllerの依存注入
+	// Auth controller dependencies.
 	_ = container.Provide(func(
 		usecase authapp.AuthUseCaseInterface,
 		log logger.Interface,
 		osw oswrapper.OsWapperInterface,
-	) *presentation.AuthController {
-		return presentation.NewAuthController(usecase, log, osw)
+	) *authpresentation.Controller {
+		return authpresentation.NewController(usecase, log, osw)
 	})
 
 }
