@@ -38,10 +38,6 @@ func ProvideCommonDependencies(container *dig.Container, conn *mysql.MySQL, oa *
 		return osw
 	})
 
-	_ = container.Provide(func() oswrapper.OsWapperInterface {
-		return osw
-	})
-
 	// Rate limit provider
 	_ = container.Provide(func() *ratelimit.Provider {
 		return provider
@@ -51,16 +47,6 @@ func ProvideCommonDependencies(container *dig.Container, conn *mysql.MySQL, oa *
 		return log
 	})
 
-	// Gmail limiter (from provider)
-	_ = container.Provide(func(p *ratelimit.Provider) ratelimit.Limiter {
-		return p.GetGmailLimiter()
-	}, dig.Name("gmailLimiter"))
-
-	// OpenAI limiter (from provider)
-	_ = container.Provide(func(p *ratelimit.Provider) ratelimit.Limiter {
-		return p.GetOpenAILimiter()
-	}, dig.Name("openaiLimiter"))
-
 	// gorm.DB を提供 (agent などで必要)
 	_ = container.Provide(func() *gorm.DB {
 		return conn.DB
@@ -68,10 +54,6 @@ func ProvideCommonDependencies(container *dig.Container, conn *mysql.MySQL, oa *
 
 	// ClockInterface を提供
 	_ = container.Provide(func() *timewrapper.Clock {
-		return clock
-	})
-
-	_ = container.Provide(func() timewrapper.ClockInterface {
 		return clock
 	})
 }

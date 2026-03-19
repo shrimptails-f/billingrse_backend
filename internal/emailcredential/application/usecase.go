@@ -82,7 +82,7 @@ func NewUseCase(
 	osw oswrapper.OsWapperInterface,
 	clock timewrapper.ClockInterface,
 	log logger.Interface,
-) UseCaseInterface {
+) *UseCase {
 	if clock == nil {
 		clock = timewrapper.NewClock()
 	}

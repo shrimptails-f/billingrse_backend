@@ -15,19 +15,21 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+func init() {
+	gin.SetMode(gin.TestMode)
+}
+
 func setUserID(c *gin.Context, uid uint) {
 	c.Set("userID", uid)
 }
 
 func authorizeRouter(ctrl *Controller) *gin.Engine {
-	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.POST("/authorize", func(c *gin.Context) { setUserID(c, 1) }, ctrl.Authorize)
 	return r
 }
 
 func callbackRouter(ctrl *Controller) *gin.Engine {
-	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.POST("/callback", func(c *gin.Context) { setUserID(c, 1) }, ctrl.Callback)
 	return r
@@ -59,7 +61,6 @@ func TestAuthorize_401_no_user(t *testing.T) {
 	uc := new(mockUseCase)
 	ctrl := newTestController(uc)
 
-	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.POST("/authorize", ctrl.Authorize) // no userID set
 
@@ -127,7 +128,6 @@ func TestCallback_401_no_user(t *testing.T) {
 	uc := new(mockUseCase)
 	ctrl := newTestController(uc)
 
-	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.POST("/callback", ctrl.Callback) // no userID set
 
