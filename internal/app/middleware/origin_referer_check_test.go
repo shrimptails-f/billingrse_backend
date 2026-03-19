@@ -11,6 +11,7 @@ import (
 
 func TestCsrfOriginCheck_AllowsConfiguredOrigin(t *testing.T) {
 	router := gin.New()
+	gin.SetMode(gin.TestMode)
 	router.Use(CsrfOriginCheck("https://example.com"))
 	router.POST("/submit", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
@@ -28,6 +29,7 @@ func TestCsrfOriginCheck_AllowsConfiguredOrigin(t *testing.T) {
 
 func TestCsrfOriginCheck_AllowsConfiguredReferer(t *testing.T) {
 	router := gin.New()
+	gin.SetMode(gin.TestMode)
 	router.Use(CsrfOriginCheck("https://example.com"))
 	router.POST("/submit", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
@@ -45,6 +47,7 @@ func TestCsrfOriginCheck_AllowsConfiguredReferer(t *testing.T) {
 
 func TestCsrfOriginCheck_RejectsUnapprovedOriginWithStandardErrorResponse(t *testing.T) {
 	router := gin.New()
+	gin.SetMode(gin.TestMode)
 	router.Use(CsrfOriginCheck("https://example.com"))
 	router.POST("/submit", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)

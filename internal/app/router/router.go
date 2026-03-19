@@ -10,7 +10,7 @@ import (
 	"go.uber.org/dig"
 )
 
-func NewRouter(g *gin.Engine, container *dig.Container, log logger.Interface, allowedOrigins ...string) (*gin.Engine, error) {
+func NewRouter(g *gin.Engine, container *dig.Container, log logger.Interface, allowedOrigin string) (*gin.Engine, error) {
 	g.GET("/api/v1", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
@@ -36,9 +36,7 @@ func NewRouter(g *gin.Engine, container *dig.Container, log logger.Interface, al
 		group.GET("/check", authMiddleware.Authenticate(), authController.Check)
 
 		sessionGroup := group
-		if len(allowedOrigins) > 0 {
-			sessionGroup = group.Group("", middleware.CsrfOriginCheck(allowedOrigins...))
-		}
+		sessionGroup = group.Group("", middleware.CsrfOriginCheck(allowedOrigin))
 		sessionGroup.POST("/refresh", authController.Refresh)
 		sessionGroup.POST("/logout", authController.Logout)
 	}
