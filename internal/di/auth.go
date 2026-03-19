@@ -20,7 +20,7 @@ func ProvideAuthDependencies(container *dig.Container) {
 		return infrastructure.NewRepository(conn.DB, log)
 	})
 
-	_ = container.Provide(func(osw *oswrapper.OsWrapper) sendMailer.Client {
+	_ = container.Provide(func(osw *oswrapper.OsWrapper) *sendMailer.SmtpClient {
 		return sendMailer.New(osw)
 	})
 

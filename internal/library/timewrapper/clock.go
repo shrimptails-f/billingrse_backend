@@ -6,7 +6,7 @@ import "time"
 type Clock struct{}
 
 // NewClock creates a new Clock instance that uses real time operations.
-func NewClock() ClockInterface {
+func NewClock() *Clock {
 	return &Clock{}
 }
 

@@ -3,6 +3,7 @@ package v1
 import (
 	"business/internal/app/middleware"
 	authpresentation "business/internal/app/presentation/auth"
+	macpresentation "business/internal/app/presentation/mailaccountconnection"
 	"business/internal/library/logger"
 	"net/http"
 
@@ -41,6 +42,20 @@ func NewRouter(g *gin.Engine, container *dig.Container, log logger.Interface, al
 		sessionGroup.POST("/logout", authController.Logout)
 	}
 	registerAuthRoutes(g.Group("/api/v1/auth"))
+
+	// MailAccountConnection関連
+	var macController *macpresentation.Controller
+	if err := container.Invoke(func(mc *macpresentation.Controller) {
+		macController = mc
+	}); err != nil {
+		log.Error("failed to resolve mail account connection controller", logger.Err(err))
+		return g, err
+	}
+	registerMailAccountConnectionRoutes := func(group *gin.RouterGroup) {
+		group.POST("/gmail/authorize", authMiddleware.Authenticate(), macController.Authorize)
+		group.POST("/gmail/callback", authMiddleware.Authenticate(), macController.Callback)
+	}
+	registerMailAccountConnectionRoutes(g.Group("/api/v1/mail-account-connections"))
 
 	return g, nil
 }

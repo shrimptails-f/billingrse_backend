@@ -14,22 +14,22 @@ type Message struct {
 	Body    string
 }
 
-type smtpClient struct {
+type SmtpClient struct {
 	osw      oswrapper.OsWapperInterface
 	sendMail func(addr string, a smtp.Auth, from string, to []string, msg []byte) error
 }
 
 // New builds a production-ready SMTP client that fetches configuration
 // from the provided os wrapper.
-func New(osw oswrapper.OsWapperInterface) Client {
-	return &smtpClient{
+func New(osw oswrapper.OsWapperInterface) *SmtpClient {
+	return &SmtpClient{
 		osw:      osw,
 		sendMail: smtp.SendMail,
 	}
 }
 
 // Send composes and delivers the email based on environment configuration.
-func (c *smtpClient) Send(ctx context.Context, msg Message) error {
+func (c *SmtpClient) Send(ctx context.Context, msg Message) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}

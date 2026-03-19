@@ -15,7 +15,9 @@ import (
 )
 
 // ProvideCommonDependencies 共通の依存性（例：データベース接続など）を設定する関数
-func ProvideCommonDependencies(container *dig.Container, conn *mysql.MySQL, oa *openai.Client, gs *gmailService.Client, gc *gmail.Client, osw *oswrapper.OsWrapper, provider *ratelimit.Provider, log logger.Interface) {
+func ProvideCommonDependencies(container *dig.Container, conn *mysql.MySQL, oa *openai.Client, gs *gmailService.Client, gc *gmail.Client, osw *oswrapper.OsWrapper, provider *ratelimit.Provider, log *logger.Logger) {
+	clock := timewrapper.NewClock()
+
 	_ = container.Provide(func() *mysql.MySQL {
 		return conn
 	})
@@ -36,7 +38,7 @@ func ProvideCommonDependencies(container *dig.Container, conn *mysql.MySQL, oa *
 		return osw
 	})
 
-	_ = container.Provide(func(osw *oswrapper.OsWrapper) oswrapper.OsWapperInterface {
+	_ = container.Provide(func() oswrapper.OsWapperInterface {
 		return osw
 	})
 
@@ -45,7 +47,7 @@ func ProvideCommonDependencies(container *dig.Container, conn *mysql.MySQL, oa *
 		return provider
 	})
 
-	_ = container.Provide(func() logger.Interface {
+	_ = container.Provide(func() *logger.Logger {
 		return log
 	})
 
@@ -65,18 +67,25 @@ func ProvideCommonDependencies(container *dig.Container, conn *mysql.MySQL, oa *
 	})
 
 	// ClockInterface を提供
-	_ = container.Provide(func() timewrapper.ClockInterface {
-		return timewrapper.NewClock()
+	_ = container.Provide(func() *timewrapper.Clock {
+		return clock
 	})
 
-	// var wt ct.CustomTime
-	// _ = container.Provide(func() ct.WrapperTime {
-	// 	return wt
-	// })
+	_ = container.Provide(func() timewrapper.ClockInterface {
+		return clock
+	})
 }
 
 // BuildContainer すべての依存性を統合して設定するコンテナビルダー関数
-func BuildContainer(conn *mysql.MySQL, oa *openai.Client, gs *gmailService.Client, gc *gmail.Client, osw *oswrapper.OsWrapper, provider *ratelimit.Provider, log logger.Interface) *dig.Container {
+func BuildContainer(
+	conn *mysql.MySQL,
+	oa *openai.Client,
+	gs *gmailService.Client,
+	gc *gmail.Client,
+	osw *oswrapper.OsWrapper,
+	provider *ratelimit.Provider,
+	log *logger.Logger,
+) *dig.Container {
 	container := dig.New()
 
 	// 共通の依存性を登録
@@ -84,6 +93,7 @@ func BuildContainer(conn *mysql.MySQL, oa *openai.Client, gs *gmailService.Clien
 
 	// 各機能群の依存性を登録
 	ProvideAuthDependencies(container)
+	ProvideEmailCredentialDependencies(container)
 	// ProvideEmailAnalysisDependencies(container) // Use messaging abstraction instead
 	ProvidePresentationDependencies(container)
 

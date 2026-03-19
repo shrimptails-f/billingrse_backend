@@ -26,7 +26,7 @@ type limiterDeps struct {
 	OpenAILimiter ratelimit.Limiter `name:"openaiLimiter"`
 }
 
-func newBuildContainerTestDeps() (*mysql.MySQL, *openai.Client, *gmailService.Client, *gmail.Client, *oswrapper.OsWrapper, *ratelimit.Provider, logger.Interface) {
+func newBuildContainerTestDeps() (*mysql.MySQL, *openai.Client, *gmailService.Client, *gmail.Client, *oswrapper.OsWrapper, *ratelimit.Provider, *logger.Logger) {
 	conn := &mysql.MySQL{}
 	oa := &openai.Client{}
 	gs := &gmailService.Client{}
