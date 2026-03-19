@@ -7,8 +7,10 @@ import (
 
 	"business/internal/app/middleware"
 	authpresentation "business/internal/app/presentation/auth"
+	macpresentation "business/internal/app/presentation/mailaccountconnection"
 	v1 "business/internal/app/router"
 	"business/internal/auth/domain"
+	ecapp "business/internal/emailcredential/application"
 	"business/internal/library/logger"
 	mocklibrary "business/test/mock/library"
 
@@ -69,9 +71,18 @@ func (s *stubAuthUseCase) Logout(ctx context.Context, req domain.LogoutRequest) 
 	return nil
 }
 
-type stubAgentUsecase struct{}
-
 type stubEmailCredentialUsecase struct{}
+
+func (s *stubEmailCredentialUsecase) Authorize(ctx context.Context, userID uint) (ecapp.AuthorizeResult, error) {
+	return ecapp.AuthorizeResult{
+		AuthorizationURL: "https://accounts.google.com/o/oauth2/auth?state=test",
+		ExpiresAt:        time.Now().Add(10 * time.Minute),
+	}, nil
+}
+
+func (s *stubEmailCredentialUsecase) Callback(ctx context.Context, userID uint, code, state string) error {
+	return nil
+}
 
 func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 	t.Parallel()
@@ -91,6 +102,10 @@ func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 	assert.NoError(t, err)
 	err = container.Provide(func() *middleware.AuthMiddleware {
 		return middleware.NewAuthMiddleware(osw, &stubAuthUserProvider{}, log)
+	})
+	assert.NoError(t, err)
+	err = container.Provide(func() *macpresentation.Controller {
+		return macpresentation.NewController(&stubEmailCredentialUsecase{}, log)
 	})
 	assert.NoError(t, err)
 
@@ -113,6 +128,8 @@ func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 		"POST /api/v1/auth/email/verify",
 		"POST /api/v1/auth/email/resend",
 		"GET /api/v1/auth/check",
+		"POST /api/v1/mail-account-connections/gmail/authorize",
+		"POST /api/v1/mail-account-connections/gmail/callback",
 	}
 	for _, route := range expectedRoutes {
 		assert.Contains(t, routes, route)

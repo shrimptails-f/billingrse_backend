@@ -5,8 +5,9 @@ import "time"
 // EmailCredential represents the email_credentials table for storing encrypted email OAuth tokens
 type EmailCredential struct {
 	ID                  uint       `gorm:"primaryKey;autoIncrement"`
-	UserID              uint       `gorm:"not null;uniqueIndex:idx_email_credentials_user_type"`
-	Type                string     `gorm:"size:50;not null;uniqueIndex:idx_email_credentials_user_type"`
+	UserID              uint       `gorm:"not null;uniqueIndex:idx_email_credentials_user_type_gmail"`
+	Type                string     `gorm:"size:50;not null;uniqueIndex:idx_email_credentials_user_type_gmail"`
+	GmailAddress        string     `gorm:"size:255;not null;default:'';uniqueIndex:idx_email_credentials_user_type_gmail"`
 	KeyVersion          int16      `gorm:"not null;default:1"`
 	AccessToken         string     `gorm:"type:text;not null"`
 	AccessTokenDigest   string     `gorm:"type:text;not null"`

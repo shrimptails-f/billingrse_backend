@@ -1,0 +1,218 @@
+package infrastructure
+
+import (
+	"business/internal/emailcredential/domain"
+	"business/internal/library/logger"
+	"business/internal/library/mysql"
+	"context"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
+)
+
+type repoTestEnv struct {
+	repo   *Repository
+	db     *gorm.DB
+	clean  func() error
+	nowUTC time.Time
+}
+
+func newRepoTestEnv(t *testing.T) *repoTestEnv {
+	t.Helper()
+
+	mysqlConn, cleanup, err := mysql.CreateNewTestDB()
+	if err != nil {
+		skipIfDBUnavailable(t, err)
+	}
+	require.NoError(t, err)
+
+	err = mysqlConn.DB.AutoMigrate(&pendingStateRecord{}, &credentialRecord{})
+	require.NoError(t, err)
+
+	return &repoTestEnv{
+		repo:   NewRepository(mysqlConn.DB, logger.NewNop()),
+		db:     mysqlConn.DB,
+		clean:  cleanup,
+		nowUTC: time.Now().UTC().Truncate(time.Second),
+	}
+}
+
+func skipIfDBUnavailable(t *testing.T, err error) {
+	t.Helper()
+	if err == nil {
+		return
+	}
+	if strings.Contains(err.Error(), "dial tcp") || strings.Contains(err.Error(), "lookup mysql") {
+		t.Skipf("Skipping repository integration test: %v", err)
+	}
+}
+
+// --- Pending State tests ---
+
+func TestSavePendingState_And_FindByState(t *testing.T) {
+	env := newRepoTestEnv(t)
+	defer env.clean()
+	ctx := context.Background()
+
+	ps := domain.OAuthPendingState{
+		UserID:    1,
+		State:     "test-state-123",
+		ExpiresAt: env.nowUTC.Add(10 * time.Minute),
+		CreatedAt: env.nowUTC,
+	}
+
+	err := env.repo.SavePendingState(ctx, ps)
+	require.NoError(t, err)
+
+	found, err := env.repo.FindPendingStateByState(ctx, "test-state-123")
+	require.NoError(t, err)
+	assert.Equal(t, uint(1), found.UserID)
+	assert.Equal(t, "test-state-123", found.State)
+	assert.Nil(t, found.ConsumedAt)
+}
+
+func TestFindPendingStateByState_NotFound(t *testing.T) {
+	env := newRepoTestEnv(t)
+	defer env.clean()
+	ctx := context.Background()
+
+	_, err := env.repo.FindPendingStateByState(ctx, "nonexistent")
+	assert.ErrorIs(t, err, domain.ErrPendingStateNotFound)
+}
+
+func TestConsumePendingState(t *testing.T) {
+	env := newRepoTestEnv(t)
+	defer env.clean()
+	ctx := context.Background()
+
+	ps := domain.OAuthPendingState{
+		UserID:    1,
+		State:     "consume-me",
+		ExpiresAt: env.nowUTC.Add(10 * time.Minute),
+		CreatedAt: env.nowUTC,
+	}
+	require.NoError(t, env.repo.SavePendingState(ctx, ps))
+
+	found, err := env.repo.FindPendingStateByState(ctx, "consume-me")
+	require.NoError(t, err)
+
+	err = env.repo.ConsumePendingState(ctx, found.ID, env.nowUTC)
+	require.NoError(t, err)
+
+	// Verify consumed
+	consumed, err := env.repo.FindPendingStateByState(ctx, "consume-me")
+	require.NoError(t, err)
+	assert.NotNil(t, consumed.ConsumedAt)
+
+	// Double-consume should fail
+	err = env.repo.ConsumePendingState(ctx, found.ID, env.nowUTC)
+	assert.Error(t, err)
+}
+
+// --- Credential tests ---
+
+func TestCreateCredential_And_FindByUserAndGmail(t *testing.T) {
+	env := newRepoTestEnv(t)
+	defer env.clean()
+	ctx := context.Background()
+
+	cred := domain.EmailCredential{
+		UserID:             1,
+		Type:               "gmail",
+		GmailAddress:       "user@gmail.com",
+		KeyVersion:         1,
+		AccessToken:        "enc-access",
+		AccessTokenDigest:  "digest-access",
+		RefreshToken:       "enc-refresh",
+		RefreshTokenDigest: "digest-refresh",
+		TokenExpiry:        &env.nowUTC,
+		CreatedAt:          env.nowUTC,
+		UpdatedAt:          env.nowUTC,
+	}
+
+	err := env.repo.CreateCredential(ctx, cred)
+	require.NoError(t, err)
+
+	found, err := env.repo.FindCredentialByUserAndGmail(ctx, 1, "user@gmail.com")
+	require.NoError(t, err)
+	assert.Equal(t, "user@gmail.com", found.GmailAddress)
+	assert.Equal(t, "enc-access", found.AccessToken)
+	assert.Equal(t, "enc-refresh", found.RefreshToken)
+}
+
+func TestFindCredentialByUserAndGmail_NotFound(t *testing.T) {
+	env := newRepoTestEnv(t)
+	defer env.clean()
+	ctx := context.Background()
+
+	_, err := env.repo.FindCredentialByUserAndGmail(ctx, 999, "nope@gmail.com")
+	assert.ErrorIs(t, err, domain.ErrCredentialNotFound)
+}
+
+func TestFindCredentialByUserAndGmail_NormalizesAddress(t *testing.T) {
+	env := newRepoTestEnv(t)
+	defer env.clean()
+	ctx := context.Background()
+
+	cred := domain.EmailCredential{
+		UserID:             1,
+		Type:               "gmail",
+		GmailAddress:       "user@gmail.com",
+		KeyVersion:         1,
+		AccessToken:        "a",
+		AccessTokenDigest:  "a",
+		RefreshToken:       "r",
+		RefreshTokenDigest: "r",
+		CreatedAt:          env.nowUTC,
+		UpdatedAt:          env.nowUTC,
+	}
+	require.NoError(t, env.repo.CreateCredential(ctx, cred))
+
+	// Query with uppercase should still find it
+	found, err := env.repo.FindCredentialByUserAndGmail(ctx, 1, "USER@GMAIL.COM")
+	require.NoError(t, err)
+	assert.Equal(t, "user@gmail.com", found.GmailAddress)
+}
+
+func TestUpdateCredentialTokens(t *testing.T) {
+	env := newRepoTestEnv(t)
+	defer env.clean()
+	ctx := context.Background()
+
+	cred := domain.EmailCredential{
+		UserID:             1,
+		Type:               "gmail",
+		GmailAddress:       "update@gmail.com",
+		KeyVersion:         1,
+		AccessToken:        "old-access",
+		AccessTokenDigest:  "old-access-dig",
+		RefreshToken:       "old-refresh",
+		RefreshTokenDigest: "old-refresh-dig",
+		CreatedAt:          env.nowUTC,
+		UpdatedAt:          env.nowUTC,
+	}
+	require.NoError(t, env.repo.CreateCredential(ctx, cred))
+
+	found, err := env.repo.FindCredentialByUserAndGmail(ctx, 1, "update@gmail.com")
+	require.NoError(t, err)
+
+	newExpiry := env.nowUTC.Add(1 * time.Hour)
+	found.AccessToken = "new-access"
+	found.AccessTokenDigest = "new-access-dig"
+	found.RefreshToken = "new-refresh"
+	found.RefreshTokenDigest = "new-refresh-dig"
+	found.TokenExpiry = &newExpiry
+	found.UpdatedAt = env.nowUTC.Add(1 * time.Minute)
+
+	err = env.repo.UpdateCredentialTokens(ctx, found)
+	require.NoError(t, err)
+
+	updated, err := env.repo.FindCredentialByUserAndGmail(ctx, 1, "update@gmail.com")
+	require.NoError(t, err)
+	assert.Equal(t, "new-access", updated.AccessToken)
+	assert.Equal(t, "new-refresh", updated.RefreshToken)
+}

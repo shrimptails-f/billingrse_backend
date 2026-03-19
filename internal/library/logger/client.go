@@ -62,7 +62,7 @@ func New(level string, service string, environment string) (*Logger, error) {
 }
 
 // NewNop creates a no-op logger for testing that discards all log entries.
-func NewNop() Interface {
+func NewNop() *Logger {
 	return &Logger{base: zap.NewNop()}
 }
 

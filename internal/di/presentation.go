@@ -14,9 +14,9 @@ func ProvidePresentationDependencies(container *dig.Container) {
 
 	// Auth controller dependencies.
 	_ = container.Provide(func(
-		usecase authapp.AuthUseCaseInterface,
-		log logger.Interface,
-		osw oswrapper.OsWapperInterface,
+		usecase *authapp.AuthUseCase,
+		log *logger.Logger,
+		osw *oswrapper.OsWrapper,
 	) *authpresentation.Controller {
 		return authpresentation.NewController(usecase, log, osw)
 	})

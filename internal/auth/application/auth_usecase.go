@@ -117,7 +117,7 @@ type AuthUseCase struct {
 }
 
 // NewAuthUseCase creates a new AuthUseCase instance.
-func NewAuthUseCase(repo AuthRepository, osw oswrapper.OsWapperInterface, mailer VerificationEmailSender, clock timewrapper.ClockInterface) AuthUseCaseInterface {
+func NewAuthUseCase(repo AuthRepository, osw oswrapper.OsWapperInterface, mailer VerificationEmailSender, clock timewrapper.ClockInterface) *AuthUseCase {
 	if clock == nil {
 		clock = timewrapper.NewClock()
 	}

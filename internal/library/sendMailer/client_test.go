@@ -27,7 +27,7 @@ func TestSMTPClient_Send_UsesEnvConfig(t *testing.T) {
 		msg  []byte
 	}
 
-	client := &smtpClient{
+	client := &SmtpClient{
 		osw: osw,
 		sendMail: func(addr string, a smtp.Auth, from string, to []string, msg []byte) error {
 			captured.addr = addr
@@ -55,7 +55,7 @@ func TestSMTPClient_Send_ReturnsSendMailError(t *testing.T) {
 	expectedErr := errors.New("smtp failure")
 	osw := mocklibrary.NewOsWrapperMock(nil)
 
-	client := &smtpClient{
+	client := &SmtpClient{
 		osw: osw,
 		sendMail: func(string, smtp.Auth, string, []string, []byte) error {
 			return expectedErr
@@ -72,7 +72,7 @@ func TestSMTPClient_Send_ReturnsSendMailError(t *testing.T) {
 
 func TestSMTPClient_Send_ContextCanceled(t *testing.T) {
 	osw := mocklibrary.NewOsWrapperMock(nil)
-	client := &smtpClient{
+	client := &SmtpClient{
 		osw: osw,
 		sendMail: func(string, smtp.Auth, string, []string, []byte) error {
 			t.Fatal("sendMail should not be called")
