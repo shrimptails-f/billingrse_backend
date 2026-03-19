@@ -6,8 +6,8 @@ import (
 )
 
 var (
-	// ErrBillingEligibilityVendorNameEmpty is returned when the vendor name is missing.
-	ErrBillingEligibilityVendorNameEmpty = errors.New("billing eligibility vendor name is empty")
+	// ErrBillingEligibilityVendorUnresolved is returned when the vendor is not resolved yet.
+	ErrBillingEligibilityVendorUnresolved = errors.New("billing eligibility vendor is unresolved")
 	// ErrBillingEligibilityAmountEmpty is returned when the amount is missing.
 	ErrBillingEligibilityAmountEmpty = errors.New("billing eligibility amount is empty")
 	// ErrBillingEligibilityAmountInvalid is returned when the amount is invalid.
@@ -29,11 +29,14 @@ var (
 // BillingEligibility represents the policy to determine whether billing can be created.
 type BillingEligibility struct{}
 
-// Evaluate checks whether the parsed email satisfies the billing requirements.
-// It returns the first rule violation encountered.
-func (BillingEligibility) Evaluate(parsed ParsedEmail) error {
-	if parsed.VendorName == nil || strings.TrimSpace(*parsed.VendorName) == "" {
-		return ErrBillingEligibilityVendorNameEmpty
+// Evaluate checks whether the parsed email and vendor resolution satisfy the
+// billing requirements. It returns the first rule violation encountered.
+func (BillingEligibility) Evaluate(parsed ParsedEmail, resolution VendorResolution) error {
+	if err := resolution.Validate(); err != nil {
+		if errors.Is(err, ErrVendorResolutionUnresolved) {
+			return ErrBillingEligibilityVendorUnresolved
+		}
+		return err
 	}
 	if parsed.Amount == nil {
 		return ErrBillingEligibilityAmountEmpty
@@ -63,6 +66,6 @@ func (BillingEligibility) Evaluate(parsed ParsedEmail) error {
 }
 
 // IsEligible reports whether the parsed email passes the billing eligibility rules.
-func (e BillingEligibility) IsEligible(parsed ParsedEmail) bool {
-	return e.Evaluate(parsed) == nil
+func (e BillingEligibility) IsEligible(parsed ParsedEmail, resolution VendorResolution) bool {
+	return e.Evaluate(parsed, resolution) == nil
 }

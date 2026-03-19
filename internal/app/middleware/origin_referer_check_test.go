@@ -11,6 +11,7 @@ import (
 
 func TestCsrfOriginCheck_AllowsConfiguredOrigin(t *testing.T) {
 	router := gin.New()
+	gin.SetMode(gin.TestMode)
 	router.Use(CsrfOriginCheck("https://example.com"))
 	router.POST("/submit", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
@@ -26,8 +27,27 @@ func TestCsrfOriginCheck_AllowsConfiguredOrigin(t *testing.T) {
 	assert.Empty(t, resp.Body.String())
 }
 
+func TestCsrfOriginCheck_AllowsConfiguredReferer(t *testing.T) {
+	router := gin.New()
+	gin.SetMode(gin.TestMode)
+	router.Use(CsrfOriginCheck("https://example.com"))
+	router.POST("/submit", func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/submit", nil)
+	req.Header.Set("Referer", "https://example.com/form")
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	assert.Equal(t, http.StatusNoContent, resp.Code)
+	assert.Empty(t, resp.Body.String())
+}
+
 func TestCsrfOriginCheck_RejectsUnapprovedOriginWithStandardErrorResponse(t *testing.T) {
 	router := gin.New()
+	gin.SetMode(gin.TestMode)
 	router.Use(CsrfOriginCheck("https://example.com"))
 	router.POST("/submit", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)

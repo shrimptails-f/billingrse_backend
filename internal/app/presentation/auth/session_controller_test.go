@@ -22,9 +22,15 @@ func TestLoginController(t *testing.T) {
 		t.Parallel()
 		usecase := new(mockAuthUseCase)
 		log := newCapturingTestLogger()
-		usecase.On("Login", mock.Anything, mock.MatchedBy(func(req domain.LoginRequest) bool {
+		usecase.On("LoginTokens", mock.Anything, mock.MatchedBy(func(req domain.LoginRequest) bool {
 			return req.Email == "user@example.com" && req.Password == "password123"
-		})).Return("token", nil).Once()
+		})).Return(domain.AuthTokens{
+			AccessToken:           "access-token",
+			TokenType:             "Bearer",
+			ExpiresIn:             900,
+			RefreshToken:          "refresh-token",
+			RefreshTokenExpiresIn: 2592000,
+		}, nil).Once()
 
 		controller := newTestControllerWithVars(usecase, log, map[string]string{"APP": "local"})
 		router := gin.New()
@@ -37,17 +43,17 @@ func TestLoginController(t *testing.T) {
 
 		router.ServeHTTP(resp, req)
 
-		assert.Equal(t, http.StatusNoContent, resp.Code)
-		assert.Empty(t, resp.Body.String())
+		assert.Equal(t, http.StatusOK, resp.Code)
+		assert.JSONEq(t, `{"access_token":"access-token","token_type":"Bearer","expires_in":900}`, resp.Body.String())
 
 		setCookie := resp.Header().Get("Set-Cookie")
 		if assert.NotEmpty(t, setCookie) {
-			assert.Contains(t, setCookie, "access_token=token")
-			assert.Contains(t, setCookie, "Max-Age=86400")
-			assert.Contains(t, setCookie, "Path=/")
+			assert.Contains(t, setCookie, "refresh_token=refresh-token")
+			assert.Contains(t, setCookie, "Max-Age=2592000")
+			assert.Contains(t, setCookie, "Path=/api/v1/auth")
 			assert.Contains(t, setCookie, "Domain=localhost")
 			assert.Contains(t, setCookie, "HttpOnly")
-			assert.Contains(t, setCookie, "SameSite=Lax")
+			assert.Contains(t, setCookie, "SameSite=Strict")
 			assert.NotContains(t, setCookie, "Secure")
 		}
 
@@ -82,8 +88,8 @@ func TestLoginController(t *testing.T) {
 		usecase := new(mockAuthUseCase)
 		log := newCapturingTestLogger()
 		usecase.
-			On("Login", mock.Anything, mock.MatchedBy(func(req domain.LoginRequest) bool { return true })).
-			Return("", application.ErrInvalidCredentials).
+			On("LoginTokens", mock.Anything, mock.MatchedBy(func(req domain.LoginRequest) bool { return true })).
+			Return(domain.AuthTokens{}, application.ErrInvalidCredentials).
 			Once()
 
 		controller := newTestController(usecase, log)
@@ -110,8 +116,8 @@ func TestLoginController(t *testing.T) {
 		t.Parallel()
 		usecase := new(mockAuthUseCase)
 		usecase.
-			On("Login", mock.Anything, mock.MatchedBy(func(req domain.LoginRequest) bool { return true })).
-			Return("", errors.New("unexpected error")).
+			On("LoginTokens", mock.Anything, mock.MatchedBy(func(req domain.LoginRequest) bool { return true })).
+			Return(domain.AuthTokens{}, errors.New("unexpected error")).
 			Once()
 
 		controller := newTestController(usecase, newTestLogger())
@@ -131,46 +137,126 @@ func TestLoginController(t *testing.T) {
 	})
 }
 
-func TestLogoutControllerClearsCookie(t *testing.T) {
+func TestRefreshController(t *testing.T) {
 	t.Parallel()
-	controller := newTestController(new(mockAuthUseCase), newTestLogger())
-	router := gin.New()
-	router.POST("/api/v1/auth/logout", controller.Logout)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
-	resp := httptest.NewRecorder()
+	t.Run("success", func(t *testing.T) {
+		usecase := new(mockAuthUseCase)
+		log := newCapturingTestLogger()
+		usecase.On("Refresh", mock.Anything, mock.MatchedBy(func(req domain.RefreshRequest) bool {
+			return req.RefreshToken == "refresh-token"
+		})).Return(domain.AuthTokens{
+			AccessToken:           "new-access-token",
+			TokenType:             "Bearer",
+			ExpiresIn:             900,
+			RefreshToken:          "new-refresh-token",
+			RefreshTokenExpiresIn: 2592000,
+		}, nil).Once()
 
-	router.ServeHTTP(resp, req)
+		controller := newTestControllerWithVars(usecase, log, map[string]string{"APP": "local"})
+		router := gin.New()
+		router.POST("/api/v1/auth/refresh", controller.Refresh)
 
-	assert.Equal(t, http.StatusNoContent, resp.Code)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", nil)
+		req.AddCookie(&http.Cookie{Name: refreshTokenCookieName, Value: "refresh-token"})
+		resp := httptest.NewRecorder()
 
-	setCookie := resp.Header().Get("Set-Cookie")
-	if assert.NotEmpty(t, setCookie) {
-		assert.Contains(t, setCookie, "access_token=")
-		assert.Contains(t, setCookie, "Max-Age=0") // Max-Age is set to 0 when deleting
-		assert.Contains(t, setCookie, "Path=/")
-		assert.Contains(t, setCookie, "Domain=localhost")
-		assert.Contains(t, setCookie, "HttpOnly")
-		assert.Contains(t, setCookie, "SameSite=Lax")
-		assert.NotContains(t, setCookie, "Secure")
-	}
+		router.ServeHTTP(resp, req)
+
+		assert.Equal(t, http.StatusOK, resp.Code)
+		assert.JSONEq(t, `{"access_token":"new-access-token","token_type":"Bearer","expires_in":900}`, resp.Body.String())
+		setCookie := resp.Header().Get("Set-Cookie")
+		if assert.NotEmpty(t, setCookie) {
+			assert.Contains(t, setCookie, "refresh_token=new-refresh-token")
+			assert.Contains(t, setCookie, "Max-Age=2592000")
+			assert.Contains(t, setCookie, "SameSite=Strict")
+		}
+		usecase.AssertExpectations(t)
+		if assert.Len(t, log.Entries, 1) {
+			assert.Equal(t, "info", log.Entries[0].Level)
+			assert.Equal(t, "refresh_succeeded", log.Entries[0].Message)
+		}
+	})
+
+	t.Run("missing refresh token", func(t *testing.T) {
+		usecase := new(mockAuthUseCase)
+		controller := newTestController(usecase, newTestLogger())
+		router := gin.New()
+		router.POST("/api/v1/auth/refresh", controller.Refresh)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", nil)
+		resp := httptest.NewRecorder()
+
+		router.ServeHTTP(resp, req)
+
+		assert.Equal(t, http.StatusUnauthorized, resp.Code)
+		assert.JSONEq(t, `{"error":{"code":"missing_refresh_token","message":"リフレッシュトークンがありません。"}}`, resp.Body.String())
+	})
+
+	t.Run("invalid refresh token", func(t *testing.T) {
+		usecase := new(mockAuthUseCase)
+		usecase.On("Refresh", mock.Anything, mock.MatchedBy(func(req domain.RefreshRequest) bool {
+			return req.RefreshToken == "bad-token"
+		})).Return(domain.AuthTokens{}, application.ErrRefreshTokenInvalid).Once()
+
+		controller := newTestController(usecase, newTestLogger())
+		router := gin.New()
+		router.POST("/api/v1/auth/refresh", controller.Refresh)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", nil)
+		req.AddCookie(&http.Cookie{Name: refreshTokenCookieName, Value: "bad-token"})
+		resp := httptest.NewRecorder()
+
+		router.ServeHTTP(resp, req)
+
+		assert.Equal(t, http.StatusUnauthorized, resp.Code)
+		assert.JSONEq(t, `{"error":{"code":"invalid_refresh_token","message":"リフレッシュトークンが無効です。"}}`, resp.Body.String())
+		usecase.AssertExpectations(t)
+	})
 }
 
-func TestLogoutControllerMarksSecureWhenNeeded(t *testing.T) {
+func TestLogoutController(t *testing.T) {
 	t.Parallel()
-	controller := newTestControllerWithVars(new(mockAuthUseCase), newTestLogger(), map[string]string{"APP": "production"})
-	router := gin.New()
-	router.POST("/api/v1/auth/logout", controller.Logout)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
-	resp := httptest.NewRecorder()
+	t.Run("success", func(t *testing.T) {
+		usecase := new(mockAuthUseCase)
+		usecase.On("Logout", mock.Anything, mock.MatchedBy(func(req domain.LogoutRequest) bool {
+			return req.RefreshToken == "refresh-token"
+		})).Return(nil).Once()
 
-	router.ServeHTTP(resp, req)
+		controller := newTestControllerWithVars(usecase, newTestLogger(), map[string]string{"APP": "production"})
+		router := gin.New()
+		router.POST("/api/v1/auth/logout", controller.Logout)
 
-	setCookie := resp.Header().Get("Set-Cookie")
-	if assert.NotEmpty(t, setCookie) {
-		assert.Contains(t, setCookie, "Secure")
-	}
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
+		req.AddCookie(&http.Cookie{Name: refreshTokenCookieName, Value: "refresh-token"})
+		resp := httptest.NewRecorder()
+
+		router.ServeHTTP(resp, req)
+
+		assert.Equal(t, http.StatusNoContent, resp.Code)
+		setCookie := resp.Header().Get("Set-Cookie")
+		if assert.NotEmpty(t, setCookie) {
+			assert.Contains(t, setCookie, "refresh_token=")
+			assert.Contains(t, setCookie, "Max-Age=0")
+			assert.Contains(t, setCookie, "SameSite=Strict")
+			assert.Contains(t, setCookie, "Secure")
+		}
+		usecase.AssertExpectations(t)
+	})
+
+	t.Run("missing refresh token still clears cookie", func(t *testing.T) {
+		controller := newTestController(new(mockAuthUseCase), newTestLogger())
+		router := gin.New()
+		router.POST("/api/v1/auth/logout", controller.Logout)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
+		resp := httptest.NewRecorder()
+
+		router.ServeHTTP(resp, req)
+
+		assert.Equal(t, http.StatusNoContent, resp.Code)
+	})
 }
 
 func TestCheckController(t *testing.T) {

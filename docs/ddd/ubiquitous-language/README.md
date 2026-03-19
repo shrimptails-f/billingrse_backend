@@ -4,11 +4,12 @@
 - 事実／判断／仮説が混ざらないように整理済み
 
 
-# Ubiquitous Language Class Diagram
+# ユビキタス言語 クラス図
 
 ```mermaid
 classDiagram
   class User["ユーザー（User）"]
+  class EmailVerificationToken["メール認証トークン（EmailVerificationToken）"]
   class MailService["メールサービス（MailService）"]
   class MailAccountConnection["メールアカウント連携（MailAccountConnection）"]
   class MailFetch["メール取得（MailFetch）"]
@@ -18,6 +19,7 @@ classDiagram
   class FetchCondition["取得条件（FetchCondition）"]
   class Email["メール（Email）"]
   class ParsedEmail["メール解析結果（ParsedEmail）"]
+  class VendorResolution["支払先解決（VendorResolution）"]
   class BillingEligibility["請求成立判定（BillingEligibility）"]
   class Billing["請求（Billing）"]
   class Vendor["支払先（Vendor）"]
@@ -49,6 +51,11 @@ classDiagram
     + 判定する()
   }
 
+  class VendorResolution {
+    + 解決する()
+  }
+
+  <<policy>> VendorResolution
   <<concept>> MailFetch
   <<policy>> BillingEligibility
   <<enumeration>> PaymentCycle
@@ -57,6 +64,7 @@ classDiagram
   <<value_object>> InvoiceNumber
 
   User "1" --> "0..*" MailAccountConnection : 連携
+  User "1" --> "0..*" EmailVerificationToken : 認証
   User "1" --> "0..*" BatchSetting : 所有
   User "1" --> "0..*" Email : 所有
   User "1" --> "0..*" Billing : 所有
@@ -68,13 +76,16 @@ classDiagram
   MailFetch "1" o-- "0..*" MailFetchBatch : バッチ
 
   MailFetchBatch "1" --> "1" BatchSetting : 設定
-  BatchSetting "1" --> "1" FetchCondition : 取得条件
+  BatchSetting "1" *-- "1" FetchCondition : 取得条件
 
   ManualMailFetch --> Email : 取得
   MailFetchBatch --> Email : 取得
 
-  Email "1" --> "0..*" ParsedEmail : 解析結果
+  Email "1" *-- "0..*" ParsedEmail : 解析結果
+  ParsedEmail --> VendorResolution : 支払先候補
+  VendorResolution --> Vendor : 解決
   ParsedEmail --> BillingEligibility : 成立判定
+  BillingEligibility ..> VendorResolution : 解決結果を利用
   BillingEligibility --> Billing : 生成
 
   Billing --> Vendor : 支払先
@@ -83,7 +94,6 @@ classDiagram
   Billing *-- BillingNumber : 請求番号
   Billing *-- InvoiceNumber : インボイス番号
   Billing ..> Email : 参照元
-  Billing ..> ParsedEmail : 参照元
 ```
 
 ## カテゴリ別ファイル
@@ -93,36 +103,38 @@ classDiagram
 | [ユーザー系](user.md) | ユーザー（User）,ログイン（Login）,ログアウト（Logout）,ユーザー名（UserName）,メールアドレス（EmailAddress）,パスワード（Password）,パスワードハッシュ（PasswordHash）,メール認証（EmailVerification）,メール認証トークン（EmailVerificationToken） |
 | [メール連携/取得系](mail-integration-fetch.md) | メールサービス（MailService）,メールアカウント連携（MailAccountConnection）,メール取得（MailFetch）,手動メール取得（ManualMailFetch）,メール取得バッチ（MailFetchBatch）,バッチ設定（BatchSetting）,取得条件（FetchCondition） |
 | [メール/解析系](mail-analysis.md) | メール（Email）,メール解析結果（ParsedEmail）,請求成立判定（BillingEligibility） |
-| [請求/支払先系](billing-vendor.md) | 支払先（Vendor）,請求（Billing）,支払周期（PaymentCycle）,金額（Money）,請求番号（BillingNumber）,インボイス番号（InvoiceNumber） |
+| [請求/支払先系](billing-vendor.md) | 支払先（Vendor）,支払先解決（VendorResolution）,請求（Billing）,支払周期（PaymentCycle）,金額（Money）,請求番号（BillingNumber）,インボイス番号（InvoiceNumber） |
 
 ## 用語間の関係（言語レベル）
 
 ```
 ユーザー
-  ↓ 連携
-メールアカウント連携
-  ↓
-メール取得（手動メール取得/メール取得バッチ）
-  ↓
-メール
-  ↓ 解析
-メール解析結果
-  ↓ 請求成立判定
-請求
-  └─ 支払先
+  ├─ 認証
+  │   └─ メール認証トークン
+  ├─ 連携
+  │   └─ メールアカウント連携
+  │       └─ メールサービス
+  ├─ 所有
+  │   └─ バッチ設定
+  │       └─ 取得条件
+  ├─ 所有
+  │   └─ メール
+  │       └─ メール解析結果
+  └─ 所有
+      └─ 請求
+          └─ 支払先
 
-メールサービス
-  ↓ 連携
-メールアカウント連携
-  ↓
-メール取得（手動メール取得/メール取得バッチ）
-  ↓
-メール
-  ↓ 解析
+メール解析結果
+  ↓ 支払先解決
+支払先
+
 メール解析結果
   ↓ 請求成立判定
 請求
-  └─ 支払先
+  └─ 参照元として Email を持つ
+
+請求成立判定
+  └─ 支払先解決の結果を利用する
 ```
 
 ## 意図的に未定義としている言葉

@@ -102,7 +102,7 @@ func Run() {
 	g.Use(func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", frontDmain)
 		c.Header("Access-Control-Allow-Credentials", "true")
-		c.Header("Access-Control-Allow-Headers", "Content-Type")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 
 		if c.Request.Method == http.MethodOptions {
@@ -112,7 +112,7 @@ func Run() {
 
 		c.Next()
 	})
-	router, err := v1.NewRouter(g, container, routerLogger)
+	router, err := v1.NewRouter(g, container, routerLogger, frontDmain)
 	if err != nil {
 		routerLogger.Error("failed to start router", logger.Err(err))
 		return

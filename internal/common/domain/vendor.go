@@ -10,7 +10,7 @@ var (
 	ErrVendorNameEmpty = errors.New("vendor name is empty")
 )
 
-// Vendor represents a normalized billing vendor/service.
+// Vendor represents a canonical, normalized billing vendor/service.
 type Vendor struct {
 	ID   uint
 	Name string

@@ -13,6 +13,21 @@
 ### ルール
 - 表記揺れは Vendor に集約する
 - Vendor は請求より長寿命の概念
+- Vendor は ParsedEmail の生文字列から直接同一視しない
+
+## 支払先解決（VendorResolution）
+
+### 定義
+- ParsedEmail の支払先候補やメール由来の情報から、正規化済み Vendor を決定する処理
+
+### 説明
+- 表記揺れや AI 解析結果の揺らぎを吸収する
+- 送信元や既知の別名などを使って canonical な Vendor に寄せる
+
+### ルール
+- BillingEligibility とは別責務である
+- BillingEligibility は VendorResolution の結果を利用する
+- Vendor が未解決のまま Billing を確定しない
 
 ## 請求（Billing）
 
@@ -27,14 +42,17 @@
 - 金額（Money）
 - 請求日
 - 支払周期（単発 / 定期）
-- 参照元（Email / ParsedEmail）
+- 参照元（Email）
 ### 任意属性
 - インボイス番号（適格請求書発行事業者登録番号）
 
 ### ルール
 - 請求は必ず Vendor を持つ
-- 請求は必ず参照元を持つ
+- 請求は必ず Email を参照元として持つ
 - 請求は「支払われたかどうか」を表さない
+- 請求の同一性は「ユーザー + Vendor + 請求番号」で判定する
+- Billing に設定される Vendor は VendorResolution 済みの canonical な Vendor である
+- ParsedEmail は請求成立判定の根拠として保存されるが、Billing の参照元属性には含めない
 - 金額 / 請求番号 / インボイス番号は Billing 集約に内包される値オブジェクト
 
 ## 支払周期（PaymentCycle）

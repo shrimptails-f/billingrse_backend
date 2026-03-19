@@ -72,6 +72,14 @@ type AuthRepository interface {
 	GetLatestTokenForUser(ctx context.Context, userID uint) (domain.EmailVerificationToken, error)
 	// DeleteTokenByID deletes a token by ID
 	DeleteTokenByID(ctx context.Context, tokenID uint) error
+	// CreateRefreshToken stores a refresh token record.
+	CreateRefreshToken(ctx context.Context, token domain.RefreshToken) (domain.RefreshToken, error)
+	// FindActiveRefreshTokenByDigest retrieves an active refresh token by digest.
+	FindActiveRefreshTokenByDigest(ctx context.Context, digest string, now time.Time) (domain.RefreshToken, error)
+	// RotateRefreshToken revokes the current refresh token and stores a replacement.
+	RotateRefreshToken(ctx context.Context, currentID uint, next domain.RefreshToken, now time.Time) (domain.RefreshToken, error)
+	// RevokeRefreshTokenByDigest revokes the refresh token matching the digest.
+	RevokeRefreshTokenByDigest(ctx context.Context, digest string, now time.Time) error
 }
 
 // VerificationEmailSender defines the interface for sending verification emails
@@ -82,35 +90,43 @@ type VerificationEmailSender interface {
 
 // AuthUseCaseInterface defines the interface for login business logic
 type AuthUseCaseInterface interface {
-	// Login authenticates a user and returns a JWT token
+	// Login authenticates a user and returns a short-lived access token.
 	Login(ctx context.Context, req domain.LoginRequest) (string, error)
+	// LoginTokens authenticates a user and returns an access token plus a refresh token.
+	LoginTokens(ctx context.Context, req domain.LoginRequest) (domain.AuthTokens, error)
 	// Register creates a new user account.
 	Register(ctx context.Context, req domain.RegisterRequest) (domain.User, error)
 	// VerifyEmail verifies a user's email address using a token
 	VerifyEmail(ctx context.Context, req domain.VerifyEmailRequest) (domain.User, error)
 	// ResendVerificationEmail resends the verification email
 	ResendVerificationEmail(ctx context.Context, req domain.ResendVerificationRequest) error
+	// Refresh rotates the refresh token and returns a new access token plus refresh token.
+	Refresh(ctx context.Context, req domain.RefreshRequest) (domain.AuthTokens, error)
+	// Logout revokes the refresh token for the current session.
+	Logout(ctx context.Context, req domain.LogoutRequest) error
 }
 
 // AuthUseCase implements the login business logic
 type AuthUseCase struct {
-	repo     AuthRepository
-	osw      oswrapper.OsWapperInterface
-	tokenTTL time.Duration
-	mailer   VerificationEmailSender
-	clock    timewrapper.ClockInterface
+	repo            AuthRepository
+	osw             oswrapper.OsWapperInterface
+	tokenTTL        time.Duration
+	refreshTokenTTL time.Duration
+	mailer          VerificationEmailSender
+	clock           timewrapper.ClockInterface
 }
 
-// NewAuthUseCase creates a new AuthUseCase instance
+// NewAuthUseCase creates a new AuthUseCase instance.
 func NewAuthUseCase(repo AuthRepository, osw oswrapper.OsWapperInterface, mailer VerificationEmailSender, clock timewrapper.ClockInterface) AuthUseCaseInterface {
 	if clock == nil {
 		clock = timewrapper.NewClock()
 	}
 	return &AuthUseCase{
-		repo:     repo,
-		osw:      osw,
-		tokenTTL: defaultTokenTTL,
-		mailer:   mailer,
-		clock:    clock,
+		repo:            repo,
+		osw:             osw,
+		tokenTTL:        readDurationSecondsEnv(osw, "AUTH_ACCESS_TOKEN_TTL_SECONDS", defaultAccessTokenTTL),
+		refreshTokenTTL: readDurationSecondsEnv(osw, "AUTH_REFRESH_TOKEN_TTL_SECONDS", defaultRefreshTokenTTL),
+		mailer:          mailer,
+		clock:           clock,
 	}
 }

@@ -25,68 +25,76 @@ func TestBillingEligibility(t *testing.T) {
 		PaymentCycle:  &paymentCycle,
 	}
 
+	resolution := VendorResolution{
+		ResolvedVendor: &Vendor{Name: "Netflix"},
+	}
+
 	eligibility := BillingEligibility{}
-	if !eligibility.IsEligible(parsed) {
+	if !eligibility.IsEligible(parsed, resolution) {
 		t.Fatalf("expected parsed email to be eligible")
 	}
-	if err := eligibility.Evaluate(parsed); err != nil {
+	if err := eligibility.Evaluate(parsed, resolution); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	parsedMissingVendor := parsed
-	parsedMissingVendor.VendorName = nil
-	if err := eligibility.Evaluate(parsedMissingVendor); !errors.Is(err, ErrBillingEligibilityVendorNameEmpty) {
-		t.Fatalf("expected ErrBillingEligibilityVendorNameEmpty, got %v", err)
+	parsedMissingRawVendor := parsed
+	parsedMissingRawVendor.VendorName = nil
+	if err := eligibility.Evaluate(parsedMissingRawVendor, resolution); err != nil {
+		t.Fatalf("expected no error when resolved vendor exists, got %v", err)
+	}
+
+	if err := eligibility.Evaluate(parsed, VendorResolution{}); !errors.Is(err, ErrBillingEligibilityVendorUnresolved) {
+		t.Fatalf("expected ErrBillingEligibilityVendorUnresolved, got %v", err)
 	}
 
 	parsedMissingAmount := parsed
 	parsedMissingAmount.Amount = nil
-	if err := eligibility.Evaluate(parsedMissingAmount); !errors.Is(err, ErrBillingEligibilityAmountEmpty) {
+	if err := eligibility.Evaluate(parsedMissingAmount, resolution); !errors.Is(err, ErrBillingEligibilityAmountEmpty) {
 		t.Fatalf("expected ErrBillingEligibilityAmountEmpty, got %v", err)
 	}
 
 	parsedMissingCurrency := parsed
 	parsedMissingCurrency.Currency = nil
-	if err := eligibility.Evaluate(parsedMissingCurrency); !errors.Is(err, ErrBillingEligibilityCurrencyEmpty) {
+	if err := eligibility.Evaluate(parsedMissingCurrency, resolution); !errors.Is(err, ErrBillingEligibilityCurrencyEmpty) {
 		t.Fatalf("expected ErrBillingEligibilityCurrencyEmpty, got %v", err)
 	}
 
 	invalidCurrency := "jp"
 	parsedInvalidCurrency := parsed
 	parsedInvalidCurrency.Currency = &invalidCurrency
-	if err := eligibility.Evaluate(parsedInvalidCurrency); !errors.Is(err, ErrBillingEligibilityCurrencyInvalid) {
+	if err := eligibility.Evaluate(parsedInvalidCurrency, resolution); !errors.Is(err, ErrBillingEligibilityCurrencyInvalid) {
 		t.Fatalf("expected ErrBillingEligibilityCurrencyInvalid, got %v", err)
 	}
 
 	parsedMissingBillingDate := parsed
 	parsedMissingBillingDate.BillingDate = nil
-	if err := eligibility.Evaluate(parsedMissingBillingDate); !errors.Is(err, ErrBillingEligibilityBillingDateEmpty) {
+	if err := eligibility.Evaluate(parsedMissingBillingDate, resolution); !errors.Is(err, ErrBillingEligibilityBillingDateEmpty) {
 		t.Fatalf("expected ErrBillingEligibilityBillingDateEmpty, got %v", err)
 	}
 
 	parsedMissingPaymentCycle := parsed
 	parsedMissingPaymentCycle.PaymentCycle = nil
-	if err := eligibility.Evaluate(parsedMissingPaymentCycle); !errors.Is(err, ErrBillingEligibilityPaymentCycleEmpty) {
+	if err := eligibility.Evaluate(parsedMissingPaymentCycle, resolution); !errors.Is(err, ErrBillingEligibilityPaymentCycleEmpty) {
 		t.Fatalf("expected ErrBillingEligibilityPaymentCycleEmpty, got %v", err)
 	}
 
 	invalidCycle := "weekly"
 	parsedInvalidCycle := parsed
 	parsedInvalidCycle.PaymentCycle = &invalidCycle
-	if err := eligibility.Evaluate(parsedInvalidCycle); !errors.Is(err, ErrBillingEligibilityPaymentCycleInvalid) {
+	if err := eligibility.Evaluate(parsedInvalidCycle, resolution); !errors.Is(err, ErrBillingEligibilityPaymentCycleInvalid) {
 		t.Fatalf("expected ErrBillingEligibilityPaymentCycleInvalid, got %v", err)
 	}
 
 	parsedMissingBillingNumber := parsed
 	parsedMissingBillingNumber.BillingNumber = nil
-	if err := eligibility.Evaluate(parsedMissingBillingNumber); !errors.Is(err, ErrBillingEligibilityBillingNumberEmpty) {
+	if err := eligibility.Evaluate(parsedMissingBillingNumber, resolution); !errors.Is(err, ErrBillingEligibilityBillingNumberEmpty) {
 		t.Fatalf("expected ErrBillingEligibilityBillingNumberEmpty, got %v", err)
 	}
 
 	invalidAmount := -10.0
 	parsedInvalidAmount := parsed
 	parsedInvalidAmount.Amount = &invalidAmount
-	if err := eligibility.Evaluate(parsedInvalidAmount); !errors.Is(err, ErrBillingEligibilityAmountInvalid) {
+	if err := eligibility.Evaluate(parsedInvalidAmount, resolution); !errors.Is(err, ErrBillingEligibilityAmountInvalid) {
 		t.Fatalf("expected ErrBillingEligibilityAmountInvalid, got %v", err)
 	}
 }

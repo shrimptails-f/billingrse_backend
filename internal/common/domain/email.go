@@ -92,7 +92,8 @@ func (e *Email) AppendParsedEmail(parsed ParsedEmail) {
 }
 
 // ParsedEmail represents the analyzed, structured data derived from an Email.
-// It does not represent a final billing decision.
+// VendorName is a candidate extracted by AI and not a canonical Vendor.
+// ParsedEmail does not represent a final billing decision.
 type ParsedEmail struct {
 	VendorName    *string    `json:"vendorName"`
 	BillingNumber *string    `json:"billingNumber"`

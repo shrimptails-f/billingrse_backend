@@ -8,12 +8,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func CsrfOriginCheck(allowedOrigins ...string) gin.HandlerFunc {
-	allow := make(map[string]struct{}, len(allowedOrigins))
-	for _, o := range allowedOrigins {
-		allow[o] = struct{}{}
+func CsrfOriginCheck(allowedOrigin string) gin.HandlerFunc {
+	allow := make(map[string]struct{}, len(allowedOrigin))
+	if allowedOrigin != "" {
+		allow[allowedOrigin] = struct{}{}
 	}
-
 	ok := func(v string) bool {
 		if v == "" {
 			return false
