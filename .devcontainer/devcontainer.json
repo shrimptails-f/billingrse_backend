@@ -9,6 +9,7 @@
             "extensions": [
                 "editorconfig.editorconfig", // エディタを跨いだ共通設定ファイルをVsCodeで実行するのに必要
                 "ms-azuretools.vscode-docker", // VsCodeでのIntelliSenseやタブ補完用
+                "bierner.markdown-mermaid", // mermaidプレビュー用
                 "golang.go" // Go言語の拡張機能
             ]
         }
