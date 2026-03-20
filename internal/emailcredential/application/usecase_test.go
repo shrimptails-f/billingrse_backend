@@ -40,6 +40,12 @@ func (m *mockRepo) FindCredentialByUserAndGmail(ctx context.Context, userID uint
 	return args.Get(0).(domain.EmailCredential), args.Error(1)
 }
 
+func (m *mockRepo) ListCredentialsByUser(ctx context.Context, userID uint) ([]domain.EmailCredential, error) {
+	args := m.Called(ctx, userID)
+	credentials, _ := args.Get(0).([]domain.EmailCredential)
+	return credentials, args.Error(1)
+}
+
 func (m *mockRepo) CreateCredential(ctx context.Context, cred domain.EmailCredential) error {
 	args := m.Called(ctx, cred)
 	return args.Error(0)
@@ -111,6 +117,23 @@ func testToken() *oauth2.Token {
 		AccessToken:  "access-tok",
 		RefreshToken: "refresh-tok",
 		Expiry:       time.Date(2026, 3, 19, 13, 0, 0, 0, time.UTC),
+	}
+}
+
+func testListCredential(id uint, provider string, accountIdentifier string, createdAt time.Time) domain.EmailCredential {
+	return domain.EmailCredential{
+		ID:                 id,
+		UserID:             1,
+		Type:               provider,
+		GmailAddress:       accountIdentifier,
+		KeyVersion:         1,
+		AccessToken:        "unused-access-token",
+		AccessTokenDigest:  "unused-access-token-digest",
+		RefreshToken:       "unused-refresh-token",
+		RefreshTokenDigest: "unused-refresh-token-digest",
+		TokenExpiry:        nil,
+		CreatedAt:          createdAt,
+		UpdatedAt:          createdAt.Add(5 * time.Minute),
 	}
 }
 
@@ -444,5 +467,59 @@ func TestCallback_CredentialLookup_DBError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to look up credential")
 	assert.NotErrorIs(t, err, domain.ErrCredentialNotFound)
+	repo.AssertExpectations(t)
+}
+
+func TestListConnections_Empty(t *testing.T) {
+	t.Parallel()
+	repo := new(mockRepo)
+	now := time.Date(2026, 3, 20, 2, 0, 0, 0, time.UTC)
+
+	repo.On("ListCredentialsByUser", mock.Anything, uint(1)).Return([]domain.EmailCredential{}, nil)
+
+	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testOSW(), testClock(now))
+	connections, err := uc.ListConnections(context.Background(), 1)
+
+	assert.NoError(t, err)
+	assert.Empty(t, connections)
+	repo.AssertExpectations(t)
+}
+
+func TestListConnections_Success(t *testing.T) {
+	t.Parallel()
+	repo := new(mockRepo)
+	now := time.Date(2026, 3, 20, 2, 10, 0, 0, time.UTC)
+	credential := testListCredential(12, "gmail", "User@Gmail.com", now.Add(-24*time.Hour))
+	unsupported := testListCredential(13, "outlook", "user@outlook.com", now.Add(-23*time.Hour))
+
+	repo.On("ListCredentialsByUser", mock.Anything, uint(1)).Return([]domain.EmailCredential{credential, unsupported}, nil)
+
+	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testOSW(), testClock(now))
+	connections, err := uc.ListConnections(context.Background(), 1)
+
+	assert.NoError(t, err)
+	assert.Len(t, connections, 2)
+	assert.Equal(t, uint(12), connections[0].ID)
+	assert.Equal(t, "gmail", connections[0].Provider)
+	assert.Equal(t, "user@gmail.com", connections[0].AccountIdentifier)
+	assert.Equal(t, credential.CreatedAt, connections[0].CreatedAt)
+	assert.Equal(t, credential.UpdatedAt, connections[0].UpdatedAt)
+	assert.Equal(t, "outlook", connections[1].Provider)
+	assert.Equal(t, "user@outlook.com", connections[1].AccountIdentifier)
+	repo.AssertExpectations(t)
+}
+
+func TestListConnections_ListError(t *testing.T) {
+	t.Parallel()
+	repo := new(mockRepo)
+	now := time.Date(2026, 3, 20, 2, 15, 0, 0, time.UTC)
+	repo.On("ListCredentialsByUser", mock.Anything, uint(1)).Return(([]domain.EmailCredential)(nil), errors.New("db timeout"))
+
+	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testOSW(), testClock(now))
+	connections, err := uc.ListConnections(context.Background(), 1)
+
+	assert.Nil(t, connections)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to list credentials")
 	repo.AssertExpectations(t)
 }

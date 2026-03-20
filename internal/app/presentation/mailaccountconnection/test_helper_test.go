@@ -2,6 +2,7 @@ package mailaccountconnection
 
 import (
 	"business/internal/emailcredential/application"
+	"business/internal/emailcredential/domain"
 	"business/internal/library/logger"
 	mocklibrary "business/test/mock/library"
 	"context"
@@ -22,6 +23,12 @@ func (m *mockUseCase) Authorize(ctx context.Context, userID uint) (application.A
 func (m *mockUseCase) Callback(ctx context.Context, userID uint, code, state string) error {
 	args := m.Called(ctx, userID, code, state)
 	return args.Error(0)
+}
+
+func (m *mockUseCase) ListConnections(ctx context.Context, userID uint) ([]domain.ConnectionView, error) {
+	args := m.Called(ctx, userID)
+	connections, _ := args.Get(0).([]domain.ConnectionView)
+	return connections, args.Error(1)
 }
 
 func newTestLogger() logger.Interface {

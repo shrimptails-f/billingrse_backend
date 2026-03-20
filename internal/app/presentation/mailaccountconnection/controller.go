@@ -43,6 +43,18 @@ type callbackResponse struct {
 	Message string `json:"message"`
 }
 
+type listConnectionsResponse struct {
+	Items []connectionResponseItem `json:"items"`
+}
+
+type connectionResponseItem struct {
+	ID                uint      `json:"id"`
+	Provider          string    `json:"provider"`
+	AccountIdentifier string    `json:"account_identifier"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
 // Authorize handles POST /api/v1/mail-account-connections/gmail/authorize
 func (ctrl *Controller) Authorize(c *gin.Context) {
 	reqLog := ctrl.log
@@ -50,14 +62,8 @@ func (ctrl *Controller) Authorize(c *gin.Context) {
 		reqLog = l
 	}
 
-	userID, exists := c.Get("userID")
-	if !exists {
-		httpresponse.WriteError(c, http.StatusUnauthorized, "unauthorized", "認証が必要です。")
-		return
-	}
-	uid, ok := userID.(uint)
+	uid, ok := currentUserID(c)
 	if !ok {
-		httpresponse.WriteInternalServerError(c)
 		return
 	}
 
@@ -81,14 +87,8 @@ func (ctrl *Controller) Callback(c *gin.Context) {
 		reqLog = l
 	}
 
-	userID, exists := c.Get("userID")
-	if !exists {
-		httpresponse.WriteError(c, http.StatusUnauthorized, "unauthorized", "認証が必要です。")
-		return
-	}
-	uid, ok := userID.(uint)
+	uid, ok := currentUserID(c)
 	if !ok {
-		httpresponse.WriteInternalServerError(c)
 		return
 	}
 
@@ -124,4 +124,53 @@ func (ctrl *Controller) Callback(c *gin.Context) {
 	c.JSON(http.StatusOK, callbackResponse{
 		Message: "Gmail連携が完了しました。",
 	})
+}
+
+// List handles GET /api/v1/mail-account-connections
+func (ctrl *Controller) List(c *gin.Context) {
+	reqLog := ctrl.log
+	if l, err := ctrl.log.WithContext(c.Request.Context()); err == nil {
+		reqLog = l
+	}
+
+	uid, ok := currentUserID(c)
+	if !ok {
+		return
+	}
+
+	connections, err := ctrl.usecase.ListConnections(c.Request.Context(), uid)
+	if err != nil {
+		reqLog.Error("list_connections_failed", logger.Err(err))
+		httpresponse.WriteInternalServerError(c)
+		return
+	}
+
+	items := make([]connectionResponseItem, 0, len(connections))
+	for _, connection := range connections {
+		items = append(items, connectionResponseItem{
+			ID:                connection.ID,
+			Provider:          connection.Provider,
+			AccountIdentifier: connection.AccountIdentifier,
+			CreatedAt:         connection.CreatedAt,
+			UpdatedAt:         connection.UpdatedAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, listConnectionsResponse{Items: items})
+}
+
+func currentUserID(c *gin.Context) (uint, bool) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		httpresponse.WriteError(c, http.StatusUnauthorized, "unauthorized", "認証が必要です。")
+		return 0, false
+	}
+
+	uid, ok := userID.(uint)
+	if !ok {
+		httpresponse.WriteInternalServerError(c)
+		return 0, false
+	}
+
+	return uid, true
 }
