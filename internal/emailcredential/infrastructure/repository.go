@@ -131,6 +131,23 @@ func (r *Repository) FindCredentialByUserAndGmail(ctx context.Context, userID ui
 	return toDomainCredential(rec), nil
 }
 
+func (r *Repository) ListCredentialsByUser(ctx context.Context, userID uint) ([]domain.EmailCredential, error) {
+	var records []credentialRecord
+	if err := r.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Order("created_at ASC, id ASC").
+		Find(&records).Error; err != nil {
+		logDBQueryFailed(r.log, "email_credentials", "list_by_user", err)
+		return nil, fmt.Errorf("failed to list credentials: %w", err)
+	}
+
+	credentials := make([]domain.EmailCredential, 0, len(records))
+	for _, record := range records {
+		credentials = append(credentials, toDomainCredential(record))
+	}
+	return credentials, nil
+}
+
 func (r *Repository) CreateCredential(ctx context.Context, cred domain.EmailCredential) error {
 	rec := toCredentialRecord(cred)
 	if err := r.db.WithContext(ctx).Create(&rec).Error; err != nil {
@@ -178,6 +195,7 @@ func toDomainCredential(rec credentialRecord) domain.EmailCredential {
 
 func toCredentialRecord(cred domain.EmailCredential) credentialRecord {
 	return credentialRecord{
+		ID:                 cred.ID,
 		UserID:             cred.UserID,
 		Type:               cred.Type,
 		GmailAddress:       cred.GmailAddress,

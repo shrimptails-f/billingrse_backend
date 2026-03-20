@@ -216,3 +216,55 @@ func TestUpdateCredentialTokens(t *testing.T) {
 	assert.Equal(t, "new-access", updated.AccessToken)
 	assert.Equal(t, "new-refresh", updated.RefreshToken)
 }
+
+func TestListCredentialsByUser_FiltersAndOrders(t *testing.T) {
+	env := newRepoTestEnv(t)
+	defer env.clean()
+	ctx := context.Background()
+
+	older := env.nowUTC.Add(-2 * time.Hour)
+	newer := env.nowUTC.Add(-1 * time.Hour)
+
+	require.NoError(t, env.repo.CreateCredential(ctx, domain.EmailCredential{
+		UserID:             1,
+		Type:               "gmail",
+		GmailAddress:       "first@gmail.com",
+		KeyVersion:         1,
+		AccessToken:        "enc-1",
+		AccessTokenDigest:  "dig-1",
+		RefreshToken:       "refresh-1",
+		RefreshTokenDigest: "refresh-dig-1",
+		CreatedAt:          older,
+		UpdatedAt:          older,
+	}))
+	require.NoError(t, env.repo.CreateCredential(ctx, domain.EmailCredential{
+		UserID:             2,
+		Type:               "gmail",
+		GmailAddress:       "other-user@gmail.com",
+		KeyVersion:         1,
+		AccessToken:        "enc-2",
+		AccessTokenDigest:  "dig-2",
+		RefreshToken:       "refresh-2",
+		RefreshTokenDigest: "refresh-dig-2",
+		CreatedAt:          env.nowUTC,
+		UpdatedAt:          env.nowUTC,
+	}))
+	require.NoError(t, env.repo.CreateCredential(ctx, domain.EmailCredential{
+		UserID:             1,
+		Type:               "gmail",
+		GmailAddress:       "second@gmail.com",
+		KeyVersion:         1,
+		AccessToken:        "enc-3",
+		AccessTokenDigest:  "dig-3",
+		RefreshToken:       "refresh-3",
+		RefreshTokenDigest: "refresh-dig-3",
+		CreatedAt:          newer,
+		UpdatedAt:          newer,
+	}))
+
+	credentials, err := env.repo.ListCredentialsByUser(ctx, 1)
+	require.NoError(t, err)
+	require.Len(t, credentials, 2)
+	assert.Equal(t, "first@gmail.com", credentials[0].GmailAddress)
+	assert.Equal(t, "second@gmail.com", credentials[1].GmailAddress)
+}

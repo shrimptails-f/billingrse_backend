@@ -11,6 +11,7 @@ import (
 	v1 "business/internal/app/router"
 	"business/internal/auth/domain"
 	ecapp "business/internal/emailcredential/application"
+	ecdomain "business/internal/emailcredential/domain"
 	"business/internal/library/logger"
 	mocklibrary "business/test/mock/library"
 
@@ -84,6 +85,10 @@ func (s *stubEmailCredentialUsecase) Callback(ctx context.Context, userID uint, 
 	return nil
 }
 
+func (s *stubEmailCredentialUsecase) ListConnections(ctx context.Context, userID uint) ([]ecdomain.ConnectionView, error) {
+	return []ecdomain.ConnectionView{}, nil
+}
+
 func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -128,6 +133,7 @@ func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 		"POST /api/v1/auth/email/verify",
 		"POST /api/v1/auth/email/resend",
 		"GET /api/v1/auth/check",
+		"GET /api/v1/mail-account-connections",
 		"POST /api/v1/mail-account-connections/gmail/authorize",
 		"POST /api/v1/mail-account-connections/gmail/callback",
 	}

@@ -31,6 +31,7 @@ type Repository interface {
 	FindPendingStateByState(ctx context.Context, state string) (domain.OAuthPendingState, error)
 	ConsumePendingState(ctx context.Context, id uint, consumedAt time.Time) error
 	FindCredentialByUserAndGmail(ctx context.Context, userID uint, gmailAddress string) (domain.EmailCredential, error)
+	ListCredentialsByUser(ctx context.Context, userID uint) ([]domain.EmailCredential, error)
 	CreateCredential(ctx context.Context, cred domain.EmailCredential) error
 	UpdateCredentialTokens(ctx context.Context, cred domain.EmailCredential) error
 }
@@ -54,6 +55,7 @@ type GmailProfileFetcher interface {
 type UseCaseInterface interface {
 	Authorize(ctx context.Context, userID uint) (AuthorizeResult, error)
 	Callback(ctx context.Context, userID uint, code, state string) error
+	ListConnections(ctx context.Context, userID uint) ([]domain.ConnectionView, error)
 }
 
 // AuthorizeResult holds the result of the authorize use case.
@@ -314,6 +316,37 @@ func (uc *UseCase) Callback(ctx context.Context, userID uint, code, state string
 	}
 
 	return nil
+}
+
+// ListConnections lists the caller's stored mail account connections without probing the provider.
+func (uc *UseCase) ListConnections(ctx context.Context, userID uint) ([]domain.ConnectionView, error) {
+	reqLog := uc.log
+	if l, err := uc.log.WithContext(ctx); err == nil {
+		reqLog = l
+	}
+
+	credentials, err := uc.repo.ListCredentialsByUser(ctx, userID)
+	if err != nil {
+		reqLog.Error("credential_list_failed", logger.Err(err))
+		return nil, fmt.Errorf("failed to list credentials: %w", err)
+	}
+
+	if len(credentials) == 0 {
+		return []domain.ConnectionView{}, nil
+	}
+
+	connections := make([]domain.ConnectionView, 0, len(credentials))
+	for _, credential := range credentials {
+		connections = append(connections, domain.ConnectionView{
+			ID:                credential.ID,
+			Provider:          strings.ToLower(strings.TrimSpace(credential.Type)),
+			AccountIdentifier: strings.ToLower(strings.TrimSpace(credential.GmailAddress)),
+			CreatedAt:         credential.CreatedAt,
+			UpdatedAt:         credential.UpdatedAt,
+		})
+	}
+
+	return connections, nil
 }
 
 func (uc *UseCase) buildVault() (*crypto.Vault, error) {
