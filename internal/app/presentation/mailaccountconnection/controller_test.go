@@ -1,15 +1,14 @@
 package mailaccountconnection
 
 import (
+	"business/internal/mailaccountconnection/application"
+	"business/internal/mailaccountconnection/domain"
 	"bytes"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"business/internal/emailcredential/application"
-	"business/internal/emailcredential/domain"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"

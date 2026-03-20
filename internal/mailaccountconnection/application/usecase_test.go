@@ -1,8 +1,8 @@
 package application
 
 import (
-	"business/internal/emailcredential/domain"
 	"business/internal/library/logger"
+	"business/internal/mailaccountconnection/domain"
 	mocklibrary "business/test/mock/library"
 	"context"
 	"errors"

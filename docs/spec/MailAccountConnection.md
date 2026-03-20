@@ -43,7 +43,7 @@ sequenceDiagram
 - `internal/common/domain/mail_account_connection.go`
 - `internal/library/gmailService/oauth_config_loader.go`
 - `tools/migrations/models/email_credential.go`
-- ただし `internal/emailcredential` 相当の application / infrastructure / presentation 実装は未作成で、HTTP API も未実装。
+- ただし `internal/mailaccountconnection` 相当の application / infrastructure / presentation 実装は未作成で、HTTP API も未実装。
 
 ## 現状把握
 - HTTP API は Gin + Clean Architecture + dig DI 構成。
@@ -168,7 +168,7 @@ sequenceDiagram
 ## 設計メモ
 - `MailAccountConnection` は DDD 上の公開概念としつつ、実装は `email_credentials` テーブルを backing store として扱う想定。
 - pending state 保存時点では token 未取得のため、`internal/common/domain.MailAccountConnection` をそのまま pending record に使うのは不自然。
-- そのため internal package は `emailcredential` もしくは同等責務の package として切り出し、OAuth 途中状態と接続済み状態の両方を扱えるモデルを持つのが自然。
+- そのため internal package は `mailaccountconnection` もしくは同等責務の package として切り出し、OAuth 途中状態と接続済み状態の両方を扱えるモデルを持つのが自然。
 - 複数 Gmail 連携要件に合わせ、現行の `email_credentials(user_id, type)` 一意制約は修正対象とする。
 - 同一 connection 判定に使う Gmail アドレスを保存できるようにする必要がある。
 

@@ -1,11 +1,11 @@
 package application
 
 import (
-	"business/internal/emailcredential/domain"
 	"business/internal/library/crypto"
 	"business/internal/library/logger"
 	"business/internal/library/oswrapper"
 	"business/internal/library/timewrapper"
+	"business/internal/mailaccountconnection/domain"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -25,7 +25,7 @@ const (
 	defaultKeyVer   = int16(1)
 )
 
-// Repository defines persistence operations for email credentials.
+// Repository defines persistence operations for mail account connections.
 type Repository interface {
 	SavePendingState(ctx context.Context, ps domain.OAuthPendingState) error
 	FindPendingStateByState(ctx context.Context, state string) (domain.OAuthPendingState, error)
@@ -52,7 +52,7 @@ type GmailProfileFetcher interface {
 	GetEmailAddress(ctx context.Context, token *oauth2.Token, cfg *oauth2.Config) (string, error)
 }
 
-// UseCaseInterface defines the email credential use case operations.
+// UseCaseInterface defines the mail account connection use case operations.
 type UseCaseInterface interface {
 	Authorize(ctx context.Context, userID uint) (AuthorizeResult, error)
 	Callback(ctx context.Context, userID uint, code, state string) error
@@ -66,7 +66,7 @@ type AuthorizeResult struct {
 	ExpiresAt        time.Time
 }
 
-// UseCase implements email credential business logic.
+// UseCase implements mail account connection business logic.
 type UseCase struct {
 	repo      Repository
 	oauthCfg  OAuthConfigProvider
@@ -100,7 +100,7 @@ func NewUseCase(
 		profiler:  profiler,
 		osw:       osw,
 		clock:     clock,
-		log:       log.With(logger.Component("email_credential_usecase")),
+		log:       log.With(logger.Component("mail_account_connection_usecase")),
 	}
 }
 

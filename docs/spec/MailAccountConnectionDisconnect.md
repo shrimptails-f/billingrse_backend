@@ -86,7 +86,7 @@ v1 は `MailAccountConnection` の active set を `email_credentials` row の存
 
 ### Application
 - `UseCaseInterface` に `Disconnect(ctx context.Context, userID uint, connectionID uint) error` を追加する。
-- authorize / callback / list と同じ `emailcredential` usecase に置く。
+- authorize / callback / list と同じ `mailaccountconnection` usecase に置く。
 - provider 呼び出しは行わず、ローカル state の除去だけを責務とする。
 
 ### Domain

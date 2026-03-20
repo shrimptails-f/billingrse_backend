@@ -10,9 +10,9 @@ import (
 	macpresentation "business/internal/app/presentation/mailaccountconnection"
 	v1 "business/internal/app/router"
 	"business/internal/auth/domain"
-	ecapp "business/internal/emailcredential/application"
-	ecdomain "business/internal/emailcredential/domain"
 	"business/internal/library/logger"
+	macapp "business/internal/mailaccountconnection/application"
+	macdomain "business/internal/mailaccountconnection/domain"
 	mocklibrary "business/test/mock/library"
 
 	"github.com/gin-gonic/gin"
@@ -74,8 +74,8 @@ func (s *stubAuthUseCase) Logout(ctx context.Context, req domain.LogoutRequest) 
 
 type stubEmailCredentialUsecase struct{}
 
-func (s *stubEmailCredentialUsecase) Authorize(ctx context.Context, userID uint) (ecapp.AuthorizeResult, error) {
-	return ecapp.AuthorizeResult{
+func (s *stubEmailCredentialUsecase) Authorize(ctx context.Context, userID uint) (macapp.AuthorizeResult, error) {
+	return macapp.AuthorizeResult{
 		AuthorizationURL: "https://accounts.google.com/o/oauth2/auth?state=test",
 		ExpiresAt:        time.Now().Add(10 * time.Minute),
 	}, nil
@@ -85,8 +85,8 @@ func (s *stubEmailCredentialUsecase) Callback(ctx context.Context, userID uint, 
 	return nil
 }
 
-func (s *stubEmailCredentialUsecase) ListConnections(ctx context.Context, userID uint) ([]ecdomain.ConnectionView, error) {
-	return []ecdomain.ConnectionView{}, nil
+func (s *stubEmailCredentialUsecase) ListConnections(ctx context.Context, userID uint) ([]macdomain.ConnectionView, error) {
+	return []macdomain.ConnectionView{}, nil
 }
 
 func (s *stubEmailCredentialUsecase) Disconnect(ctx context.Context, userID uint, connectionID uint) error {

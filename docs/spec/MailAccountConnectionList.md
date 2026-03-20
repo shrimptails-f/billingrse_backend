@@ -108,7 +108,7 @@
 
 ### Application
 - `UseCaseInterface` に `ListConnections(ctx context.Context, userID uint) ([]ConnectionView, error)` を追加する。
-- authorize / callback と同じ `emailcredential` usecase に置く。
+- authorize / callback と同じ `mailaccountconnection` usecase に置く。
 - 一覧 API では provider への問い合わせやトークン復号は行わない。
 - `email_credentials` から取得した storage model を provider 非依存の read model に変換する。
 

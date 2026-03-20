@@ -2,19 +2,19 @@ package di
 
 import (
 	macpresentation "business/internal/app/presentation/mailaccountconnection"
-	"business/internal/emailcredential/application"
-	"business/internal/emailcredential/infrastructure"
 	"business/internal/library/gmailService"
 	"business/internal/library/logger"
 	"business/internal/library/mysql"
 	"business/internal/library/oswrapper"
 	"business/internal/library/timewrapper"
+	"business/internal/mailaccountconnection/application"
+	"business/internal/mailaccountconnection/infrastructure"
 
 	"go.uber.org/dig"
 )
 
-// ProvideEmailCredentialDependencies registers email credential related dependencies.
-func ProvideEmailCredentialDependencies(container *dig.Container) {
+// ProvideMailAccountConnectionDependencies registers mail account connection related dependencies.
+func ProvideMailAccountConnectionDependencies(container *dig.Container) {
 	// Repository
 	_ = container.Provide(func(conn *mysql.MySQL, log *logger.Logger) *infrastructure.Repository {
 		return infrastructure.NewRepository(conn.DB, log)

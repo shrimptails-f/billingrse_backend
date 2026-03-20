@@ -1,9 +1,9 @@
 package infrastructure
 
 import (
-	"business/internal/emailcredential/application"
-	"business/internal/emailcredential/domain"
 	"business/internal/library/logger"
+	"business/internal/mailaccountconnection/application"
+	"business/internal/mailaccountconnection/domain"
 	"context"
 	"errors"
 	"fmt"
@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// Repository provides database access for email credentials.
+// Repository provides database access for mail account connections.
 type Repository struct {
 	db  *gorm.DB
 	log logger.Interface
@@ -26,7 +26,7 @@ func NewRepository(db *gorm.DB, log logger.Interface) *Repository {
 	}
 	return &Repository{
 		db:  db,
-		log: log.With(logger.Component("email_credential_repository")),
+		log: log.With(logger.Component("mail_account_connection_repository")),
 	}
 }
 

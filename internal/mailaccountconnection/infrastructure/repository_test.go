@@ -1,9 +1,9 @@
 package infrastructure
 
 import (
-	"business/internal/emailcredential/domain"
 	"business/internal/library/logger"
 	"business/internal/library/mysql"
+	"business/internal/mailaccountconnection/domain"
 	"context"
 	"strings"
 	"testing"

@@ -1,9 +1,9 @@
 package mailaccountconnection
 
 import (
-	"business/internal/emailcredential/application"
-	"business/internal/emailcredential/domain"
 	"business/internal/library/logger"
+	"business/internal/mailaccountconnection/application"
+	"business/internal/mailaccountconnection/domain"
 	mocklibrary "business/test/mock/library"
 	"context"
 	"time"

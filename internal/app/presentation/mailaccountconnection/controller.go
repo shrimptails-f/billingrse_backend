@@ -2,9 +2,9 @@ package mailaccountconnection
 
 import (
 	"business/internal/app/httpresponse"
-	"business/internal/emailcredential/application"
-	"business/internal/emailcredential/domain"
 	"business/internal/library/logger"
+	"business/internal/mailaccountconnection/application"
+	"business/internal/mailaccountconnection/domain"
 	"errors"
 	"net/http"
 	"strconv"
