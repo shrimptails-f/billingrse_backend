@@ -53,6 +53,7 @@ func NewRouter(g *gin.Engine, container *dig.Container, log logger.Interface, al
 	}
 	registerMailAccountConnectionRoutes := func(group *gin.RouterGroup) {
 		group.GET("", authMiddleware.Authenticate(), macController.List)
+		group.DELETE("/:connection_id", authMiddleware.Authenticate(), macController.Disconnect)
 		group.POST("/gmail/authorize", authMiddleware.Authenticate(), macController.Authorize)
 		group.POST("/gmail/callback", authMiddleware.Authenticate(), macController.Callback)
 	}

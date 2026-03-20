@@ -268,3 +268,71 @@ func TestListCredentialsByUser_FiltersAndOrders(t *testing.T) {
 	assert.Equal(t, "first@gmail.com", credentials[0].GmailAddress)
 	assert.Equal(t, "second@gmail.com", credentials[1].GmailAddress)
 }
+
+func TestDeleteCredentialByIDAndUser_Success(t *testing.T) {
+	env := newRepoTestEnv(t)
+	defer env.clean()
+	ctx := context.Background()
+
+	cred := domain.EmailCredential{
+		UserID:             1,
+		Type:               "gmail",
+		GmailAddress:       "delete-me@gmail.com",
+		KeyVersion:         1,
+		AccessToken:        "enc-access",
+		AccessTokenDigest:  "dig-access",
+		RefreshToken:       "enc-refresh",
+		RefreshTokenDigest: "dig-refresh",
+		CreatedAt:          env.nowUTC,
+		UpdatedAt:          env.nowUTC,
+	}
+	require.NoError(t, env.repo.CreateCredential(ctx, cred))
+
+	found, err := env.repo.FindCredentialByUserAndGmail(ctx, 1, "delete-me@gmail.com")
+	require.NoError(t, err)
+
+	err = env.repo.DeleteCredentialByIDAndUser(ctx, found.ID, 1)
+	require.NoError(t, err)
+
+	_, err = env.repo.FindCredentialByUserAndGmail(ctx, 1, "delete-me@gmail.com")
+	assert.ErrorIs(t, err, domain.ErrCredentialNotFound)
+}
+
+func TestDeleteCredentialByIDAndUser_OtherUserCannotDelete(t *testing.T) {
+	env := newRepoTestEnv(t)
+	defer env.clean()
+	ctx := context.Background()
+
+	cred := domain.EmailCredential{
+		UserID:             1,
+		Type:               "gmail",
+		GmailAddress:       "owner@gmail.com",
+		KeyVersion:         1,
+		AccessToken:        "enc-access",
+		AccessTokenDigest:  "dig-access",
+		RefreshToken:       "enc-refresh",
+		RefreshTokenDigest: "dig-refresh",
+		CreatedAt:          env.nowUTC,
+		UpdatedAt:          env.nowUTC,
+	}
+	require.NoError(t, env.repo.CreateCredential(ctx, cred))
+
+	found, err := env.repo.FindCredentialByUserAndGmail(ctx, 1, "owner@gmail.com")
+	require.NoError(t, err)
+
+	err = env.repo.DeleteCredentialByIDAndUser(ctx, found.ID, 2)
+	assert.ErrorIs(t, err, domain.ErrCredentialNotFound)
+
+	stillExists, err := env.repo.FindCredentialByUserAndGmail(ctx, 1, "owner@gmail.com")
+	require.NoError(t, err)
+	assert.Equal(t, found.ID, stillExists.ID)
+}
+
+func TestDeleteCredentialByIDAndUser_NotFound(t *testing.T) {
+	env := newRepoTestEnv(t)
+	defer env.clean()
+	ctx := context.Background()
+
+	err := env.repo.DeleteCredentialByIDAndUser(ctx, 9999, 1)
+	assert.ErrorIs(t, err, domain.ErrCredentialNotFound)
+}

@@ -32,6 +32,7 @@ type Repository interface {
 	ConsumePendingState(ctx context.Context, id uint, consumedAt time.Time) error
 	FindCredentialByUserAndGmail(ctx context.Context, userID uint, gmailAddress string) (domain.EmailCredential, error)
 	ListCredentialsByUser(ctx context.Context, userID uint) ([]domain.EmailCredential, error)
+	DeleteCredentialByIDAndUser(ctx context.Context, credentialID, userID uint) error
 	CreateCredential(ctx context.Context, cred domain.EmailCredential) error
 	UpdateCredentialTokens(ctx context.Context, cred domain.EmailCredential) error
 }
@@ -56,6 +57,7 @@ type UseCaseInterface interface {
 	Authorize(ctx context.Context, userID uint) (AuthorizeResult, error)
 	Callback(ctx context.Context, userID uint, code, state string) error
 	ListConnections(ctx context.Context, userID uint) ([]domain.ConnectionView, error)
+	Disconnect(ctx context.Context, userID uint, connectionID uint) error
 }
 
 // AuthorizeResult holds the result of the authorize use case.
@@ -347,6 +349,39 @@ func (uc *UseCase) ListConnections(ctx context.Context, userID uint) ([]domain.C
 	}
 
 	return connections, nil
+}
+
+// Disconnect removes the caller's stored mail account connection.
+func (uc *UseCase) Disconnect(ctx context.Context, userID uint, connectionID uint) error {
+	reqLog := uc.log
+	if l, err := uc.log.WithContext(ctx); err == nil {
+		reqLog = l
+	}
+
+	err := uc.repo.DeleteCredentialByIDAndUser(ctx, connectionID, userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrCredentialNotFound) {
+			reqLog.Info("mail_account_connection_not_found",
+				logger.UserID(userID),
+				logger.Uint("connection_id", connectionID),
+			)
+			return domain.ErrCredentialNotFound
+		}
+
+		reqLog.Error("mail_account_connection_disconnect_failed",
+			logger.UserID(userID),
+			logger.Uint("connection_id", connectionID),
+			logger.Err(err),
+		)
+		return fmt.Errorf("failed to disconnect credential: %w", err)
+	}
+
+	reqLog.Info("mail_account_connection_disconnected",
+		logger.UserID(userID),
+		logger.Uint("connection_id", connectionID),
+	)
+
+	return nil
 }
 
 func (uc *UseCase) buildVault() (*crypto.Vault, error) {

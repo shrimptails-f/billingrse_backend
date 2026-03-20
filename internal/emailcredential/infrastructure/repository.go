@@ -148,6 +148,20 @@ func (r *Repository) ListCredentialsByUser(ctx context.Context, userID uint) ([]
 	return credentials, nil
 }
 
+func (r *Repository) DeleteCredentialByIDAndUser(ctx context.Context, credentialID, userID uint) error {
+	result := r.db.WithContext(ctx).
+		Where("id = ? AND user_id = ?", credentialID, userID).
+		Delete(&credentialRecord{})
+	if result.Error != nil {
+		logDBQueryFailed(r.log, "email_credentials", "delete_by_id_and_user", result.Error)
+		return fmt.Errorf("failed to delete credential: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return domain.ErrCredentialNotFound
+	}
+	return nil
+}
+
 func (r *Repository) CreateCredential(ctx context.Context, cred domain.EmailCredential) error {
 	rec := toCredentialRecord(cred)
 	if err := r.db.WithContext(ctx).Create(&rec).Error; err != nil {

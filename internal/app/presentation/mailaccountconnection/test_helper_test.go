@@ -31,6 +31,11 @@ func (m *mockUseCase) ListConnections(ctx context.Context, userID uint) ([]domai
 	return connections, args.Error(1)
 }
 
+func (m *mockUseCase) Disconnect(ctx context.Context, userID uint, connectionID uint) error {
+	args := m.Called(ctx, userID, connectionID)
+	return args.Error(0)
+}
+
 func newTestLogger() logger.Interface {
 	return mocklibrary.NewNopLogger()
 }

@@ -46,6 +46,11 @@ func (m *mockRepo) ListCredentialsByUser(ctx context.Context, userID uint) ([]do
 	return credentials, args.Error(1)
 }
 
+func (m *mockRepo) DeleteCredentialByIDAndUser(ctx context.Context, credentialID, userID uint) error {
+	args := m.Called(ctx, credentialID, userID)
+	return args.Error(0)
+}
+
 func (m *mockRepo) CreateCredential(ctx context.Context, cred domain.EmailCredential) error {
 	args := m.Called(ctx, cred)
 	return args.Error(0)
@@ -521,5 +526,49 @@ func TestListConnections_ListError(t *testing.T) {
 	assert.Nil(t, connections)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to list credentials")
+	repo.AssertExpectations(t)
+}
+
+func TestDisconnect_Success(t *testing.T) {
+	t.Parallel()
+	repo := new(mockRepo)
+	now := time.Date(2026, 3, 20, 2, 20, 0, 0, time.UTC)
+
+	repo.On("DeleteCredentialByIDAndUser", mock.Anything, uint(12), uint(1)).Return(nil)
+
+	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testOSW(), testClock(now))
+	err := uc.Disconnect(context.Background(), 1, 12)
+
+	assert.NoError(t, err)
+	repo.AssertExpectations(t)
+}
+
+func TestDisconnect_NotFound(t *testing.T) {
+	t.Parallel()
+	repo := new(mockRepo)
+	now := time.Date(2026, 3, 20, 2, 25, 0, 0, time.UTC)
+
+	repo.On("DeleteCredentialByIDAndUser", mock.Anything, uint(12), uint(1)).Return(domain.ErrCredentialNotFound)
+
+	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testOSW(), testClock(now))
+	err := uc.Disconnect(context.Background(), 1, 12)
+
+	assert.ErrorIs(t, err, domain.ErrCredentialNotFound)
+	repo.AssertExpectations(t)
+}
+
+func TestDisconnect_DeleteError(t *testing.T) {
+	t.Parallel()
+	repo := new(mockRepo)
+	now := time.Date(2026, 3, 20, 2, 30, 0, 0, time.UTC)
+
+	repo.On("DeleteCredentialByIDAndUser", mock.Anything, uint(12), uint(1)).Return(errors.New("db timeout"))
+
+	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testOSW(), testClock(now))
+	err := uc.Disconnect(context.Background(), 1, 12)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to disconnect credential")
+	assert.NotErrorIs(t, err, domain.ErrCredentialNotFound)
 	repo.AssertExpectations(t)
 }

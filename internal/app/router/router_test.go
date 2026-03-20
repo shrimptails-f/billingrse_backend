@@ -89,6 +89,10 @@ func (s *stubEmailCredentialUsecase) ListConnections(ctx context.Context, userID
 	return []ecdomain.ConnectionView{}, nil
 }
 
+func (s *stubEmailCredentialUsecase) Disconnect(ctx context.Context, userID uint, connectionID uint) error {
+	return nil
+}
+
 func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -134,6 +138,7 @@ func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 		"POST /api/v1/auth/email/resend",
 		"GET /api/v1/auth/check",
 		"GET /api/v1/mail-account-connections",
+		"DELETE /api/v1/mail-account-connections/:connection_id",
 		"POST /api/v1/mail-account-connections/gmail/authorize",
 		"POST /api/v1/mail-account-connections/gmail/callback",
 	}

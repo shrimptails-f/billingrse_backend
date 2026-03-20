@@ -7,6 +7,7 @@ import (
 	"business/internal/library/logger"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -159,6 +160,42 @@ func (ctrl *Controller) List(c *gin.Context) {
 	c.JSON(http.StatusOK, listConnectionsResponse{Items: items})
 }
 
+// Disconnect handles DELETE /api/v1/mail-account-connections/:connection_id
+func (ctrl *Controller) Disconnect(c *gin.Context) {
+	reqLog := ctrl.log
+	if l, err := ctrl.log.WithContext(c.Request.Context()); err == nil {
+		reqLog = l
+	}
+
+	uid, ok := currentUserID(c)
+	if !ok {
+		return
+	}
+
+	connectionID, ok := currentConnectionID(c)
+	if !ok {
+		return
+	}
+
+	err := ctrl.usecase.Disconnect(c.Request.Context(), uid, connectionID)
+	if err != nil {
+		if errors.Is(err, domain.ErrCredentialNotFound) {
+			httpresponse.WriteError(c, http.StatusNotFound, "mail_account_connection_not_found", "対象のメール連携は見つかりません。")
+			return
+		}
+
+		reqLog.Error("disconnect_failed",
+			logger.UserID(uid),
+			logger.Uint("connection_id", connectionID),
+			logger.Err(err),
+		)
+		httpresponse.WriteInternalServerError(c)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
 func currentUserID(c *gin.Context) (uint, bool) {
 	userID, exists := c.Get("userID")
 	if !exists {
@@ -173,4 +210,15 @@ func currentUserID(c *gin.Context) (uint, bool) {
 	}
 
 	return uid, true
+}
+
+func currentConnectionID(c *gin.Context) (uint, bool) {
+	rawID := c.Param("connection_id")
+	connectionID, err := strconv.ParseUint(rawID, 10, 64)
+	if err != nil || connectionID == 0 {
+		httpresponse.WriteInvalidRequest(c)
+		return 0, false
+	}
+
+	return uint(connectionID), true
 }
