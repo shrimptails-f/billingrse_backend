@@ -1,9 +1,9 @@
 package infrastructure
 
 import (
-	"business/internal/emailcredential/application"
-	"business/internal/emailcredential/domain"
 	"business/internal/library/logger"
+	"business/internal/mailaccountconnection/application"
+	"business/internal/mailaccountconnection/domain"
 	"context"
 	"errors"
 	"fmt"
@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// Repository provides database access for email credentials.
+// Repository provides database access for mail account connections.
 type Repository struct {
 	db  *gorm.DB
 	log logger.Interface
@@ -26,40 +26,30 @@ func NewRepository(db *gorm.DB, log logger.Interface) *Repository {
 	}
 	return &Repository{
 		db:  db,
-		log: log.With(logger.Component("email_credential_repository")),
+		log: log.With(logger.Component("mail_account_connection_repository")),
 	}
 }
 
 var _ application.Repository = (*Repository)(nil)
 
-// pendingStateRecord maps to the oauth_pending_states table.
-type pendingStateRecord struct {
-	ID         uint       `gorm:"column:id;primaryKey;autoIncrement"`
-	UserID     uint       `gorm:"column:user_id;not null"`
-	State      string     `gorm:"column:state;type:varchar(255);not null;uniqueIndex"`
-	ExpiresAt  time.Time  `gorm:"column:expires_at;not null"`
-	ConsumedAt *time.Time `gorm:"column:consumed_at"`
-	CreatedAt  time.Time  `gorm:"column:created_at;not null"`
-}
-
-func (pendingStateRecord) TableName() string {
-	return "oauth_pending_states"
-}
+const pendingGmailAddressPrefix = "__pending_state__:"
 
 // credentialRecord maps to the email_credentials table.
 type credentialRecord struct {
-	ID                 uint       `gorm:"column:id;primaryKey;autoIncrement"`
-	UserID             uint       `gorm:"column:user_id;not null"`
-	Type               string     `gorm:"column:type;not null"`
-	GmailAddress       string     `gorm:"column:gmail_address;not null"`
-	KeyVersion         int16      `gorm:"column:key_version;not null;default:1"`
-	AccessToken        string     `gorm:"column:access_token;not null"`
-	AccessTokenDigest  string     `gorm:"column:access_token_digest;not null"`
-	RefreshToken       string     `gorm:"column:refresh_token;not null"`
-	RefreshTokenDigest string     `gorm:"column:refresh_token_digest;not null"`
-	TokenExpiry        *time.Time `gorm:"column:token_expiry"`
-	CreatedAt          time.Time  `gorm:"column:created_at"`
-	UpdatedAt          time.Time  `gorm:"column:updated_at"`
+	ID                  uint       `gorm:"column:id;primaryKey;autoIncrement"`
+	UserID              uint       `gorm:"column:user_id;not null"`
+	Type                string     `gorm:"column:type;not null"`
+	GmailAddress        string     `gorm:"column:gmail_address;not null"`
+	KeyVersion          int16      `gorm:"column:key_version;not null;default:1"`
+	AccessToken         string     `gorm:"column:access_token;not null"`
+	AccessTokenDigest   string     `gorm:"column:access_token_digest;not null"`
+	RefreshToken        string     `gorm:"column:refresh_token;not null"`
+	RefreshTokenDigest  string     `gorm:"column:refresh_token_digest;not null"`
+	TokenExpiry         *time.Time `gorm:"column:token_expiry"`
+	OAuthState          *string    `gorm:"column:o_auth_state"`
+	OAuthStateExpiresAt *time.Time `gorm:"column:o_auth_state_expires_at"`
+	CreatedAt           time.Time  `gorm:"column:created_at"`
+	UpdatedAt           time.Time  `gorm:"column:updated_at"`
 }
 
 func (credentialRecord) TableName() string {
@@ -67,46 +57,57 @@ func (credentialRecord) TableName() string {
 }
 
 func (r *Repository) SavePendingState(ctx context.Context, ps domain.OAuthPendingState) error {
-	rec := pendingStateRecord{
-		UserID:    ps.UserID,
-		State:     ps.State,
-		ExpiresAt: ps.ExpiresAt,
-		CreatedAt: ps.CreatedAt,
+	rec := credentialRecord{
+		UserID:              ps.UserID,
+		Type:                "gmail",
+		GmailAddress:        pendingGmailAddressForState(ps.State),
+		KeyVersion:          1,
+		AccessToken:         "",
+		AccessTokenDigest:   "",
+		RefreshToken:        "",
+		RefreshTokenDigest:  "",
+		OAuthState:          stringPtr(ps.State),
+		OAuthStateExpiresAt: timePtr(ps.ExpiresAt),
+		CreatedAt:           ps.CreatedAt,
+		UpdatedAt:           ps.CreatedAt,
 	}
 	if err := r.db.WithContext(ctx).Create(&rec).Error; err != nil {
-		logDBQueryFailed(r.log, "oauth_pending_states", "create", err)
+		logDBQueryFailed(r.log, "email_credentials", "create_pending_state", err)
 		return fmt.Errorf("failed to save pending state: %w", err)
 	}
 	return nil
 }
 
 func (r *Repository) FindPendingStateByState(ctx context.Context, state string) (domain.OAuthPendingState, error) {
-	var rec pendingStateRecord
-	err := r.db.WithContext(ctx).Where("state = ?", state).First(&rec).Error
+	var rec credentialRecord
+	err := r.db.WithContext(ctx).
+		Where("o_auth_state = ?", state).
+		First(&rec).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return domain.OAuthPendingState{}, domain.ErrPendingStateNotFound
 		}
-		logDBQueryFailed(r.log, "oauth_pending_states", "find_by_state", err)
+		logDBQueryFailed(r.log, "email_credentials", "find_pending_state_by_state", err)
 		return domain.OAuthPendingState{}, fmt.Errorf("failed to find pending state: %w", err)
 	}
+	if rec.OAuthState == nil || rec.OAuthStateExpiresAt == nil {
+		return domain.OAuthPendingState{}, domain.ErrPendingStateNotFound
+	}
 	return domain.OAuthPendingState{
-		ID:         rec.ID,
-		UserID:     rec.UserID,
-		State:      rec.State,
-		ExpiresAt:  rec.ExpiresAt,
-		ConsumedAt: rec.ConsumedAt,
-		CreatedAt:  rec.CreatedAt,
+		ID:        rec.ID,
+		UserID:    rec.UserID,
+		State:     *rec.OAuthState,
+		ExpiresAt: *rec.OAuthStateExpiresAt,
+		CreatedAt: rec.CreatedAt,
 	}, nil
 }
 
 func (r *Repository) ConsumePendingState(ctx context.Context, id uint, consumedAt time.Time) error {
 	result := r.db.WithContext(ctx).
-		Model(&pendingStateRecord{}).
-		Where("id = ? AND consumed_at IS NULL", id).
-		Update("consumed_at", consumedAt)
+		Where("id = ? AND o_auth_state IS NOT NULL", id).
+		Delete(&credentialRecord{})
 	if result.Error != nil {
-		logDBQueryFailed(r.log, "oauth_pending_states", "consume", result.Error)
+		logDBQueryFailed(r.log, "email_credentials", "consume_pending_state", result.Error)
 		return fmt.Errorf("failed to consume pending state: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
@@ -119,7 +120,7 @@ func (r *Repository) FindCredentialByUserAndGmail(ctx context.Context, userID ui
 	normalized := strings.ToLower(strings.TrimSpace(gmailAddress))
 	var rec credentialRecord
 	err := r.db.WithContext(ctx).
-		Where("user_id = ? AND type = ? AND gmail_address = ?", userID, "gmail", normalized).
+		Where("user_id = ? AND type = ? AND gmail_address = ? AND o_auth_state IS NULL", userID, "gmail", normalized).
 		First(&rec).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -134,7 +135,7 @@ func (r *Repository) FindCredentialByUserAndGmail(ctx context.Context, userID ui
 func (r *Repository) ListCredentialsByUser(ctx context.Context, userID uint) ([]domain.EmailCredential, error) {
 	var records []credentialRecord
 	if err := r.db.WithContext(ctx).
-		Where("user_id = ?", userID).
+		Where("user_id = ? AND o_auth_state IS NULL", userID).
 		Order("created_at ASC, id ASC").
 		Find(&records).Error; err != nil {
 		logDBQueryFailed(r.log, "email_credentials", "list_by_user", err)
@@ -146,6 +147,20 @@ func (r *Repository) ListCredentialsByUser(ctx context.Context, userID uint) ([]
 		credentials = append(credentials, toDomainCredential(record))
 	}
 	return credentials, nil
+}
+
+func (r *Repository) DeleteCredentialByIDAndUser(ctx context.Context, credentialID, userID uint) error {
+	result := r.db.WithContext(ctx).
+		Where("id = ? AND user_id = ? AND o_auth_state IS NULL", credentialID, userID).
+		Delete(&credentialRecord{})
+	if result.Error != nil {
+		logDBQueryFailed(r.log, "email_credentials", "delete_by_id_and_user", result.Error)
+		return fmt.Errorf("failed to delete credential: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return domain.ErrCredentialNotFound
+	}
+	return nil
 }
 
 func (r *Repository) CreateCredential(ctx context.Context, cred domain.EmailCredential) error {
@@ -191,6 +206,18 @@ func toDomainCredential(rec credentialRecord) domain.EmailCredential {
 		CreatedAt:          rec.CreatedAt,
 		UpdatedAt:          rec.UpdatedAt,
 	}
+}
+
+func pendingGmailAddressForState(state string) string {
+	return pendingGmailAddressPrefix + state
+}
+
+func stringPtr(v string) *string {
+	return &v
+}
+
+func timePtr(v time.Time) *time.Time {
+	return &v
 }
 
 func toCredentialRecord(cred domain.EmailCredential) credentialRecord {

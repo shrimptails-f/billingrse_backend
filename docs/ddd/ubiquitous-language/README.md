@@ -36,7 +36,7 @@ classDiagram
   class MailAccountConnection {
     + 認可する()
     + 再認可する()
-    + 失効する()
+    + 連携解除する()
   }
 
   class ManualMailFetch {

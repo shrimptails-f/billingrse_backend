@@ -43,7 +43,7 @@ sequenceDiagram
 - `internal/common/domain/mail_account_connection.go`
 - `internal/library/gmailService/oauth_config_loader.go`
 - `tools/migrations/models/email_credential.go`
-- ただし `internal/emailcredential` 相当の application / infrastructure / presentation 実装は未作成で、HTTP API も未実装。
+- ただし `internal/mailaccountconnection` 相当の application / infrastructure / presentation 実装は未作成で、HTTP API も未実装。
 
 ## 現状把握
 - HTTP API は Gin + Clean Architecture + dig DI 構成。
@@ -51,7 +51,7 @@ sequenceDiagram
 - Google の redirect は frontend で受け、backend には `code` と `state` を JSON body で渡す前提とする。
 - Gmail OAuth の client_id / client_secret / redirect_url は環境変数で取得できる。
 - Gmail スコープは当面 `gmail.readonly` のみとする。
-- `email_credentials` テーブルには以下があり、Gmail OAuth の pending state と token 保存を担える構造になっている。
+- `email_credentials` テーブルには以下があり、Gmail OAuth の pending state と token 保存を同じ backing store で扱える構造になっている。
 - `user_id`, `type`
 - `access_token`, `access_token_digest`
 - `refresh_token`, `refresh_token_digest`
@@ -167,8 +167,9 @@ sequenceDiagram
 
 ## 設計メモ
 - `MailAccountConnection` は DDD 上の公開概念としつつ、実装は `email_credentials` テーブルを backing store として扱う想定。
-- pending state 保存時点では token 未取得のため、`internal/common/domain.MailAccountConnection` をそのまま pending record に使うのは不自然。
-- そのため internal package は `emailcredential` もしくは同等責務の package として切り出し、OAuth 途中状態と接続済み状態の両方を扱えるモデルを持つのが自然。
+- pending state も `email_credentials` の一時 row として保持する。
+- pending row は `o_auth_state` / `o_auth_state_expires_at` を持つが、連携一覧には含めない。
+- internal package は `mailaccountconnection` として切り出し、OAuth 途中状態と接続済み状態を同一 backing store 上で扱う。
 - 複数 Gmail 連携要件に合わせ、現行の `email_credentials(user_id, type)` 一意制約は修正対象とする。
 - 同一 connection 判定に使う Gmail アドレスを保存できるようにする必要がある。
 

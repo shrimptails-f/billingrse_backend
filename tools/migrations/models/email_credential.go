@@ -14,7 +14,7 @@ type EmailCredential struct {
 	RefreshToken        string     `gorm:"type:text;not null"`
 	RefreshTokenDigest  string     `gorm:"type:text;not null"`
 	TokenExpiry         *time.Time `gorm:"default:null"`
-	OAuthState          *string    `gorm:"type:varchar(255);default:null;index"`
+	OAuthState          *string    `gorm:"type:varchar(255);default:null;uniqueIndex:uni_email_credentials_o_auth_state"`
 	OAuthStateExpiresAt *time.Time `gorm:"default:null"`
 	CreatedAt           time.Time
 	UpdatedAt           time.Time

@@ -1,15 +1,14 @@
 package mailaccountconnection
 
 import (
+	"business/internal/mailaccountconnection/application"
+	"business/internal/mailaccountconnection/domain"
 	"bytes"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"business/internal/emailcredential/application"
-	"business/internal/emailcredential/domain"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -39,6 +38,12 @@ func callbackRouter(ctrl *Controller) *gin.Engine {
 func listRouter(ctrl *Controller) *gin.Engine {
 	r := gin.New()
 	r.GET("/connections", func(c *gin.Context) { setUserID(c, 1) }, ctrl.List)
+	return r
+}
+
+func disconnectRouter(ctrl *Controller) *gin.Engine {
+	r := gin.New()
+	r.DELETE("/connections/:connection_id", func(c *gin.Context) { setUserID(c, 1) }, ctrl.Disconnect)
 	return r
 }
 
@@ -256,6 +261,86 @@ func TestList_401_no_user(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, resp.Code)
 	assert.Contains(t, resp.Body.String(), "unauthorized")
+}
+
+func TestDisconnect_204(t *testing.T) {
+	t.Parallel()
+	uc := new(mockUseCase)
+	uc.On("Disconnect", mock.Anything, uint(1), uint(12)).Return(nil).Once()
+
+	ctrl := newTestController(uc)
+	r := disconnectRouter(ctrl)
+
+	req := httptest.NewRequest(http.MethodDelete, "/connections/12", nil)
+	resp := httptest.NewRecorder()
+	r.ServeHTTP(resp, req)
+
+	assert.Equal(t, http.StatusNoContent, resp.Code)
+	assert.Empty(t, resp.Body.String())
+	uc.AssertExpectations(t)
+}
+
+func TestDisconnect_400_invalid_request(t *testing.T) {
+	t.Parallel()
+	uc := new(mockUseCase)
+	ctrl := newTestController(uc)
+	r := disconnectRouter(ctrl)
+
+	req := httptest.NewRequest(http.MethodDelete, "/connections/not-a-number", nil)
+	resp := httptest.NewRecorder()
+	r.ServeHTTP(resp, req)
+
+	assert.Equal(t, http.StatusBadRequest, resp.Code)
+	assert.Contains(t, resp.Body.String(), "invalid_request")
+}
+
+func TestDisconnect_401_no_user(t *testing.T) {
+	t.Parallel()
+	uc := new(mockUseCase)
+	ctrl := newTestController(uc)
+
+	r := gin.New()
+	r.DELETE("/connections/:connection_id", ctrl.Disconnect)
+
+	req := httptest.NewRequest(http.MethodDelete, "/connections/12", nil)
+	resp := httptest.NewRecorder()
+	r.ServeHTTP(resp, req)
+
+	assert.Equal(t, http.StatusUnauthorized, resp.Code)
+	assert.Contains(t, resp.Body.String(), "unauthorized")
+}
+
+func TestDisconnect_404_not_found(t *testing.T) {
+	t.Parallel()
+	uc := new(mockUseCase)
+	uc.On("Disconnect", mock.Anything, uint(1), uint(12)).Return(domain.ErrCredentialNotFound).Once()
+
+	ctrl := newTestController(uc)
+	r := disconnectRouter(ctrl)
+
+	req := httptest.NewRequest(http.MethodDelete, "/connections/12", nil)
+	resp := httptest.NewRecorder()
+	r.ServeHTTP(resp, req)
+
+	assert.Equal(t, http.StatusNotFound, resp.Code)
+	assert.Contains(t, resp.Body.String(), "mail_account_connection_not_found")
+	uc.AssertExpectations(t)
+}
+
+func TestDisconnect_500_internal(t *testing.T) {
+	t.Parallel()
+	uc := new(mockUseCase)
+	uc.On("Disconnect", mock.Anything, uint(1), uint(12)).Return(errors.New("db fail")).Once()
+
+	ctrl := newTestController(uc)
+	r := disconnectRouter(ctrl)
+
+	req := httptest.NewRequest(http.MethodDelete, "/connections/12", nil)
+	resp := httptest.NewRecorder()
+	r.ServeHTTP(resp, req)
+
+	assert.Equal(t, http.StatusInternalServerError, resp.Code)
+	uc.AssertExpectations(t)
 }
 
 func TestList_500_internal(t *testing.T) {

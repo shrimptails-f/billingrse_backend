@@ -1,11 +1,10 @@
 package application
 
 import (
-	"business/internal/emailcredential/domain"
 	"business/internal/library/crypto"
 	"business/internal/library/logger"
-	"business/internal/library/oswrapper"
 	"business/internal/library/timewrapper"
+	"business/internal/mailaccountconnection/domain"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -20,18 +19,18 @@ import (
 const (
 	oauthStateTTL   = 10 * time.Minute
 	oauthStateBytes = 32
-	credentialType  = "gmail"
-	vaultInfo       = "email_credential"
-	defaultKeyVer   = int16(1)
+	credentialType = "gmail"
+	defaultKeyVer  = int16(1)
 )
 
-// Repository defines persistence operations for email credentials.
+// Repository defines persistence operations for mail account connections.
 type Repository interface {
 	SavePendingState(ctx context.Context, ps domain.OAuthPendingState) error
 	FindPendingStateByState(ctx context.Context, state string) (domain.OAuthPendingState, error)
 	ConsumePendingState(ctx context.Context, id uint, consumedAt time.Time) error
 	FindCredentialByUserAndGmail(ctx context.Context, userID uint, gmailAddress string) (domain.EmailCredential, error)
 	ListCredentialsByUser(ctx context.Context, userID uint) ([]domain.EmailCredential, error)
+	DeleteCredentialByIDAndUser(ctx context.Context, credentialID, userID uint) error
 	CreateCredential(ctx context.Context, cred domain.EmailCredential) error
 	UpdateCredentialTokens(ctx context.Context, cred domain.EmailCredential) error
 }
@@ -51,11 +50,12 @@ type GmailProfileFetcher interface {
 	GetEmailAddress(ctx context.Context, token *oauth2.Token, cfg *oauth2.Config) (string, error)
 }
 
-// UseCaseInterface defines the email credential use case operations.
+// UseCaseInterface defines the mail account connection use case operations.
 type UseCaseInterface interface {
 	Authorize(ctx context.Context, userID uint) (AuthorizeResult, error)
 	Callback(ctx context.Context, userID uint, code, state string) error
 	ListConnections(ctx context.Context, userID uint) ([]domain.ConnectionView, error)
+	Disconnect(ctx context.Context, userID uint, connectionID uint) error
 }
 
 // AuthorizeResult holds the result of the authorize use case.
@@ -64,13 +64,13 @@ type AuthorizeResult struct {
 	ExpiresAt        time.Time
 }
 
-// UseCase implements email credential business logic.
+// UseCase implements mail account connection business logic.
 type UseCase struct {
 	repo      Repository
 	oauthCfg  OAuthConfigProvider
 	exchanger OAuthTokenExchanger
 	profiler  GmailProfileFetcher
-	osw       oswrapper.OsWapperInterface
+	vault     *crypto.Vault
 	clock     timewrapper.ClockInterface
 	log       logger.Interface
 }
@@ -81,7 +81,7 @@ func NewUseCase(
 	oauthCfg OAuthConfigProvider,
 	exchanger OAuthTokenExchanger,
 	profiler GmailProfileFetcher,
-	osw oswrapper.OsWapperInterface,
+	vault *crypto.Vault,
 	clock timewrapper.ClockInterface,
 	log logger.Interface,
 ) *UseCase {
@@ -96,9 +96,9 @@ func NewUseCase(
 		oauthCfg:  oauthCfg,
 		exchanger: exchanger,
 		profiler:  profiler,
-		osw:       osw,
+		vault:     vault,
 		clock:     clock,
-		log:       log.With(logger.Component("email_credential_usecase")),
+		log:       log.With(logger.Component("mail_account_connection_usecase")),
 	}
 }
 
@@ -210,14 +210,7 @@ func (uc *UseCase) Callback(ctx context.Context, userID uint, code, state string
 	}
 	normalizedAddr := strings.ToLower(strings.TrimSpace(gmailAddr))
 
-	// 5. Build vault for encryption
-	vault, err := uc.buildVault()
-	if err != nil {
-		reqLog.Error("vault_build_failed", logger.Err(err))
-		return domain.ErrVaultEncryptFailed
-	}
-
-	// 6. Check existing credential (distinguish not-found from DB error)
+	// 5. Check existing credential (distinguish not-found from DB error)
 	existing, err := uc.repo.FindCredentialByUserAndGmail(ctx, userID, normalizedAddr)
 	var isNew bool
 	if err != nil {
@@ -230,12 +223,12 @@ func (uc *UseCase) Callback(ctx context.Context, userID uint, code, state string
 	}
 
 	// 7. Encrypt access_token
-	encAccess, err := vault.EncryptToString(token.AccessToken)
+	encAccess, err := uc.vault.EncryptToString(token.AccessToken)
 	if err != nil {
 		reqLog.Error("access_token_encrypt_failed", logger.Err(err))
 		return domain.ErrVaultEncryptFailed
 	}
-	digestAccess, err := vault.DigestToString(token.AccessToken)
+	digestAccess, err := uc.vault.DigestToString(token.AccessToken)
 	if err != nil {
 		reqLog.Error("access_token_digest_failed", logger.Err(err))
 		return domain.ErrVaultEncryptFailed
@@ -250,12 +243,12 @@ func (uc *UseCase) Callback(ctx context.Context, userID uint, code, state string
 			return domain.ErrRefreshTokenMissing
 		}
 
-		encRefresh, err := vault.EncryptToString(token.RefreshToken)
+		encRefresh, err := uc.vault.EncryptToString(token.RefreshToken)
 		if err != nil {
 			reqLog.Error("refresh_token_encrypt_failed", logger.Err(err))
 			return domain.ErrVaultEncryptFailed
 		}
-		digestRefresh, err := vault.DigestToString(token.RefreshToken)
+		digestRefresh, err := uc.vault.DigestToString(token.RefreshToken)
 		if err != nil {
 			reqLog.Error("refresh_token_digest_failed", logger.Err(err))
 			return domain.ErrVaultEncryptFailed
@@ -288,12 +281,12 @@ func (uc *UseCase) Callback(ctx context.Context, userID uint, code, state string
 		existing.AccessTokenDigest = digestAccess
 
 		if token.RefreshToken != "" {
-			encRefresh, err := vault.EncryptToString(token.RefreshToken)
+			encRefresh, err := uc.vault.EncryptToString(token.RefreshToken)
 			if err != nil {
 				reqLog.Error("refresh_token_encrypt_failed", logger.Err(err))
 				return domain.ErrVaultEncryptFailed
 			}
-			digestRefresh, err := vault.DigestToString(token.RefreshToken)
+			digestRefresh, err := uc.vault.DigestToString(token.RefreshToken)
 			if err != nil {
 				reqLog.Error("refresh_token_digest_failed", logger.Err(err))
 				return domain.ErrVaultEncryptFailed
@@ -349,18 +342,35 @@ func (uc *UseCase) ListConnections(ctx context.Context, userID uint) ([]domain.C
 	return connections, nil
 }
 
-func (uc *UseCase) buildVault() (*crypto.Vault, error) {
-	keyMaterial, err := uc.osw.GetEnv("EMAIL_TOKEN_KEY_V1")
-	if err != nil {
-		return nil, fmt.Errorf("failed to read EMAIL_TOKEN_KEY_V1: %w", err)
+// Disconnect removes the caller's stored mail account connection.
+func (uc *UseCase) Disconnect(ctx context.Context, userID uint, connectionID uint) error {
+	reqLog := uc.log
+	if l, err := uc.log.WithContext(ctx); err == nil {
+		reqLog = l
 	}
-	salt, err := uc.osw.GetEnv("EMAIL_TOKEN_SALT")
+
+	err := uc.repo.DeleteCredentialByIDAndUser(ctx, connectionID, userID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read EMAIL_TOKEN_SALT: %w", err)
+		if errors.Is(err, domain.ErrCredentialNotFound) {
+			reqLog.Info("mail_account_connection_not_found",
+				logger.UserID(userID),
+				logger.Uint("connection_id", connectionID),
+			)
+			return domain.ErrCredentialNotFound
+		}
+
+		reqLog.Error("mail_account_connection_disconnect_failed",
+			logger.UserID(userID),
+			logger.Uint("connection_id", connectionID),
+			logger.Err(err),
+		)
+		return fmt.Errorf("failed to disconnect credential: %w", err)
 	}
-	return crypto.NewVault(crypto.VaultConfig{
-		KeyMaterial: []byte(keyMaterial),
-		Salt:        []byte(salt),
-		Info:        vaultInfo,
-	})
+
+	reqLog.Info("mail_account_connection_disconnected",
+		logger.UserID(userID),
+		logger.Uint("connection_id", connectionID),
+	)
+
+	return nil
 }

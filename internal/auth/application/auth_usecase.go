@@ -88,6 +88,11 @@ type VerificationEmailSender interface {
 	SendVerificationEmail(ctx context.Context, user domain.User, verifyURL string) error
 }
 
+// PasswordHasher generates bcrypt hashes from plaintext passwords.
+type PasswordHasher interface {
+	GenerateHashPassword(password string) (string, error)
+}
+
 // AuthUseCaseInterface defines the interface for login business logic
 type AuthUseCaseInterface interface {
 	// Login authenticates a user and returns a short-lived access token.
@@ -114,10 +119,11 @@ type AuthUseCase struct {
 	refreshTokenTTL time.Duration
 	mailer          VerificationEmailSender
 	clock           timewrapper.ClockInterface
+	hasher          PasswordHasher
 }
 
 // NewAuthUseCase creates a new AuthUseCase instance.
-func NewAuthUseCase(repo AuthRepository, osw oswrapper.OsWapperInterface, mailer VerificationEmailSender, clock timewrapper.ClockInterface) *AuthUseCase {
+func NewAuthUseCase(repo AuthRepository, osw oswrapper.OsWapperInterface, mailer VerificationEmailSender, clock timewrapper.ClockInterface, hasher PasswordHasher) *AuthUseCase {
 	if clock == nil {
 		clock = timewrapper.NewClock()
 	}
@@ -128,5 +134,6 @@ func NewAuthUseCase(repo AuthRepository, osw oswrapper.OsWapperInterface, mailer
 		refreshTokenTTL: readDurationSecondsEnv(osw, "AUTH_REFRESH_TOKEN_TTL_SECONDS", defaultRefreshTokenTTL),
 		mailer:          mailer,
 		clock:           clock,
+		hasher:          hasher,
 	}
 }

@@ -1,27 +1,28 @@
 package infrastructure
 
 import (
+	"business/internal/library/gmailService"
 	"business/internal/library/logger"
 	"context"
 	"fmt"
 
 	"golang.org/x/oauth2"
-	"google.golang.org/api/gmail/v1"
-	"google.golang.org/api/option"
 )
 
 // GmailProfileFetcher fetches the Gmail email address from the API.
 type GmailProfileFetcher struct {
-	log logger.Interface
+	gmailSvc gmailService.ClientInterface
+	log      logger.Interface
 }
 
 // NewGmailProfileFetcher creates a new GmailProfileFetcher.
-func NewGmailProfileFetcher(log logger.Interface) *GmailProfileFetcher {
+func NewGmailProfileFetcher(gmailSvc gmailService.ClientInterface, log logger.Interface) *GmailProfileFetcher {
 	if log == nil {
 		log = logger.NewNop()
 	}
 	return &GmailProfileFetcher{
-		log: log.With(logger.Component("gmail_profile_fetcher")),
+		gmailSvc: gmailSvc,
+		log:      log.With(logger.Component("gmail_profile_fetcher")),
 	}
 }
 
@@ -33,7 +34,7 @@ func (f *GmailProfileFetcher) GetEmailAddress(ctx context.Context, token *oauth2
 	}
 
 	tokenSource := cfg.TokenSource(ctx, token)
-	svc, err := gmail.NewService(ctx, option.WithTokenSource(tokenSource))
+	svc, err := f.gmailSvc.CreateServiceWithTokenSource(ctx, tokenSource)
 	if err != nil {
 		reqLog.Error("external_api_failed",
 			logger.String("provider", "gmail"),

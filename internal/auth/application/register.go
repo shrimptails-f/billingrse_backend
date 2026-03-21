@@ -34,10 +34,11 @@ func (uc *AuthUseCase) Register(ctx context.Context, req domain.RegisterRequest)
 		return domain.User{}, ErrFailedToCheckExists
 	}
 
-	passwordHash, err := domain.NewPasswordHashFromPlaintext(req.Password)
+	hashed, err := uc.hasher.GenerateHashPassword(req.Password)
 	if err != nil {
 		return domain.User{}, fmt.Errorf("failed to hash password: %w", err)
 	}
+	passwordHash := domain.NewPasswordHashFromHash(hashed)
 
 	user, err := uc.repo.CreateUser(ctx, domain.User{
 		Name:         name,

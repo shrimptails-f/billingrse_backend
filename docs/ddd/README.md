@@ -25,7 +25,7 @@ classDiagram
     class MailAccountConnection["メールアカウント連携（MailAccountConnection）"] {
       + 認可する()
       + 再認可する()
-      + 失効する()
+      + 連携解除する()
     }
   }
   namespace 集約_バッチ設定 {

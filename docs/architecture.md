@@ -28,7 +28,7 @@
         - library/                // 共通ラッパー: logger, mysql, gmail/gmailService, openai, oswrapper, ratelimit, redis, retry, sendMailer, crypto, timewrapper
         - auth/                   // 認証ドメイン（domain/application/infrastructure）
         - agent/                  // AI エージェントトークン（domain/application/infrastructure）
-        - emailcredential/        // Gmail OAuth 資格情報管理
+        - mailaccountconnection/  // MailAccountConnection 管理（backing store: email_credentials）
         - emailstore/             // 解析済みメールの永続化
         - common/                 // 共通 DTO とメール分析ログ
         - emailanalysis/          // メッセージングパイプラインを呼び出すアプリケーション層
@@ -59,14 +59,14 @@
 
     <application>
       - 配置:
-        - internal/{domain}/application（auth, agent, emailcredential, emailstore, common/email-analysis-log 等）
+        - internal/{domain}/application（auth, agent, mailaccountconnection, emailstore, common/email-analysis-log 等）
         - internal/emailanalysis/application（キュー投入ユースケース）
         - internal/messaging/application（パイプラインの Factory / Dispatcher）
       - 役割:
         - 各ユースケースの interface（`AuthUseCaseInterface`, `AgentUsecase`, `emailanalysisapp.UseCase` など）を保持し、オーケストレーション・バリデーション・トランザクション管理を実装する。
         - リポジトリや他コンテキストと連携する：
           - `internal/agent/application` は複数テーブルを更新するため明示的に `*gorm.DB` トランザクションを管理。
-          - `internal/emailcredential/application` は `crypto.Vault` と oswrapper を使って OAuth トークンを暗号化/復号。
+          - `internal/mailaccountconnection/application` は `crypto.Vault` と oswrapper を使って OAuth トークンを暗号化/復号する。
           - `internal/emailanalysis/application` は messaging ドメインを用いた事前チェックを行い、`PipelineService` を非同期実行。
           - `internal/common/application` はメール分析ログ操作を提供し、messaging の logging adapter から呼び出される。
         - DI された `oswrapper`, `timewrapper.ClockInterface`, `crypto.Vault`, `logger.Interface` などのヘルパー、および必要に応じて他アプリケーション層サービス（emailstore.UseCase など）へ依存する。
@@ -108,7 +108,7 @@
     - Application (`internal/messaging/application`):
       - `PipelineFactory` や Dispatcher を提供し、DI 層がプロバイダ/アナライザのファクトリを登録しやすくする。
     - Infrastructure (`internal/messaging/infrastructure`):
-      - Gmail credential provider が emailcredential リポジトリと crypto.Vault を用いてトークンを復号。
+      - Gmail credential provider が mailaccountconnection リポジトリと crypto.Vault を用いてトークンを復号。
       - Session factory が GmailService, Gmail REST ラッパー, emailstore.UseCase, token refresher, oswrapper の値を組み合わせ `domain.SessionFactoryPort` を生成。
       - OpenAI analyzer factory が agent リポジトリ・トークン Vault・レートリミット Provider・openai.Client を用いてアナライザを構築。
       - Result saver adapter が emailstore.UseCase 経由で結果を保存し、枝番の重複をスキップ。
@@ -146,7 +146,7 @@
       - `mysql`: 接続生成・`Transactional` ヘルパー・テスト用 DB 作成。
       - `gmail` / `gmailService`: Gmail API ラッパーと OAuth2 Service 生成。
       - `openai`: レートリミット + リトライ付きのチャットクライアント。
-      - `crypto`: HKDF ベースの Vault（agent / emailcredential で利用）。
+      - `crypto`: HKDF ベースの Vault（agent / mailaccountconnection で利用）。
       - `oswrapper`: 環境変数取得とファイル読み込みの抽象化。
       - `ratelimit`: Redis バックエンドのリミッター Provider（Gmail/OpenAI 用）。
       - `redis`, `retry`, `sendMailer`, `timewrapper` などのユーティリティ。
@@ -158,7 +158,7 @@
     - 依存注入はすべて `internal/di` に集約する。
       - `di/dig.go` で `ProvideCommonDependencies`（mysql, gmailService, gmail client, OpenAI client, oswrapper, ratelimit Provider, logger, timewrapper, 名前付き limiter）と `BuildContainer` を定義し、機能別モジュールを束ねる。
       - `di/auth.go`, `di/agent.go`, `di/emailstore.go`, `di/email_credential.go`, `di/messaging.go`, `di/presentation.go` 等で各レイヤのコンストラクタを Provide。
-      - Messaging モジュールでは emailcredential リポジトリや crypto.Vault、Gmail/OpenAI クライアント、emailstore UseCase、logging UseCase を組み合わせ、emailanalysis UseCase が抽象ポートだけに依存するようにしている。
+      - Messaging モジュールでは mailaccountconnection リポジトリや crypto.Vault、Gmail/OpenAI クライアント、emailstore UseCase、logging UseCase を組み合わせ、emailanalysis UseCase が抽象ポートだけに依存するようにしている。
     - ブートストラップ手順:
       - `cmd/app/main.go` → `internal/app/server.Run` を呼び出す。
       - `server.Run` が oswrapper・logger・MySQL・レートリミット Provider・Gmail/OpenAI クライアントを初期化し、dig コンテナを構築。

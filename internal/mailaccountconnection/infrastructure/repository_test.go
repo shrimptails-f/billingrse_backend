@@ -1,9 +1,9 @@
 package infrastructure
 
 import (
-	"business/internal/emailcredential/domain"
 	"business/internal/library/logger"
 	"business/internal/library/mysql"
+	"business/internal/mailaccountconnection/domain"
 	"context"
 	"strings"
 	"testing"
@@ -30,7 +30,7 @@ func newRepoTestEnv(t *testing.T) *repoTestEnv {
 	}
 	require.NoError(t, err)
 
-	err = mysqlConn.DB.AutoMigrate(&pendingStateRecord{}, &credentialRecord{})
+	err = mysqlConn.DB.AutoMigrate(&credentialRecord{})
 	require.NoError(t, err)
 
 	return &repoTestEnv{
@@ -39,6 +39,10 @@ func newRepoTestEnv(t *testing.T) *repoTestEnv {
 		clean:  cleanup,
 		nowUTC: time.Now().UTC().Truncate(time.Second),
 	}
+}
+
+func pendingStatePlaceholder(state string) string {
+	return pendingGmailAddressForState(state)
 }
 
 func skipIfDBUnavailable(t *testing.T, err error) {
@@ -73,6 +77,14 @@ func TestSavePendingState_And_FindByState(t *testing.T) {
 	assert.Equal(t, uint(1), found.UserID)
 	assert.Equal(t, "test-state-123", found.State)
 	assert.Nil(t, found.ConsumedAt)
+
+	var stored credentialRecord
+	err = env.db.WithContext(ctx).Where("id = ?", found.ID).First(&stored).Error
+	require.NoError(t, err)
+	require.NotNil(t, stored.OAuthState)
+	require.NotNil(t, stored.OAuthStateExpiresAt)
+	assert.Equal(t, "test-state-123", *stored.OAuthState)
+	assert.Equal(t, pendingStatePlaceholder("test-state-123"), stored.GmailAddress)
 }
 
 func TestFindPendingStateByState_NotFound(t *testing.T) {
@@ -103,12 +115,10 @@ func TestConsumePendingState(t *testing.T) {
 	err = env.repo.ConsumePendingState(ctx, found.ID, env.nowUTC)
 	require.NoError(t, err)
 
-	// Verify consumed
-	consumed, err := env.repo.FindPendingStateByState(ctx, "consume-me")
-	require.NoError(t, err)
-	assert.NotNil(t, consumed.ConsumedAt)
+	// Verify consumed rows are removed from the backing store.
+	_, err = env.repo.FindPendingStateByState(ctx, "consume-me")
+	assert.ErrorIs(t, err, domain.ErrPendingStateNotFound)
 
-	// Double-consume should fail
 	err = env.repo.ConsumePendingState(ctx, found.ID, env.nowUTC)
 	assert.Error(t, err)
 }
@@ -261,10 +271,112 @@ func TestListCredentialsByUser_FiltersAndOrders(t *testing.T) {
 		CreatedAt:          newer,
 		UpdatedAt:          newer,
 	}))
+	require.NoError(t, env.db.WithContext(ctx).Create(&credentialRecord{
+		UserID:              1,
+		Type:                "gmail",
+		GmailAddress:        pendingStatePlaceholder("pending-list"),
+		KeyVersion:          1,
+		AccessToken:         "",
+		AccessTokenDigest:   "",
+		RefreshToken:        "",
+		RefreshTokenDigest:  "",
+		OAuthState:          stringPtr("pending-list"),
+		OAuthStateExpiresAt: timePtr(env.nowUTC.Add(10 * time.Minute)),
+		CreatedAt:           env.nowUTC,
+		UpdatedAt:           env.nowUTC,
+	}).Error)
 
 	credentials, err := env.repo.ListCredentialsByUser(ctx, 1)
 	require.NoError(t, err)
 	require.Len(t, credentials, 2)
 	assert.Equal(t, "first@gmail.com", credentials[0].GmailAddress)
 	assert.Equal(t, "second@gmail.com", credentials[1].GmailAddress)
+}
+
+func TestDeleteCredentialByIDAndUser_Success(t *testing.T) {
+	env := newRepoTestEnv(t)
+	defer env.clean()
+	ctx := context.Background()
+
+	cred := domain.EmailCredential{
+		UserID:             1,
+		Type:               "gmail",
+		GmailAddress:       "delete-me@gmail.com",
+		KeyVersion:         1,
+		AccessToken:        "enc-access",
+		AccessTokenDigest:  "dig-access",
+		RefreshToken:       "enc-refresh",
+		RefreshTokenDigest: "dig-refresh",
+		CreatedAt:          env.nowUTC,
+		UpdatedAt:          env.nowUTC,
+	}
+	require.NoError(t, env.repo.CreateCredential(ctx, cred))
+
+	found, err := env.repo.FindCredentialByUserAndGmail(ctx, 1, "delete-me@gmail.com")
+	require.NoError(t, err)
+
+	err = env.repo.DeleteCredentialByIDAndUser(ctx, found.ID, 1)
+	require.NoError(t, err)
+
+	_, err = env.repo.FindCredentialByUserAndGmail(ctx, 1, "delete-me@gmail.com")
+	assert.ErrorIs(t, err, domain.ErrCredentialNotFound)
+}
+
+func TestDeleteCredentialByIDAndUser_OtherUserCannotDelete(t *testing.T) {
+	env := newRepoTestEnv(t)
+	defer env.clean()
+	ctx := context.Background()
+
+	cred := domain.EmailCredential{
+		UserID:             1,
+		Type:               "gmail",
+		GmailAddress:       "owner@gmail.com",
+		KeyVersion:         1,
+		AccessToken:        "enc-access",
+		AccessTokenDigest:  "dig-access",
+		RefreshToken:       "enc-refresh",
+		RefreshTokenDigest: "dig-refresh",
+		CreatedAt:          env.nowUTC,
+		UpdatedAt:          env.nowUTC,
+	}
+	require.NoError(t, env.repo.CreateCredential(ctx, cred))
+
+	found, err := env.repo.FindCredentialByUserAndGmail(ctx, 1, "owner@gmail.com")
+	require.NoError(t, err)
+
+	err = env.repo.DeleteCredentialByIDAndUser(ctx, found.ID, 2)
+	assert.ErrorIs(t, err, domain.ErrCredentialNotFound)
+
+	stillExists, err := env.repo.FindCredentialByUserAndGmail(ctx, 1, "owner@gmail.com")
+	require.NoError(t, err)
+	assert.Equal(t, found.ID, stillExists.ID)
+}
+
+func TestDeleteCredentialByIDAndUser_NotFound(t *testing.T) {
+	env := newRepoTestEnv(t)
+	defer env.clean()
+	ctx := context.Background()
+
+	err := env.repo.DeleteCredentialByIDAndUser(ctx, 9999, 1)
+	assert.ErrorIs(t, err, domain.ErrCredentialNotFound)
+}
+
+func TestDeleteCredentialByIDAndUser_PendingStateNotDeletableAsConnection(t *testing.T) {
+	env := newRepoTestEnv(t)
+	defer env.clean()
+	ctx := context.Background()
+
+	state := "pending-delete"
+	require.NoError(t, env.repo.SavePendingState(ctx, domain.OAuthPendingState{
+		UserID:    1,
+		State:     state,
+		ExpiresAt: env.nowUTC.Add(10 * time.Minute),
+		CreatedAt: env.nowUTC,
+	}))
+
+	pending, err := env.repo.FindPendingStateByState(ctx, state)
+	require.NoError(t, err)
+
+	err = env.repo.DeleteCredentialByIDAndUser(ctx, pending.ID, 1)
+	assert.ErrorIs(t, err, domain.ErrCredentialNotFound)
 }

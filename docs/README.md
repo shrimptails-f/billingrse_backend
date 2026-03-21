@@ -7,6 +7,7 @@ docs/
   adr/ 意思決定ログ（ADR）を格納
     ddd/ DDDに関するADR
     architecture/ 技術設計に関するADR
+  spec/ APIの要件定義・設計書
   ddd/ ドメイン設計（ユビキタス言語・モデル・不変条件など）
     ubiquitous-language/ ユビキタス言語（カテゴリ別）
 ```

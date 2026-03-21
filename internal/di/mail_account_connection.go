@@ -2,19 +2,20 @@ package di
 
 import (
 	macpresentation "business/internal/app/presentation/mailaccountconnection"
-	"business/internal/emailcredential/application"
-	"business/internal/emailcredential/infrastructure"
+	"business/internal/library/crypto"
 	"business/internal/library/gmailService"
 	"business/internal/library/logger"
 	"business/internal/library/mysql"
 	"business/internal/library/oswrapper"
 	"business/internal/library/timewrapper"
+	"business/internal/mailaccountconnection/application"
+	"business/internal/mailaccountconnection/infrastructure"
 
 	"go.uber.org/dig"
 )
 
-// ProvideEmailCredentialDependencies registers email credential related dependencies.
-func ProvideEmailCredentialDependencies(container *dig.Container) {
+// ProvideMailAccountConnectionDependencies registers mail account connection related dependencies.
+func ProvideMailAccountConnectionDependencies(container *dig.Container) {
 	// Repository
 	_ = container.Provide(func(conn *mysql.MySQL, log *logger.Logger) *infrastructure.Repository {
 		return infrastructure.NewRepository(conn.DB, log)
@@ -31,8 +32,8 @@ func ProvideEmailCredentialDependencies(container *dig.Container) {
 	})
 
 	// GmailProfileFetcher
-	_ = container.Provide(func(log *logger.Logger) *infrastructure.GmailProfileFetcher {
-		return infrastructure.NewGmailProfileFetcher(log)
+	_ = container.Provide(func(gs *gmailService.Client, log *logger.Logger) *infrastructure.GmailProfileFetcher {
+		return infrastructure.NewGmailProfileFetcher(gs, log)
 	})
 
 	// UseCase
@@ -41,11 +42,11 @@ func ProvideEmailCredentialDependencies(container *dig.Container) {
 		oauthCfg *gmailService.OAuthConfigLoader,
 		exchanger *infrastructure.OAuthTokenExchanger,
 		profiler *infrastructure.GmailProfileFetcher,
-		osw *oswrapper.OsWrapper,
+		vault *crypto.Vault,
 		clock *timewrapper.Clock,
 		log *logger.Logger,
 	) *application.UseCase {
-		return application.NewUseCase(repo, oauthCfg, exchanger, profiler, osw, clock, log)
+		return application.NewUseCase(repo, oauthCfg, exchanger, profiler, vault, clock, log)
 	})
 
 	// Controller

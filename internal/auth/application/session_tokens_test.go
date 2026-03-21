@@ -20,8 +20,9 @@ func TestAuthUseCase_LoginTokensSuccess(t *testing.T) {
 	fixedTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	repo := new(mockAuthRepository)
 	mailer := new(mockVerificationEmailSender)
-	hashedPassword, err := domain.NewPasswordHashFromPlaintext("password123")
+	hashed, err := testVault().GenerateHashPassword("password123")
 	assert.NoError(t, err)
+	hashedPassword := domain.NewPasswordHashFromHash(hashed)
 
 	repo.On("GetUserByEmail", mock.Anything, domain.EmailAddress("user@example.com")).Return(domain.User{
 		ID:           1,
@@ -36,7 +37,7 @@ func TestAuthUseCase_LoginTokensSuccess(t *testing.T) {
 			token.CreatedAt.Equal(fixedTime)
 	})).Return(domain.RefreshToken{ID: 2, UserID: 1, Token: "refresh-token", TokenDigest: "digest"}, nil).Once()
 
-	uc := NewAuthUseCase(repo, newStubOsWrapper(secret), mailer, &stubClock{now: fixedTime})
+	uc := NewAuthUseCase(repo, newStubOsWrapper(secret), mailer, &stubClock{now: fixedTime}, testVault())
 
 	tokens, err := uc.LoginTokens(context.Background(), domain.LoginRequest{
 		Email:    "user@example.com",
@@ -96,7 +97,7 @@ func TestAuthUseCase_RefreshSuccess(t *testing.T) {
 		CreatedAt:   fixedTime,
 	}, nil).Once()
 
-	uc := NewAuthUseCase(repo, newStubOsWrapper(secret), mailer, &stubClock{now: fixedTime})
+	uc := NewAuthUseCase(repo, newStubOsWrapper(secret), mailer, &stubClock{now: fixedTime}, testVault())
 
 	tokens, err := uc.Refresh(context.Background(), domain.RefreshRequest{RefreshToken: refreshToken})
 
@@ -130,7 +131,7 @@ func TestAuthUseCase_RefreshInvalidToken(t *testing.T) {
 		Return(domain.RefreshToken{}, gorm.ErrRecordNotFound).
 		Once()
 
-	uc := NewAuthUseCase(repo, newStubOsWrapper("test-secret"), mailer, &stubClock{now: time.Now().UTC()})
+	uc := NewAuthUseCase(repo, newStubOsWrapper("test-secret"), mailer, &stubClock{now: time.Now().UTC()}, testVault())
 	tokens, err := uc.Refresh(context.Background(), domain.RefreshRequest{RefreshToken: "refresh-token"})
 
 	assert.ErrorIs(t, err, ErrRefreshTokenInvalid)
@@ -145,7 +146,7 @@ func TestAuthUseCase_LogoutSuccess(t *testing.T) {
 	mailer := new(mockVerificationEmailSender)
 	repo.On("RevokeRefreshTokenByDigest", mock.Anything, digestRefreshToken("refresh-token"), fixedTime).Return(nil).Once()
 
-	uc := NewAuthUseCase(repo, newStubOsWrapper("test-secret"), mailer, &stubClock{now: fixedTime})
+	uc := NewAuthUseCase(repo, newStubOsWrapper("test-secret"), mailer, &stubClock{now: fixedTime}, testVault())
 	err := uc.Logout(context.Background(), domain.LogoutRequest{RefreshToken: "refresh-token"})
 
 	assert.NoError(t, err)
@@ -157,7 +158,7 @@ func TestAuthUseCase_LogoutNoTokenIsNoop(t *testing.T) {
 
 	repo := new(mockAuthRepository)
 	mailer := new(mockVerificationEmailSender)
-	uc := NewAuthUseCase(repo, newStubOsWrapper("test-secret"), mailer, nil)
+	uc := NewAuthUseCase(repo, newStubOsWrapper("test-secret"), mailer, nil, testVault())
 
 	err := uc.Logout(context.Background(), domain.LogoutRequest{})
 
