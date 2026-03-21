@@ -31,8 +31,8 @@ func ProvideMailAccountConnectionDependencies(container *dig.Container) {
 	})
 
 	// GmailProfileFetcher
-	_ = container.Provide(func(log *logger.Logger) *infrastructure.GmailProfileFetcher {
-		return infrastructure.NewGmailProfileFetcher(log)
+	_ = container.Provide(func(gs *gmailService.Client, log *logger.Logger) *infrastructure.GmailProfileFetcher {
+		return infrastructure.NewGmailProfileFetcher(gs, log)
 	})
 
 	// UseCase
