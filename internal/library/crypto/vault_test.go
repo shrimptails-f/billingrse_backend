@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestNewVault(t *testing.T) {
@@ -16,6 +17,7 @@ func TestNewVault(t *testing.T) {
 			KeyMaterial: []byte("this-is-a-32-byte-key-material!!"),
 			Salt:        []byte("test-salt"),
 			Info:        "test-vault",
+			BcryptCost:  bcrypt.MinCost,
 		}
 
 		vault, err := NewVault(cfg)
@@ -30,6 +32,7 @@ func TestNewVault(t *testing.T) {
 			KeyMaterial: []byte("short-key"),
 			Salt:        []byte("test-salt"),
 			Info:        "test-vault",
+			BcryptCost:  bcrypt.MinCost,
 		}
 
 		vault, err := NewVault(cfg)
@@ -45,6 +48,7 @@ func TestNewVault(t *testing.T) {
 			KeyMaterial: []byte("this-is-a-32-byte-key-material!!"),
 			Salt:        []byte{},
 			Info:        "test-vault",
+			BcryptCost:  bcrypt.MinCost,
 		}
 
 		vault, err := NewVault(cfg)
@@ -60,6 +64,7 @@ func TestNewVault(t *testing.T) {
 			KeyMaterial: []byte("this-is-a-32-byte-key-material!!"),
 			Salt:        []byte("test-salt"),
 			Info:        "",
+			BcryptCost:  bcrypt.MinCost,
 		}
 
 		vault, err := NewVault(cfg)
@@ -76,6 +81,7 @@ func TestEncryptDecrypt(t *testing.T) {
 		KeyMaterial: []byte("this-is-a-32-byte-key-material!!"),
 		Salt:        []byte("test-salt"),
 		Info:        "test-vault",
+		BcryptCost:  bcrypt.MinCost,
 	}
 	vault, err := NewVault(cfg)
 	require.NoError(t, err)
@@ -162,6 +168,7 @@ func TestEncryptToStringDecryptFromString(t *testing.T) {
 		KeyMaterial: []byte("this-is-a-32-byte-key-material!!"),
 		Salt:        []byte("test-salt"),
 		Info:        "test-vault",
+		BcryptCost:  bcrypt.MinCost,
 	}
 	vault, err := NewVault(cfg)
 	require.NoError(t, err)
@@ -197,6 +204,7 @@ func TestDigest(t *testing.T) {
 		KeyMaterial: []byte("this-is-a-32-byte-key-material!!"),
 		Salt:        []byte("test-salt"),
 		Info:        "test-vault",
+		BcryptCost:  1,
 	}
 	vault, err := NewVault(cfg)
 	require.NoError(t, err)
@@ -239,6 +247,7 @@ func TestDigest(t *testing.T) {
 			KeyMaterial: []byte("this-is-a-32-byte-key-material!!"),
 			Salt:        []byte("salt1"),
 			Info:        "test-vault",
+			BcryptCost:  bcrypt.MinCost,
 		}
 		vault1, err := NewVault(cfg1)
 		require.NoError(t, err)
@@ -247,6 +256,7 @@ func TestDigest(t *testing.T) {
 			KeyMaterial: []byte("this-is-a-32-byte-key-material!!"),
 			Salt:        []byte("salt2"),
 			Info:        "test-vault",
+			BcryptCost:  bcrypt.MinCost,
 		}
 		vault2, err := NewVault(cfg2)
 		require.NoError(t, err)
@@ -267,6 +277,7 @@ func TestDigestToString(t *testing.T) {
 		KeyMaterial: []byte("this-is-a-32-byte-key-material!!"),
 		Salt:        []byte("test-salt"),
 		Info:        "test-vault",
+		BcryptCost:  bcrypt.MinCost,
 	}
 	vault, err := NewVault(cfg)
 	require.NoError(t, err)
@@ -293,6 +304,7 @@ func TestIntegration(t *testing.T) {
 		KeyMaterial: []byte("this-is-a-32-byte-key-material!!"),
 		Salt:        []byte("test-salt"),
 		Info:        "email-credential-encryption",
+		BcryptCost:  bcrypt.MinCost,
 	}
 	vault, err := NewVault(cfg)
 	require.NoError(t, err)

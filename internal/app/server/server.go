@@ -4,6 +4,7 @@ import (
 	"business/internal/app/middleware"
 	v1 "business/internal/app/router"
 	"business/internal/di"
+	"business/internal/library/crypto"
 	"business/internal/library/gmail"
 	"business/internal/library/gmailService"
 	"business/internal/library/logger"
@@ -13,6 +14,8 @@ import (
 	"business/internal/library/ratelimit"
 	"business/internal/library/secret"
 	"business/internal/library/timewrapper"
+
+	"golang.org/x/crypto/bcrypt"
 	"context"
 	"net/http"
 	"os"
@@ -70,9 +73,32 @@ func Run() {
 	oa := openai.New(apiKey, openaiLimiter, baseLogger)
 	gs := gmailService.New()
 	gc := gmail.New(gmailLimiter, baseLogger)
+	emailTokenKey, err := osw.GetEnv("EMAIL_TOKEN_KEY_V1")
+	if err != nil {
+		serverLogger.Error("failed to read EMAIL_TOKEN_KEY_V1", logger.Err(err))
+		return
+	}
+
+	emailTokenSalt, err := osw.GetEnv("EMAIL_TOKEN_SALT")
+	if err != nil {
+		serverLogger.Error("failed to read EMAIL_TOKEN_SALT", logger.Err(err))
+		return
+	}
+
+	// Vaultインスタンス生成
+	vault, err := crypto.NewVault(crypto.VaultConfig{
+		KeyMaterial: []byte(emailTokenKey),
+		Salt:        []byte(emailTokenSalt),
+		Info:        "email-credential-encryption",
+		BcryptCost:  bcrypt.DefaultCost,
+	})
+	if err != nil {
+		serverLogger.Error("Vault 初期化時にエラーが発生しました", logger.Err(err))
+		return
+	}
 
 	// DIを行う
-	container := di.BuildContainer(db, oa, gs, gc, osw, provider, baseLogger)
+	container := di.BuildContainer(db, oa, gs, gc, osw, provider, baseLogger, vault)
 	var isUseSSL string
 	isUseSSL, err = osw.GetEnv("USE_SSL")
 	if err != nil {

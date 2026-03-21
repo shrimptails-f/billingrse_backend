@@ -1,6 +1,7 @@
 package application
 
 import (
+	"business/internal/library/crypto"
 	"business/internal/library/logger"
 	"business/internal/mailaccountconnection/domain"
 	mocklibrary "business/test/mock/library"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/oauth2"
 )
 
@@ -97,13 +99,6 @@ type fixedClock struct {
 func (c *fixedClock) Now() time.Time                         { return c.now }
 func (c *fixedClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
 
-func testOSW() *mocklibrary.OsWrapperMock {
-	return mocklibrary.NewOsWrapperMock(map[string]string{
-		"EMAIL_TOKEN_KEY_V1": "01234567890123456789012345678901", // 32 bytes
-		"EMAIL_TOKEN_SALT":   "test-salt-value",
-	})
-}
-
 func testClock(t time.Time) *fixedClock {
 	return &fixedClock{now: t}
 }
@@ -142,16 +137,25 @@ func testListCredential(id uint, provider string, accountIdentifier string, crea
 	}
 }
 
+func newTestVault() *crypto.Vault {
+	v, _ := crypto.NewVault(crypto.VaultConfig{
+		KeyMaterial: []byte("01234567890123456789012345678901"),
+		Salt:        []byte("test-salt-value"),
+		Info:        "email-credential-encryption",
+		BcryptCost:  bcrypt.MinCost,
+	})
+	return v
+}
+
 func newTestUseCase(
 	repo *mockRepo,
 	oauthCfg *mockOAuthCfg,
 	exchanger *mockExchanger,
 	profiler *mockProfiler,
-	osw *mocklibrary.OsWrapperMock,
 	clock *fixedClock,
 ) UseCaseInterface {
 	var log logger.Interface = mocklibrary.NewNopLogger()
-	return NewUseCase(repo, oauthCfg, exchanger, profiler, osw, clock, log)
+	return NewUseCase(repo, oauthCfg, exchanger, profiler, newTestVault(), clock, log)
 }
 
 // --- Authorize tests ---
@@ -167,7 +171,7 @@ func TestAuthorize_Success(t *testing.T) {
 		return ps.UserID == 1 && ps.State != "" && ps.ExpiresAt.After(now)
 	})).Return(nil)
 
-	uc := newTestUseCase(repo, oauthCfg, nil, nil, testOSW(), testClock(now))
+	uc := newTestUseCase(repo, oauthCfg, nil, nil, testClock(now))
 	result, err := uc.Authorize(context.Background(), 1)
 
 	assert.NoError(t, err)
@@ -201,7 +205,7 @@ func TestCallback_StateMismatch(t *testing.T) {
 	repo.On("FindPendingStateByState", mock.Anything, "bad-state").
 		Return(domain.OAuthPendingState{}, domain.ErrPendingStateNotFound)
 
-	uc := newTestUseCase(repo, oauthCfg, nil, nil, testOSW(), testClock(now))
+	uc := newTestUseCase(repo, oauthCfg, nil, nil, testClock(now))
 	err := uc.Callback(context.Background(), 1, "code", "bad-state")
 
 	assert.ErrorIs(t, err, domain.ErrOAuthStateMismatch)
@@ -216,7 +220,7 @@ func TestCallback_StateMismatch_DBError(t *testing.T) {
 	repo.On("FindPendingStateByState", mock.Anything, "state").
 		Return(domain.OAuthPendingState{}, errors.New("db connection error"))
 
-	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testOSW(), testClock(now))
+	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testClock(now))
 	err := uc.Callback(context.Background(), 1, "code", "state")
 
 	assert.Error(t, err)
@@ -239,7 +243,7 @@ func TestCallback_StateExpired(t *testing.T) {
 	}
 	repo.On("FindPendingStateByState", mock.Anything, "expired-state").Return(expired, nil)
 
-	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testOSW(), testClock(now))
+	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testClock(now))
 	err := uc.Callback(context.Background(), 1, "code", "expired-state")
 
 	assert.ErrorIs(t, err, domain.ErrOAuthStateExpired)
@@ -272,7 +276,7 @@ func TestCallback_NewConnection_Success(t *testing.T) {
 			c.RefreshToken != ""
 	})).Return(nil)
 
-	uc := newTestUseCase(repo, oauthCfg, exchanger, profiler, testOSW(), testClock(now))
+	uc := newTestUseCase(repo, oauthCfg, exchanger, profiler, testClock(now))
 	err := uc.Callback(context.Background(), 1, "auth-code", "valid-state")
 
 	assert.NoError(t, err)
@@ -303,7 +307,7 @@ func TestCallback_DifferentGmail_CreatesNew(t *testing.T) {
 		return c.GmailAddress == "other@gmail.com"
 	})).Return(nil)
 
-	uc := newTestUseCase(repo, oauthCfg, exchanger, profiler, testOSW(), testClock(now))
+	uc := newTestUseCase(repo, oauthCfg, exchanger, profiler, testClock(now))
 	err := uc.Callback(context.Background(), 1, "code", "valid-state")
 
 	assert.NoError(t, err)
@@ -345,7 +349,7 @@ func TestCallback_SameGmail_Updates(t *testing.T) {
 			c.RefreshToken != "old-enc-refresh"
 	})).Return(nil)
 
-	uc := newTestUseCase(repo, oauthCfg, exchanger, profiler, testOSW(), testClock(now))
+	uc := newTestUseCase(repo, oauthCfg, exchanger, profiler, testClock(now))
 	err := uc.Callback(context.Background(), 1, "code", "valid-state")
 
 	assert.NoError(t, err)
@@ -390,7 +394,7 @@ func TestCallback_SameGmail_NoRefreshToken_KeepsExisting(t *testing.T) {
 			c.RefreshTokenDigest == "existing-refresh-dig"
 	})).Return(nil)
 
-	uc := newTestUseCase(repo, oauthCfg, exchanger, profiler, testOSW(), testClock(now))
+	uc := newTestUseCase(repo, oauthCfg, exchanger, profiler, testClock(now))
 	err := uc.Callback(context.Background(), 1, "code", "valid-state")
 
 	assert.NoError(t, err)
@@ -419,7 +423,7 @@ func TestCallback_NewConnection_NoRefreshToken_Fails(t *testing.T) {
 	repo.On("FindCredentialByUserAndGmail", mock.Anything, uint(1), "new@gmail.com").
 		Return(domain.EmailCredential{}, domain.ErrCredentialNotFound)
 
-	uc := newTestUseCase(repo, oauthCfg, exchanger, profiler, testOSW(), testClock(now))
+	uc := newTestUseCase(repo, oauthCfg, exchanger, profiler, testClock(now))
 	err := uc.Callback(context.Background(), 1, "code", "valid-state")
 
 	assert.ErrorIs(t, err, domain.ErrRefreshTokenMissing)
@@ -440,7 +444,7 @@ func TestCallback_ExchangeFailed(t *testing.T) {
 	oauthCfg.On("GetGmailOAuthConfig", mock.Anything).Return(cfg, nil)
 	exchanger.On("Exchange", mock.Anything, cfg, "code").Return((*oauth2.Token)(nil), errors.New("google error"))
 
-	uc := newTestUseCase(repo, oauthCfg, exchanger, nil, testOSW(), testClock(now))
+	uc := newTestUseCase(repo, oauthCfg, exchanger, nil, testClock(now))
 	err := uc.Callback(context.Background(), 1, "code", "valid-state")
 
 	assert.ErrorIs(t, err, domain.ErrOAuthExchangeFailed)
@@ -466,7 +470,7 @@ func TestCallback_CredentialLookup_DBError(t *testing.T) {
 	repo.On("FindCredentialByUserAndGmail", mock.Anything, uint(1), "user@gmail.com").
 		Return(domain.EmailCredential{}, errors.New("db connection timeout"))
 
-	uc := newTestUseCase(repo, oauthCfg, exchanger, profiler, testOSW(), testClock(now))
+	uc := newTestUseCase(repo, oauthCfg, exchanger, profiler, testClock(now))
 	err := uc.Callback(context.Background(), 1, "code", "valid-state")
 
 	assert.Error(t, err)
@@ -482,7 +486,7 @@ func TestListConnections_Empty(t *testing.T) {
 
 	repo.On("ListCredentialsByUser", mock.Anything, uint(1)).Return([]domain.EmailCredential{}, nil)
 
-	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testOSW(), testClock(now))
+	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testClock(now))
 	connections, err := uc.ListConnections(context.Background(), 1)
 
 	assert.NoError(t, err)
@@ -499,7 +503,7 @@ func TestListConnections_Success(t *testing.T) {
 
 	repo.On("ListCredentialsByUser", mock.Anything, uint(1)).Return([]domain.EmailCredential{credential, unsupported}, nil)
 
-	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testOSW(), testClock(now))
+	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testClock(now))
 	connections, err := uc.ListConnections(context.Background(), 1)
 
 	assert.NoError(t, err)
@@ -520,7 +524,7 @@ func TestListConnections_ListError(t *testing.T) {
 	now := time.Date(2026, 3, 20, 2, 15, 0, 0, time.UTC)
 	repo.On("ListCredentialsByUser", mock.Anything, uint(1)).Return(([]domain.EmailCredential)(nil), errors.New("db timeout"))
 
-	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testOSW(), testClock(now))
+	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testClock(now))
 	connections, err := uc.ListConnections(context.Background(), 1)
 
 	assert.Nil(t, connections)
@@ -536,7 +540,7 @@ func TestDisconnect_Success(t *testing.T) {
 
 	repo.On("DeleteCredentialByIDAndUser", mock.Anything, uint(12), uint(1)).Return(nil)
 
-	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testOSW(), testClock(now))
+	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testClock(now))
 	err := uc.Disconnect(context.Background(), 1, 12)
 
 	assert.NoError(t, err)
@@ -550,7 +554,7 @@ func TestDisconnect_NotFound(t *testing.T) {
 
 	repo.On("DeleteCredentialByIDAndUser", mock.Anything, uint(12), uint(1)).Return(domain.ErrCredentialNotFound)
 
-	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testOSW(), testClock(now))
+	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testClock(now))
 	err := uc.Disconnect(context.Background(), 1, 12)
 
 	assert.ErrorIs(t, err, domain.ErrCredentialNotFound)
@@ -564,7 +568,7 @@ func TestDisconnect_DeleteError(t *testing.T) {
 
 	repo.On("DeleteCredentialByIDAndUser", mock.Anything, uint(12), uint(1)).Return(errors.New("db timeout"))
 
-	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testOSW(), testClock(now))
+	uc := newTestUseCase(repo, new(mockOAuthCfg), nil, nil, testClock(now))
 	err := uc.Disconnect(context.Background(), 1, 12)
 
 	assert.Error(t, err)

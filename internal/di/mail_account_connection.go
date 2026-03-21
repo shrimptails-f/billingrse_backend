@@ -2,6 +2,7 @@ package di
 
 import (
 	macpresentation "business/internal/app/presentation/mailaccountconnection"
+	"business/internal/library/crypto"
 	"business/internal/library/gmailService"
 	"business/internal/library/logger"
 	"business/internal/library/mysql"
@@ -41,11 +42,11 @@ func ProvideMailAccountConnectionDependencies(container *dig.Container) {
 		oauthCfg *gmailService.OAuthConfigLoader,
 		exchanger *infrastructure.OAuthTokenExchanger,
 		profiler *infrastructure.GmailProfileFetcher,
-		osw *oswrapper.OsWrapper,
+		vault *crypto.Vault,
 		clock *timewrapper.Clock,
 		log *logger.Logger,
 	) *application.UseCase {
-		return application.NewUseCase(repo, oauthCfg, exchanger, profiler, osw, clock, log)
+		return application.NewUseCase(repo, oauthCfg, exchanger, profiler, vault, clock, log)
 	})
 
 	// Controller

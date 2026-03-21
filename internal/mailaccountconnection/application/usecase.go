@@ -3,7 +3,6 @@ package application
 import (
 	"business/internal/library/crypto"
 	"business/internal/library/logger"
-	"business/internal/library/oswrapper"
 	"business/internal/library/timewrapper"
 	"business/internal/mailaccountconnection/domain"
 	"context"
@@ -20,9 +19,8 @@ import (
 const (
 	oauthStateTTL   = 10 * time.Minute
 	oauthStateBytes = 32
-	credentialType  = "gmail"
-	vaultInfo       = "email_credential"
-	defaultKeyVer   = int16(1)
+	credentialType = "gmail"
+	defaultKeyVer  = int16(1)
 )
 
 // Repository defines persistence operations for mail account connections.
@@ -72,7 +70,7 @@ type UseCase struct {
 	oauthCfg  OAuthConfigProvider
 	exchanger OAuthTokenExchanger
 	profiler  GmailProfileFetcher
-	osw       oswrapper.OsWapperInterface
+	vault     *crypto.Vault
 	clock     timewrapper.ClockInterface
 	log       logger.Interface
 }
@@ -83,7 +81,7 @@ func NewUseCase(
 	oauthCfg OAuthConfigProvider,
 	exchanger OAuthTokenExchanger,
 	profiler GmailProfileFetcher,
-	osw oswrapper.OsWapperInterface,
+	vault *crypto.Vault,
 	clock timewrapper.ClockInterface,
 	log logger.Interface,
 ) *UseCase {
@@ -98,7 +96,7 @@ func NewUseCase(
 		oauthCfg:  oauthCfg,
 		exchanger: exchanger,
 		profiler:  profiler,
-		osw:       osw,
+		vault:     vault,
 		clock:     clock,
 		log:       log.With(logger.Component("mail_account_connection_usecase")),
 	}
@@ -212,14 +210,7 @@ func (uc *UseCase) Callback(ctx context.Context, userID uint, code, state string
 	}
 	normalizedAddr := strings.ToLower(strings.TrimSpace(gmailAddr))
 
-	// 5. Build vault for encryption
-	vault, err := uc.buildVault()
-	if err != nil {
-		reqLog.Error("vault_build_failed", logger.Err(err))
-		return domain.ErrVaultEncryptFailed
-	}
-
-	// 6. Check existing credential (distinguish not-found from DB error)
+	// 5. Check existing credential (distinguish not-found from DB error)
 	existing, err := uc.repo.FindCredentialByUserAndGmail(ctx, userID, normalizedAddr)
 	var isNew bool
 	if err != nil {
@@ -232,12 +223,12 @@ func (uc *UseCase) Callback(ctx context.Context, userID uint, code, state string
 	}
 
 	// 7. Encrypt access_token
-	encAccess, err := vault.EncryptToString(token.AccessToken)
+	encAccess, err := uc.vault.EncryptToString(token.AccessToken)
 	if err != nil {
 		reqLog.Error("access_token_encrypt_failed", logger.Err(err))
 		return domain.ErrVaultEncryptFailed
 	}
-	digestAccess, err := vault.DigestToString(token.AccessToken)
+	digestAccess, err := uc.vault.DigestToString(token.AccessToken)
 	if err != nil {
 		reqLog.Error("access_token_digest_failed", logger.Err(err))
 		return domain.ErrVaultEncryptFailed
@@ -252,12 +243,12 @@ func (uc *UseCase) Callback(ctx context.Context, userID uint, code, state string
 			return domain.ErrRefreshTokenMissing
 		}
 
-		encRefresh, err := vault.EncryptToString(token.RefreshToken)
+		encRefresh, err := uc.vault.EncryptToString(token.RefreshToken)
 		if err != nil {
 			reqLog.Error("refresh_token_encrypt_failed", logger.Err(err))
 			return domain.ErrVaultEncryptFailed
 		}
-		digestRefresh, err := vault.DigestToString(token.RefreshToken)
+		digestRefresh, err := uc.vault.DigestToString(token.RefreshToken)
 		if err != nil {
 			reqLog.Error("refresh_token_digest_failed", logger.Err(err))
 			return domain.ErrVaultEncryptFailed
@@ -290,12 +281,12 @@ func (uc *UseCase) Callback(ctx context.Context, userID uint, code, state string
 		existing.AccessTokenDigest = digestAccess
 
 		if token.RefreshToken != "" {
-			encRefresh, err := vault.EncryptToString(token.RefreshToken)
+			encRefresh, err := uc.vault.EncryptToString(token.RefreshToken)
 			if err != nil {
 				reqLog.Error("refresh_token_encrypt_failed", logger.Err(err))
 				return domain.ErrVaultEncryptFailed
 			}
-			digestRefresh, err := vault.DigestToString(token.RefreshToken)
+			digestRefresh, err := uc.vault.DigestToString(token.RefreshToken)
 			if err != nil {
 				reqLog.Error("refresh_token_digest_failed", logger.Err(err))
 				return domain.ErrVaultEncryptFailed
@@ -382,20 +373,4 @@ func (uc *UseCase) Disconnect(ctx context.Context, userID uint, connectionID uin
 	)
 
 	return nil
-}
-
-func (uc *UseCase) buildVault() (*crypto.Vault, error) {
-	keyMaterial, err := uc.osw.GetEnv("EMAIL_TOKEN_KEY_V1")
-	if err != nil {
-		return nil, fmt.Errorf("failed to read EMAIL_TOKEN_KEY_V1: %w", err)
-	}
-	salt, err := uc.osw.GetEnv("EMAIL_TOKEN_SALT")
-	if err != nil {
-		return nil, fmt.Errorf("failed to read EMAIL_TOKEN_SALT: %w", err)
-	}
-	return crypto.NewVault(crypto.VaultConfig{
-		KeyMaterial: []byte(keyMaterial),
-		Salt:        []byte(salt),
-		Info:        vaultInfo,
-	})
 }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/hkdf"
 )
 
@@ -17,16 +18,21 @@ type VaultConfig struct {
 	KeyMaterial []byte
 	Salt        []byte
 	Info        string
+	BcryptCost  int
 }
 
 // Vault provides encryption/decryption/digest helpers backed by AES-GCM + HKDF.
 type Vault struct {
-	key  []byte
-	salt []byte
+	key        []byte
+	salt       []byte
+	bcryptCost int
 }
 
 // NewVault builds a Vault using HKDF-SHA256 with the provided config.
 func NewVault(cfg VaultConfig) (*Vault, error) {
+	if cfg.BcryptCost == 0 {
+		return nil, fmt.Errorf("bcryptCost is not set")
+	}
 	if len(cfg.KeyMaterial) < 32 {
 		return nil, fmt.Errorf("key material must be at least 32 bytes, got %d", len(cfg.KeyMaterial))
 	}
@@ -44,8 +50,9 @@ func NewVault(cfg VaultConfig) (*Vault, error) {
 	}
 
 	return &Vault{
-		key:  derivedKey,
-		salt: cfg.Salt,
+		key:        derivedKey,
+		salt:       cfg.Salt,
+		bcryptCost: cfg.BcryptCost,
 	}, nil
 }
 
@@ -113,6 +120,15 @@ func (v *Vault) DigestToString(plaintext string) (string, error) {
 		return "", err
 	}
 	return base64.StdEncoding.EncodeToString(digest), nil
+}
+
+// GenerateHashPassword hashes a plaintext password using bcrypt with the configured cost.
+func (v *Vault) GenerateHashPassword(password string) (string, error) {
+	hashed, err := bcrypt.GenerateFromPassword([]byte(password), v.bcryptCost)
+	if err != nil {
+		return "", fmt.Errorf("failed to hash password: %w", err)
+	}
+	return string(hashed), nil
 }
 
 // decryptAESGCM decrypts ciphertext produced by AES-GCM using the provided key.

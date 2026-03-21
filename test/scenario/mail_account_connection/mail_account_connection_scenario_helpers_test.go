@@ -8,6 +8,7 @@ import (
 	authapp "business/internal/auth/application"
 	authdomain "business/internal/auth/domain"
 	authinfra "business/internal/auth/infrastructure"
+	"business/internal/library/crypto"
 	"business/internal/library/gmailService"
 	"business/internal/library/logger"
 	"business/internal/library/mysql"
@@ -31,6 +32,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/dig"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/oauth2"
 	"gorm.io/gorm"
 )
@@ -140,8 +142,16 @@ func newMailAccountConnectionScenarioEnv(t *testing.T) *mailAccountConnectionSce
 	oauthCfg := gmailService.NewOAuthConfigLoader(osw)
 	exchanger := &scenarioOAuthTokenExchanger{t: t}
 	profileFetcher := &scenarioGmailProfileFetcher{t: t}
+	vault, err := crypto.NewVault(crypto.VaultConfig{
+		KeyMaterial: []byte("01234567890123456789012345678901"),
+		Salt:        []byte("test-salt-value"),
+		Info:        "email-credential-encryption",
+		BcryptCost:  bcrypt.MinCost,
+	})
+	require.NoError(t, err)
+
 	macRepo := macinfra.NewRepository(mysqlConn.DB, log)
-	macUseCase := macapp.NewUseCase(macRepo, oauthCfg, exchanger, profileFetcher, osw, nil, log)
+	macUseCase := macapp.NewUseCase(macRepo, oauthCfg, exchanger, profileFetcher, vault, nil, log)
 	macController := macpresentation.NewController(macUseCase, log)
 
 	router := gin.New()

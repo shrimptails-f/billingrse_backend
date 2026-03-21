@@ -1,9 +1,12 @@
 package di
 
 import (
+	"testing"
+
 	"business/internal/app/middleware"
 	authpresentation "business/internal/app/presentation/auth"
 	"business/internal/auth/application"
+	"business/internal/library/crypto"
 	"business/internal/library/gmail"
 	"business/internal/library/gmailService"
 	"business/internal/library/logger"
@@ -12,14 +15,14 @@ import (
 	"business/internal/library/oswrapper"
 	"business/internal/library/ratelimit"
 	"business/internal/library/timewrapper"
-	"testing"
 
+	"golang.org/x/crypto/bcrypt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/dig"
 )
 
-func newBuildContainerTestDeps() (*mysql.MySQL, *openai.Client, *gmailService.Client, *gmail.Client, *oswrapper.OsWrapper, *ratelimit.Provider, *logger.Logger) {
+func newBuildContainerTestDeps() (*mysql.MySQL, *openai.Client, *gmailService.Client, *gmail.Client, *oswrapper.OsWrapper, *ratelimit.Provider, *logger.Logger, *crypto.Vault) {
 	conn := &mysql.MySQL{}
 	oa := &openai.Client{}
 	gs := &gmailService.Client{}
@@ -27,17 +30,23 @@ func newBuildContainerTestDeps() (*mysql.MySQL, *openai.Client, *gmailService.Cl
 	osw := &oswrapper.OsWrapper{}
 	log := logger.NewNop()
 	provider := ratelimit.NewProvider(nil, timewrapper.NewClock(), osw, log)
+	vault, _ := crypto.NewVault(crypto.VaultConfig{
+		KeyMaterial: []byte("01234567890123456789012345678901"),
+		Salt:        []byte("test-salt-value"),
+		Info:        "email-credential-encryption",
+		BcryptCost:  bcrypt.MinCost,
+	})
 
-	return conn, oa, gs, gc, osw, provider, log
+	return conn, oa, gs, gc, osw, provider, log, vault
 }
 
 func TestProvideCommonDependencies_RegistersDependencies(t *testing.T) {
 	t.Parallel()
 
-	conn, oa, gs, gc, osw, provider, log := newBuildContainerTestDeps()
+	conn, oa, gs, gc, osw, provider, log, vault := newBuildContainerTestDeps()
 	container := dig.New()
 
-	ProvideCommonDependencies(container, conn, oa, gs, gc, osw, provider, log)
+	ProvideCommonDependencies(container, conn, oa, gs, gc, osw, provider, log, vault)
 
 	err := container.Invoke(func(
 		gotConn *mysql.MySQL,
@@ -65,10 +74,10 @@ func TestProvideCommonDependencies_RegistersDependencies(t *testing.T) {
 func TestProvideCommonDependencies_DoesNotRegisterInterfaceAliases(t *testing.T) {
 	t.Parallel()
 
-	conn, oa, gs, gc, osw, provider, log := newBuildContainerTestDeps()
+	conn, oa, gs, gc, osw, provider, log, vault := newBuildContainerTestDeps()
 	container := dig.New()
 
-	ProvideCommonDependencies(container, conn, oa, gs, gc, osw, provider, log)
+	ProvideCommonDependencies(container, conn, oa, gs, gc, osw, provider, log, vault)
 
 	err := container.Invoke(func(logger.Interface) {})
 	require.Error(t, err)
@@ -83,8 +92,8 @@ func TestProvideCommonDependencies_DoesNotRegisterInterfaceAliases(t *testing.T)
 func TestBuildContainer_ResolvesAuthPresentation(t *testing.T) {
 	t.Parallel()
 
-	conn, oa, gs, gc, osw, provider, log := newBuildContainerTestDeps()
-	container := BuildContainer(conn, oa, gs, gc, osw, provider, log)
+	conn, oa, gs, gc, osw, provider, log, vault := newBuildContainerTestDeps()
+	container := BuildContainer(conn, oa, gs, gc, osw, provider, log, vault)
 
 	err := container.Invoke(func(
 		controller *authpresentation.Controller,
@@ -102,8 +111,8 @@ func TestBuildContainer_ResolvesAuthPresentation(t *testing.T) {
 func TestBuildContainer_DoesNotResolveUseCaseInterface(t *testing.T) {
 	t.Parallel()
 
-	conn, oa, gs, gc, osw, provider, log := newBuildContainerTestDeps()
-	container := BuildContainer(conn, oa, gs, gc, osw, provider, log)
+	conn, oa, gs, gc, osw, provider, log, vault := newBuildContainerTestDeps()
+	container := BuildContainer(conn, oa, gs, gc, osw, provider, log, vault)
 
 	err := container.Invoke(func(application.AuthUseCaseInterface) {})
 	require.Error(t, err)

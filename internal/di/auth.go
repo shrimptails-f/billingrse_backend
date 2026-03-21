@@ -5,6 +5,7 @@ import (
 	"business/internal/auth/application"
 	"business/internal/auth/infrastructure"
 	"business/internal/auth/infrastructure/mailer"
+	"business/internal/library/crypto"
 	"business/internal/library/logger"
 	"business/internal/library/mysql"
 	"business/internal/library/oswrapper"
@@ -33,8 +34,9 @@ func ProvideAuthDependencies(container *dig.Container) {
 		osw *oswrapper.OsWrapper,
 		mailer *mailer.SMTPVerificationEmailSender,
 		clock *timewrapper.Clock,
+		vault *crypto.Vault,
 	) *application.AuthUseCase {
-		return application.NewAuthUseCase(repo, osw, mailer, clock)
+		return application.NewAuthUseCase(repo, osw, mailer, clock, vault)
 	})
 
 	_ = container.Provide(func(osw *oswrapper.OsWrapper, repo *infrastructure.Repository, log *logger.Logger) *middleware.AuthMiddleware {
