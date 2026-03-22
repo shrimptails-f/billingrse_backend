@@ -8,6 +8,8 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
+// diinterfacecheckはDIで*.Provide(func(の戻り値に具象を返却していない場合、エラーを返すcustom linterです。
+
 const pluginName = "diinterfacecheck"
 
 // config は linters.settings.custom.diinterfacecheck.settings から読み込む設定。
@@ -34,6 +36,13 @@ var defaultTargets = []target{
 	},
 }
 
+// AST だけでは pointer や alias をまたいだ先の実型までは判定できないため、
+// TypesInfo を要求して型情報付きで解析する。
+func (p *plugin) GetLoadMode() string {
+	return register.LoadModeTypesInfo
+}
+
+// golangci-lint customで package が import された副作用で init() が走る
 func init() {
 	register.Plugin(pluginName, newPlugin)
 }
@@ -54,15 +63,12 @@ func newPlugin(raw any) (register.LinterPlugin, error) {
 		cfg = decoded
 	}
 
-	if len(cfg.Targets) == 0 {
-		cfg.Targets = defaultTargets
-	}
+	cfg.Targets = defaultTargets
 
 	return &plugin{cfg: cfg}, nil
 }
 
 // BuildAnalyzers は analyzer を 1 つだけ返す。
-// 今回の PoC では dig.Provide の引数チェックだけに責務を絞っている。
 func (p *plugin) BuildAnalyzers() ([]*analysis.Analyzer, error) {
 	return []*analysis.Analyzer{
 		{
@@ -76,14 +82,8 @@ func (p *plugin) BuildAnalyzers() ([]*analysis.Analyzer, error) {
 	}, nil
 }
 
-// AST だけでは pointer や alias をまたいだ先の実型までは判定できないため、
-// TypesInfo を要求して型情報付きで解析する。
-func (p *plugin) GetLoadMode() string {
-	return register.LoadModeTypesInfo
-}
-
 // run は package 内の各ファイルを走査し、
-// 第 1 引数に無名関数を渡している dig.Provide を探す。
+// 第 1 引数に無名関数を渡している "*.Provide(func("の形 を探す。
 func run(pass *analysis.Pass, targets []target) {
 	for _, file := range pass.Files {
 		ast.Inspect(file, func(n ast.Node) bool {
@@ -131,16 +131,11 @@ func reportIfConcrete(pass *analysis.Pass, expr ast.Expr, targets []target) {
 			continue
 		}
 
-		interfaceName := target.Interface
-		if interfaceName == "" {
-			interfaceName = target.Type + "Interface"
-		}
-
 		pass.Reportf(
 			expr.Pos(),
 			"use %s.%s instead of %s in dig.Provide parameters",
 			named.Obj().Pkg().Name(),
-			interfaceName,
+			target.Interface,
 			typ.String(),
 		)
 	}
