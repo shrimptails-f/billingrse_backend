@@ -4,9 +4,13 @@ version: "2"
 linters:
   default: none
   enable:
-    - diinterfacecheck
+    # - diinterfacecheck
+    - newinterfacecheck
   settings:
     custom:
-      diinterfacecheck:
+      # diinterfacecheck:
+      #   type: module
+      #   description: detect concrete DI types
+      newinterfacecheck:
         type: module
-        description: detect concrete DI types
+        description: detect concrete parameters in NewXxx functions

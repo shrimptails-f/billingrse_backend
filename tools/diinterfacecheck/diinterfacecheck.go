@@ -30,6 +30,46 @@ type target struct {
 // PoC がすぐ動くようにするためのデフォルト値。
 var defaultTargets = []target{
 	{
+		Package:   "business/internal/library/gmail",
+		Type:      "Client",
+		Interface: "ClientInterface",
+	},
+	{
+		Package:   "business/internal/library/gmailService",
+		Type:      "Client",
+		Interface: "ClientInterface",
+	},
+	{
+		Package:   "business/internal/library/logger",
+		Type:      "Logger",
+		Interface: "Interface",
+	},
+	{
+		Package:   "business/internal/library/openai",
+		Type:      "Client",
+		Interface: "UseCaserInterface",
+	},
+	{
+		Package:   "business/internal/library/oswrapper",
+		Type:      "OsWrapper",
+		Interface: "OsWapperInterface",
+	},
+	{
+		Package:   "business/internal/library/redis",
+		Type:      "Client",
+		Interface: "ClientInterface",
+	},
+	{
+		Package:   "business/internal/library/secret",
+		Type:      "secretClient",
+		Interface: "Client",
+	},
+	{
+		Package:   "business/internal/library/sendMailer",
+		Type:      "SmtpClient",
+		Interface: "Client",
+	},
+	{
 		Package:   "business/internal/library/timewrapper",
 		Type:      "Clock",
 		Interface: "ClockInterface",

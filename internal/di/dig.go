@@ -63,8 +63,12 @@ func ProvideCommonDependencies(
 		return conn.DB
 	})
 
-	// ClockInterface を提供
+	// Clock の実体と interface alias を同じ instance で提供
 	_ = container.Provide(func() *timewrapper.Clock {
+		return clock
+	})
+
+	_ = container.Provide(func() timewrapper.ClockInterface {
 		return clock
 	})
 
