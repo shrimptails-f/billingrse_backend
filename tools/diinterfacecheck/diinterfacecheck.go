@@ -8,7 +8,8 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// diinterfacecheckはDIで*.Provide(func(の戻り値に具象を返却していない場合、エラーを返すcustom linterです。
+// diinterfacecheck は dig.Provide(func(...)) の引数に
+// interface を受けている場合、具象を受けるように警告する custom linter です。
 
 const pluginName = "diinterfacecheck"
 
@@ -18,8 +19,8 @@ type config struct {
 	Targets []target `json:"targets"`
 }
 
-// target は dig.Provide の引数に出してほしくない具体型と、
-// 代わりに使ってほしい Interface 名の対応を表す。
+// target は dig.Provide の引数で避けたい interface 名と、
+// 代わりに使ってほしい具体型名の対応を表す。
 type target struct {
 	Package   string `json:"package"`
 	Type      string `json:"type"`
@@ -113,7 +114,7 @@ func (p *plugin) BuildAnalyzers() ([]*analysis.Analyzer, error) {
 	return []*analysis.Analyzer{
 		{
 			Name: pluginName,
-			Doc:  "reports concrete types used in dig.Provide parameters where an interface should be injected",
+			Doc:  "reports interface types used in dig.Provide parameters where a concrete type should be injected",
 			Run: func(pass *analysis.Pass) (any, error) {
 				run(pass, p.cfg.Targets)
 				return nil, nil
@@ -149,7 +150,7 @@ func run(pass *analysis.Pass, targets []target) {
 			}
 
 			for _, field := range fn.Type.Params.List {
-				reportIfConcrete(pass, field.Type, targets)
+				reportIfInterface(pass, field.Type, targets)
 			}
 
 			return true
@@ -157,9 +158,9 @@ func run(pass *analysis.Pass, targets []target) {
 	}
 }
 
-// reportIfConcrete は引数の型を解決し、
-// pointer や alias を剥がしたうえで target と一致した場合に警告を出す。
-func reportIfConcrete(pass *analysis.Pass, expr ast.Expr, targets []target) {
+// reportIfInterface は引数の型を解決し、
+// alias を剥がしたうえで target の interface と一致した場合に警告を出す。
+func reportIfInterface(pass *analysis.Pass, expr ast.Expr, targets []target) {
 	typ := pass.TypesInfo.TypeOf(expr)
 	named := unwrapNamed(typ)
 	if named == nil || named.Obj() == nil || named.Obj().Pkg() == nil {
@@ -167,29 +168,27 @@ func reportIfConcrete(pass *analysis.Pass, expr ast.Expr, targets []target) {
 	}
 
 	for _, target := range targets {
-		if named.Obj().Pkg().Path() != target.Package || named.Obj().Name() != target.Type {
+		if named.Obj().Pkg().Path() != target.Package || named.Obj().Name() != target.Interface {
 			continue
 		}
 
 		pass.Reportf(
 			expr.Pos(),
-			"use %s.%s instead of %s in dig.Provide parameters",
+			"use *%s.%s instead of %s in dig.Provide parameters",
 			named.Obj().Pkg().Name(),
-			target.Interface,
+			target.Type,
 			typ.String(),
 		)
 	}
 }
 
-// unwrapNamed は *pkg.Type や alias を最終的な Named 型まで正規化する。
-// これで package path と type name の組み合わせで安定して比較できる。
+// unwrapNamed は alias を剥がし、Named 型ならそのまま返す。
+// dig.Provide の引数は interface のことが多いため、pointer はここでは剥がさない。
 func unwrapNamed(typ types.Type) *types.Named {
 	for typ != nil {
 		typ = types.Unalias(typ)
 
 		switch t := typ.(type) {
-		case *types.Pointer:
-			typ = t.Elem()
 		case *types.Named:
 			return t
 		default:

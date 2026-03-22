@@ -33,7 +33,7 @@ func ProvideAuthDependencies(container *dig.Container) {
 		repo *infrastructure.Repository,
 		osw *oswrapper.OsWrapper,
 		mailer *mailer.SMTPVerificationEmailSender,
-		clock timewrapper.ClockInterface,
+		clock *timewrapper.Clock,
 		vault *crypto.Vault,
 	) *application.AuthUseCase {
 		return application.NewAuthUseCase(repo, osw, mailer, clock, vault)

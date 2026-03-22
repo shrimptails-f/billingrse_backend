@@ -71,7 +71,7 @@ tasks:
   lint:
     desc: "diinterfacecheck を含む custom golangci-lint を実行する。"
     cmds:
-      - rm -f /home/dev/backend/custom-gcl # TODO: 実装が完了したら消す。
+      # - golangci-lint cache clean # custom linter 実装変更時の古い診断を避ける。　あえてコメントアウトで残している。
       - cd tools/diinterfacecheck && golangci-lint custom --name custom-gcl --destination /home/dev/backend
       - /home/dev/backend/custom-gcl run ./internal/...
 

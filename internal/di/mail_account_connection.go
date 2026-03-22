@@ -43,7 +43,7 @@ func ProvideMailAccountConnectionDependencies(container *dig.Container) {
 		exchanger *infrastructure.OAuthTokenExchanger,
 		profiler *infrastructure.GmailProfileFetcher,
 		vault *crypto.Vault,
-		clock timewrapper.ClockInterface,
+		clock *timewrapper.Clock,
 		log *logger.Logger,
 	) *application.UseCase {
 		return application.NewUseCase(repo, oauthCfg, exchanger, profiler, vault, clock, log)
