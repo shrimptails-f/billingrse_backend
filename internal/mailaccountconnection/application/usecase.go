@@ -1,7 +1,6 @@
 package application
 
 import (
-	"business/internal/library/crypto"
 	"business/internal/library/logger"
 	"business/internal/library/timewrapper"
 	"business/internal/mailaccountconnection/domain"
@@ -19,8 +18,8 @@ import (
 const (
 	oauthStateTTL   = 10 * time.Minute
 	oauthStateBytes = 32
-	credentialType = "gmail"
-	defaultKeyVer  = int16(1)
+	credentialType  = "gmail"
+	defaultKeyVer   = int16(1)
 )
 
 // Repository defines persistence operations for mail account connections.
@@ -50,6 +49,12 @@ type GmailProfileFetcher interface {
 	GetEmailAddress(ctx context.Context, token *oauth2.Token, cfg *oauth2.Config) (string, error)
 }
 
+// TokenVault encrypts and digests OAuth tokens for storage.
+type TokenVault interface {
+	EncryptToString(plaintext string) (string, error)
+	DigestToString(plaintext string) (string, error)
+}
+
 // UseCaseInterface defines the mail account connection use case operations.
 type UseCaseInterface interface {
 	Authorize(ctx context.Context, userID uint) (AuthorizeResult, error)
@@ -70,7 +75,7 @@ type UseCase struct {
 	oauthCfg  OAuthConfigProvider
 	exchanger OAuthTokenExchanger
 	profiler  GmailProfileFetcher
-	vault     *crypto.Vault
+	vault     TokenVault
 	clock     timewrapper.ClockInterface
 	log       logger.Interface
 }
@@ -81,7 +86,7 @@ func NewUseCase(
 	oauthCfg OAuthConfigProvider,
 	exchanger OAuthTokenExchanger,
 	profiler GmailProfileFetcher,
-	vault *crypto.Vault,
+	vault TokenVault,
 	clock timewrapper.ClockInterface,
 	log logger.Interface,
 ) *UseCase {

@@ -47,7 +47,8 @@ RUN go install github.com/air-verse/air@latest && \
     go install honnef.co/go/tools/cmd/staticcheck@latest && \
     go install golang.org/x/tools/gopls@latest && \
     go install github.com/fatih/gomodifytags@latest && \
-    go install github.com/rinchsan/gosimports/cmd/gosimports@latest
+    go install github.com/rinchsan/gosimports/cmd/gosimports@latest  && \
+    go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.3
 
 # 開発ユーザー作成
 RUN groupadd -g 1000 dev && \

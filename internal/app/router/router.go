@@ -11,7 +11,7 @@ import (
 	"go.uber.org/dig"
 )
 
-func NewRouter(g *gin.Engine, container *dig.Container, log logger.Interface, allowedOrigin string) (*gin.Engine, error) {
+func Router(g *gin.Engine, container *dig.Container, log logger.Interface, allowedOrigin string) (*gin.Engine, error) {
 	g.GET("/api/v1", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})

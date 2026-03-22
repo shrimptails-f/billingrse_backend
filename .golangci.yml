@@ -1,0 +1,16 @@
+# This configuration requires the custom golangci-lint binary built by
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - diinterfacecheck
+    - newinterfacecheck
+  settings:
+    custom:
+      diinterfacecheck:
+        type: module
+        description: detect interface DI types in dig.Provide parameters
+      newinterfacecheck:
+        type: module
+        description: detect concrete parameters in NewXxx functions

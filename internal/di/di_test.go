@@ -16,10 +16,10 @@ import (
 	"business/internal/library/ratelimit"
 	"business/internal/library/timewrapper"
 
-	"golang.org/x/crypto/bcrypt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/dig"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func newBuildContainerTestDeps() (*mysql.MySQL, *openai.Client, *gmailService.Client, *gmail.Client, *oswrapper.OsWrapper, *ratelimit.Provider, *logger.Logger, *crypto.Vault) {
@@ -71,7 +71,7 @@ func TestProvideCommonDependencies_RegistersDependencies(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestProvideCommonDependencies_DoesNotRegisterInterfaceAliases(t *testing.T) {
+func TestProvideCommonDependencies_DoesNotRegisterLoggerAndOSWrapperInterfaceAliases(t *testing.T) {
 	t.Parallel()
 
 	conn, oa, gs, gc, osw, provider, log, vault := newBuildContainerTestDeps()
@@ -84,9 +84,18 @@ func TestProvideCommonDependencies_DoesNotRegisterInterfaceAliases(t *testing.T)
 
 	err = container.Invoke(func(oswrapper.OsWapperInterface) {})
 	require.Error(t, err)
+}
 
-	err = container.Invoke(func(timewrapper.ClockInterface) {})
-	require.Error(t, err)
+func TestProvideCommonDependencies_RegistersClockInterfaceAlias(t *testing.T) {
+	t.Parallel()
+
+	conn, oa, gs, gc, osw, provider, log, vault := newBuildContainerTestDeps()
+	container := dig.New()
+
+	ProvideCommonDependencies(container, conn, oa, gs, gc, osw, provider, log, vault)
+
+	err := container.Invoke(func(timewrapper.ClockInterface) {})
+	require.NoError(t, err)
 }
 
 func TestBuildContainer_ResolvesAuthPresentation(t *testing.T) {

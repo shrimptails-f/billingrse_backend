@@ -2,6 +2,12 @@
     "gopls": {
         "build.buildFlags": ["-tags=integration,unit,test"]
     },
+    "go.lintOnSave": "workspace",
+    "go.lintTool": "golangci-lint-v2",
+    "go.lintFlags": ["--config=${workspaceFolder}/.golangci.yml"],
+    "go.alternateTools": {
+        "golangci-lint-v2": "${workspaceFolder}/custom-gcl"
+    },
     "cSpell.ignoreWords": [
         "billingrse",
         "honnef",

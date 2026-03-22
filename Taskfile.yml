@@ -68,14 +68,23 @@ tasks:
     cmds:
       - go run {{.SEED_ROOT}}/main.go test
 
+  lint:
+    desc: "dicheck を含む custom golangci-lint を実行する。"
+    cmds:
+      # - golangci-lint cache clean # custom linter 実装変更時の古い診断を避ける。　あえてコメントアウトで残している。
+      - cd tools/dicheck && golangci-lint custom --name custom-gcl --destination /home/dev/backend
+      - /home/dev/backend/custom-gcl run ./internal/...
+
   test:
     desc: "カバレッジ率を取得する。"
     cmds:
       # 外部依存テストは認証の問題がクリアされるまで放置。 
       # - go test -tags=integration -cover -coverprofile=coverage.out ./...
-      - go test -count=1 -race -coverprofile=coverage.out ./internal/... ./test/scenario/...
+      # - go test -count=1 -race -coverprofile=coverage.out ./internal/... ./test/scenario/...　キャッシュを使用しないで実行したい時用にあえて残している。
+      - go test -race -coverprofile=coverage.out ./internal/... ./test/scenario/...
       - go tool cover -html=coverage.out -o coverage.html
       - rm coverage.out
+      - task: lint
 
   codex:
     desc: "codexに権限をあたえて、コマンド確認させずに実行します。DevContainer(ガードレール付環境)内でのみ実行してください。"

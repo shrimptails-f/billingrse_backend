@@ -37,3 +37,6 @@ coverage.html
 
 # 恐らくWindowsユーザーに使用中と解釈されWSL2配置時にgit configコマンドが失敗してしまうのでマウントした際の差分を無視する用。
 .gitconfig
+
+# custom linter ビルド生成物
+custom-gcl
