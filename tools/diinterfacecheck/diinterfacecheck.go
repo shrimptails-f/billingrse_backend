@@ -1,0 +1,166 @@
+package diinterfacecheck
+
+import (
+	"go/ast"
+	"go/types"
+
+	"github.com/golangci/plugin-module-register/register"
+	"golang.org/x/tools/go/analysis"
+)
+
+const pluginName = "diinterfacecheck"
+
+// config は linters.settings.custom.diinterfacecheck.settings から読み込む設定。
+// PoC 段階なので、対象型を列挙する最小構成に寄せている。
+type config struct {
+	Targets []target `json:"targets"`
+}
+
+// target は dig.Provide の引数に出してほしくない具体型と、
+// 代わりに使ってほしい Interface 名の対応を表す。
+type target struct {
+	Package   string `json:"package"`
+	Type      string `json:"type"`
+	Interface string `json:"interface"`
+}
+
+// defaultTargets は .golangci.yml 側で個別設定を書かなくても
+// PoC がすぐ動くようにするためのデフォルト値。
+var defaultTargets = []target{
+	{
+		Package:   "business/internal/library/timewrapper",
+		Type:      "Clock",
+		Interface: "ClockInterface",
+	},
+}
+
+func init() {
+	register.Plugin(pluginName, newPlugin)
+}
+
+type plugin struct {
+	cfg config
+}
+
+// newPlugin は golangci-lint の custom settings を decode し、
+// 明示設定がない場合は defaultTargets を補う。
+func newPlugin(raw any) (register.LinterPlugin, error) {
+	cfg := config{}
+	if raw != nil {
+		decoded, err := register.DecodeSettings[config](raw)
+		if err != nil {
+			return nil, err
+		}
+		cfg = decoded
+	}
+
+	if len(cfg.Targets) == 0 {
+		cfg.Targets = defaultTargets
+	}
+
+	return &plugin{cfg: cfg}, nil
+}
+
+// BuildAnalyzers は analyzer を 1 つだけ返す。
+// 今回の PoC では dig.Provide の引数チェックだけに責務を絞っている。
+func (p *plugin) BuildAnalyzers() ([]*analysis.Analyzer, error) {
+	return []*analysis.Analyzer{
+		{
+			Name: pluginName,
+			Doc:  "reports concrete types used in dig.Provide parameters where an interface should be injected",
+			Run: func(pass *analysis.Pass) (any, error) {
+				run(pass, p.cfg.Targets)
+				return nil, nil
+			},
+		},
+	}, nil
+}
+
+// AST だけでは pointer や alias をまたいだ先の実型までは判定できないため、
+// TypesInfo を要求して型情報付きで解析する。
+func (p *plugin) GetLoadMode() string {
+	return register.LoadModeTypesInfo
+}
+
+// run は package 内の各ファイルを走査し、
+// 第 1 引数に無名関数を渡している dig.Provide を探す。
+func run(pass *analysis.Pass, targets []target) {
+	for _, file := range pass.Files {
+		ast.Inspect(file, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || sel.Sel == nil || sel.Sel.Name != "Provide" {
+				return true
+			}
+
+			if len(call.Args) == 0 {
+				return true
+			}
+
+			// 今回の PoC では以下のような一般的なパターンだけを対象にする。
+			// container.Provide(func(dep1, dep2, ...) *Concrete { ... })
+			fn, ok := call.Args[0].(*ast.FuncLit)
+			if !ok || fn.Type == nil || fn.Type.Params == nil {
+				return true
+			}
+
+			for _, field := range fn.Type.Params.List {
+				reportIfConcrete(pass, field.Type, targets)
+			}
+
+			return true
+		})
+	}
+}
+
+// reportIfConcrete は引数の型を解決し、
+// pointer や alias を剥がしたうえで target と一致した場合に警告を出す。
+func reportIfConcrete(pass *analysis.Pass, expr ast.Expr, targets []target) {
+	typ := pass.TypesInfo.TypeOf(expr)
+	named := unwrapNamed(typ)
+	if named == nil || named.Obj() == nil || named.Obj().Pkg() == nil {
+		return
+	}
+
+	for _, target := range targets {
+		if named.Obj().Pkg().Path() != target.Package || named.Obj().Name() != target.Type {
+			continue
+		}
+
+		interfaceName := target.Interface
+		if interfaceName == "" {
+			interfaceName = target.Type + "Interface"
+		}
+
+		pass.Reportf(
+			expr.Pos(),
+			"use %s.%s instead of %s in dig.Provide parameters",
+			named.Obj().Pkg().Name(),
+			interfaceName,
+			typ.String(),
+		)
+	}
+}
+
+// unwrapNamed は *pkg.Type や alias を最終的な Named 型まで正規化する。
+// これで package path と type name の組み合わせで安定して比較できる。
+func unwrapNamed(typ types.Type) *types.Named {
+	for typ != nil {
+		typ = types.Unalias(typ)
+
+		switch t := typ.(type) {
+		case *types.Pointer:
+			typ = t.Elem()
+		case *types.Named:
+			return t
+		default:
+			return nil
+		}
+	}
+
+	return nil
+}

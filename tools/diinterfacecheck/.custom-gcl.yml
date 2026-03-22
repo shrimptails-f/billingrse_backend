@@ -1,0 +1,6 @@
+version: v2.11.3
+name: custom-gcl
+plugins:
+  - module: business
+    import: business/tools/diinterfacecheck
+    path: ../..
