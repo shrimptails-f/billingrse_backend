@@ -119,7 +119,7 @@ func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 	assert.NoError(t, err)
 
 	domain, _ := osw.GetEnv("DOMAIN")
-	_, err = v1.NewRouter(g, container, log, domain)
+	_, err = v1.Router(g, container, log, domain)
 	assert.NoError(t, err)
 
 	routes := map[string]struct{}{}

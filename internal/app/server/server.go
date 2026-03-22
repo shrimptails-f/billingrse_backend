@@ -15,11 +15,12 @@ import (
 	"business/internal/library/secret"
 	"business/internal/library/timewrapper"
 
-	"golang.org/x/crypto/bcrypt"
 	"context"
 	"net/http"
 	"os"
 	"strings"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/gin-gonic/gin"
 )
@@ -138,7 +139,7 @@ func Run() {
 
 		c.Next()
 	})
-	router, err := v1.NewRouter(g, container, routerLogger, frontDmain)
+	router, err := v1.Router(g, container, routerLogger, frontDmain)
 	if err != nil {
 		routerLogger.Error("failed to start router", logger.Err(err))
 		return

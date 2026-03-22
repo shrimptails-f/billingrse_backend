@@ -159,7 +159,7 @@ func newMailAccountConnectionScenarioEnv(t *testing.T) *mailAccountConnectionSce
 	require.NoError(t, container.Provide(func() *authpresentation.Controller { return authController }))
 	require.NoError(t, container.Provide(func() *middleware.AuthMiddleware { return authMiddleware }))
 	require.NoError(t, container.Provide(func() *macpresentation.Controller { return macController }))
-	_, err = v1.NewRouter(router, container, log, scenarioAllowedOrigin)
+	_, err = v1.Router(router, container, log, scenarioAllowedOrigin)
 	require.NoError(t, err)
 
 	env := &mailAccountConnectionScenarioEnv{

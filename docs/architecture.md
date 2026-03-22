@@ -162,7 +162,7 @@
     - ブートストラップ手順:
       - `cmd/app/main.go` → `internal/app/server.Run` を呼び出す。
       - `server.Run` が oswrapper・logger・MySQL・レートリミット Provider・Gmail/OpenAI クライアントを初期化し、dig コンテナを構築。
-      - `internal/app/router.NewRouter` が Gin Engine とコンテナを受け取り、`container.Invoke` で各 Controller/Middleware を 1 度だけ解決した後にルートへ登録。
+      - `internal/app/router.Router` が Gin Engine とコンテナを受け取り、`container.Invoke` で各 Controller/Middleware を 1 度だけ解決した後にルートへ登録。
     - Controller / Middleware は dig を直接意識せず、コンストラクタ注入された依存だけで完結させる。
   </dependency_injection>
 </architecture_rules>

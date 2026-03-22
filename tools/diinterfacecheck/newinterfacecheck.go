@@ -16,6 +16,20 @@ import (
 
 const newInterfacePluginName = "newinterfacecheck"
 
+var allowedConcreteParams = []struct {
+	packagePath string
+	typeName    string
+}{
+	{
+		packagePath: "gorm.io/gorm",
+		typeName:    "DB",
+	},
+	{
+		packagePath: "github.com/gin-gonic/gin",
+		typeName:    "Engine",
+	},
+}
+
 // NewXxx ルール用の plugin 本体。
 // 今回は設定なしの最小構成に寄せる。
 type newInterfacePlugin struct{}
@@ -102,9 +116,26 @@ func shouldReportNewParamType(typ types.Type, currentPkgPath string) bool {
 			if t.Obj() == nil || t.Obj().Pkg() == nil {
 				return false
 			}
+			if isAllowedConcreteParam(t) {
+				return false
+			}
 			return t.Obj().Pkg().Path() != currentPkgPath
 		default:
 			return false
+		}
+	}
+
+	return false
+}
+
+func isAllowedConcreteParam(named *types.Named) bool {
+	if named == nil || named.Obj() == nil || named.Obj().Pkg() == nil {
+		return false
+	}
+
+	for _, allowed := range allowedConcreteParams {
+		if named.Obj().Pkg().Path() == allowed.packagePath && named.Obj().Name() == allowed.typeName {
+			return true
 		}
 	}
 
