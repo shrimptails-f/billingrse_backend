@@ -100,8 +100,9 @@ jobs:
     - name: Install golangci-lint
       run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.3
 
-    - name: Run golangci-lint
-      run: |
-        rm -f "${GITHUB_WORKSPACE}/custom-gcl"
-        cd tools/diinterfacecheck && "$(go env GOPATH)/bin/golangci-lint" custom --name custom-gcl --destination "${GITHUB_WORKSPACE}"
-        "${GITHUB_WORKSPACE}/custom-gcl" run ./internal/...
+    - name: Build custom golangci-lint
+      working-directory: tools/diinterfacecheck
+      run: golangci-lint custom --name custom-gcl --destination ../..
+
+    - name: Run custom golangci-lint
+      run: ./custom-gcl run ./internal/...

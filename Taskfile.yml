@@ -68,6 +68,13 @@ tasks:
     cmds:
       - go run {{.SEED_ROOT}}/main.go test
 
+  lint:
+    desc: "diinterfacecheck を含む custom golangci-lint を実行する。"
+    cmds:
+      - rm -f /home/dev/backend/custom-gcl # TODO: 実装が完了したら消す。
+      - cd tools/diinterfacecheck && golangci-lint custom --name custom-gcl --destination /home/dev/backend
+      - /home/dev/backend/custom-gcl run ./internal/...
+
   test:
     desc: "カバレッジ率を取得する。"
     cmds:
@@ -76,13 +83,7 @@ tasks:
       - go test -count=1 -race -coverprofile=coverage.out ./internal/... ./test/scenario/...
       - go tool cover -html=coverage.out -o coverage.html
       - rm coverage.out
-
-  lint:
-    desc: "diinterfacecheck を含む custom golangci-lint を実行する。"
-    cmds:
-      - rm -f /home/dev/backend/custom-gcl # TODO: 実装が完了したら消す。
-      - cd tools/diinterfacecheck && golangci-lint custom --name custom-gcl --destination /home/dev/backend
-      - /home/dev/backend/custom-gcl run ./internal/...
+      - task: lint
 
   codex:
     desc: "codexに権限をあたえて、コマンド確認させずに実行します。DevContainer(ガードレール付環境)内でのみ実行してください。"
