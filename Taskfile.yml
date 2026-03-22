@@ -69,10 +69,10 @@ tasks:
       - go run {{.SEED_ROOT}}/main.go test
 
   lint:
-    desc: "diinterfacecheck を含む custom golangci-lint を実行する。"
+    desc: "dicheck を含む custom golangci-lint を実行する。"
     cmds:
       # - golangci-lint cache clean # custom linter 実装変更時の古い診断を避ける。　あえてコメントアウトで残している。
-      - cd tools/diinterfacecheck && golangci-lint custom --name custom-gcl --destination /home/dev/backend
+      - cd tools/dicheck && golangci-lint custom --name custom-gcl --destination /home/dev/backend
       - /home/dev/backend/custom-gcl run ./internal/...
 
   test:

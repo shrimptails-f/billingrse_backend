@@ -1,15 +1,15 @@
-# diinterfacecheck
+# dicheck
 
 このディレクトリには、`golangci-lint custom` で読む custom linter を置いています。
 
 ## ファイルごとの役割
 
-- [diinterfacecheck.go](/home/dev/backend/tools/diinterfacecheck/diinterfacecheck.go)
+- [diinterfacecheck.go](/home/dev/backend/tools/dicheck/diinterfacecheck.go)
   - `dig.Provide(func(...))` の引数をチェックします。
   - DI 配線では interface ではなく具象を受ける、というルールを見ています。
   - `defaultTargets` に「interface 名」と「使わせたい具象名」の対応を書いています。
 
-- [newinterfacecheck.go](/home/dev/backend/tools/diinterfacecheck/newinterfacecheck.go)
+- [newinterfacecheck.go](/home/dev/backend/tools/dicheck/newinterfacecheck.go)
   - `NewXxx` という名前のトップレベル関数をチェックします。
   - constructor 側では他 package の具象依存を直接受けず、interface を受ける、というルールを見ています。
   - 現状の例外は `*gorm.DB` と `*gin.Engine` です。

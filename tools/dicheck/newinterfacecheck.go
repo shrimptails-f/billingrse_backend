@@ -1,4 +1,4 @@
-package diinterfacecheck
+package dicheck
 
 import (
 	"go/ast"
