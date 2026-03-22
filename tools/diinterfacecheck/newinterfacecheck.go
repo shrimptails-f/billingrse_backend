@@ -16,6 +16,8 @@ import (
 
 const newInterfacePluginName = "newinterfacecheck"
 
+// allowedConcreteParams は例外的に許容する具体型。
+// 現状は framework / ORM の中心型だけをホワイトリストで逃がす。
 var allowedConcreteParams = []struct {
 	packagePath string
 	typeName    string
@@ -39,14 +41,17 @@ func init() {
 	register.Plugin(newInterfacePluginName, newNewInterfacePlugin)
 }
 
+// newNewInterfacePlugin は設定なしで動く最小 plugin を返す。
 func newNewInterfacePlugin(_ any) (register.LinterPlugin, error) {
 	return &newInterfacePlugin{}, nil
 }
 
+// 型情報が必要なので TypesInfo を要求する。
 func (p *newInterfacePlugin) GetLoadMode() string {
 	return register.LoadModeTypesInfo
 }
 
+// BuildAnalyzers は analyzer を 1 つだけ返す。
 func (p *newInterfacePlugin) BuildAnalyzers() ([]*analysis.Analyzer, error) {
 	return []*analysis.Analyzer{
 		{
@@ -60,6 +65,8 @@ func (p *newInterfacePlugin) BuildAnalyzers() ([]*analysis.Analyzer, error) {
 	}, nil
 }
 
+// runNewInterfaceCheck は package 内のトップレベル関数を走査し、
+// NewXxx という名前の関数引数だけを検査する。
 func runNewInterfaceCheck(pass *analysis.Pass) {
 	for _, file := range pass.Files {
 		for _, decl := range file.Decls {
@@ -89,6 +96,8 @@ func runNewInterfaceCheck(pass *analysis.Pass) {
 	}
 }
 
+// isNewLikeFunction は "New" のあとが大文字で始まる関数だけを対象にする。
+// これで New 単体や newHelper のような関数は除外する。
 func isNewLikeFunction(name string) bool {
 	if !strings.HasPrefix(name, "New") || len(name) == len("New") {
 		return false
@@ -98,8 +107,8 @@ func isNewLikeFunction(name string) bool {
 	return unicode.IsUpper(r)
 }
 
-// PoC なので interface と builtin は許容し、
-// pointer を剥がした先が他 package の Named concrete だった場合だけ警告する。
+// shouldReportNewParamType は入口側の粗い判定。
+// interface / builtin は許容し、pointer 型だけを詳細判定に回す。
 func shouldReportNewParamType(typ types.Type, currentPkgPath string) bool {
 	for typ != nil {
 		typ = types.Unalias(typ)
@@ -107,6 +116,25 @@ func shouldReportNewParamType(typ types.Type, currentPkgPath string) bool {
 		switch t := typ.(type) {
 		case *types.Interface, *types.Basic:
 			return false
+		case *types.Pointer:
+			return shouldReportPointerElem(t.Elem(), currentPkgPath)
+		case *types.Named:
+			return false
+		default:
+			return false
+		}
+	}
+
+	return false
+}
+
+// shouldReportPointerElem は pointer を剥がした先が
+// 「他 package の Named concrete」かどうかを判定する。
+func shouldReportPointerElem(typ types.Type, currentPkgPath string) bool {
+	for typ != nil {
+		typ = types.Unalias(typ)
+
+		switch t := typ.(type) {
 		case *types.Pointer:
 			typ = t.Elem()
 		case *types.Named:
@@ -128,6 +156,7 @@ func shouldReportNewParamType(typ types.Type, currentPkgPath string) bool {
 	return false
 }
 
+// isAllowedConcreteParam は例外 whitelist に含まれる具体型かを返す。
 func isAllowedConcreteParam(named *types.Named) bool {
 	if named == nil || named.Obj() == nil || named.Obj().Pkg() == nil {
 		return false
