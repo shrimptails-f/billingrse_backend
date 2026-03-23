@@ -188,6 +188,37 @@ func TestFindCredentialByUserAndGmail_NormalizesAddress(t *testing.T) {
 	assert.Equal(t, "user@gmail.com", found.GmailAddress)
 }
 
+func TestFindCredentialByIDAndUser(t *testing.T) {
+	env := newRepoTestEnv(t)
+	defer env.clean()
+	ctx := context.Background()
+
+	cred := domain.EmailCredential{
+		UserID:             1,
+		Type:               "gmail",
+		GmailAddress:       "id-check@gmail.com",
+		KeyVersion:         1,
+		AccessToken:        "enc-access",
+		AccessTokenDigest:  "digest-access",
+		RefreshToken:       "enc-refresh",
+		RefreshTokenDigest: "digest-refresh",
+		CreatedAt:          env.nowUTC,
+		UpdatedAt:          env.nowUTC,
+	}
+	require.NoError(t, env.repo.CreateCredential(ctx, cred))
+
+	foundByMail, err := env.repo.FindCredentialByUserAndGmail(ctx, 1, "id-check@gmail.com")
+	require.NoError(t, err)
+
+	foundByID, err := env.repo.FindCredentialByIDAndUser(ctx, foundByMail.ID, 1)
+	require.NoError(t, err)
+	assert.Equal(t, foundByMail.ID, foundByID.ID)
+	assert.Equal(t, "id-check@gmail.com", foundByID.GmailAddress)
+
+	_, err = env.repo.FindCredentialByIDAndUser(ctx, foundByMail.ID, 999)
+	assert.ErrorIs(t, err, domain.ErrCredentialNotFound)
+}
+
 func TestUpdateCredentialTokens(t *testing.T) {
 	env := newRepoTestEnv(t)
 	defer env.clean()

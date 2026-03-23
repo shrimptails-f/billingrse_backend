@@ -97,7 +97,7 @@ func BuildContainer(
 	// 各機能群の依存性を登録
 	ProvideAuthDependencies(container)
 	ProvideMailAccountConnectionDependencies(container)
-	// ProvideEmailAnalysisDependencies(container) // Use messaging abstraction instead
+	ProvideMailFetchDependencies(container)
 	ProvidePresentationDependencies(container)
 
 	return container

@@ -17,6 +17,11 @@ import (
 	"google.golang.org/api/googleapi"
 )
 
+var (
+	// ErrLabelNotFound is returned when the requested Gmail label does not exist.
+	ErrLabelNotFound = errors.New("gmail label not found")
+)
+
 type Client struct {
 	svc     *gmail.Service
 	limiter ratelimit.Limiter
@@ -80,7 +85,7 @@ func (c *Client) GetMessagesByLabelName(ctx context.Context, labelName string, s
 		}
 	}
 	if labelID == "" {
-		return nil, fmt.Errorf("ラベル '%s' が見つかりませんでした", labelName)
+		return nil, fmt.Errorf("%w: %s", ErrLabelNotFound, labelName)
 	}
 
 	// 検索条件（入力されたタイムゾーンに合わせて 0 時に揃え、UTC へ変換）

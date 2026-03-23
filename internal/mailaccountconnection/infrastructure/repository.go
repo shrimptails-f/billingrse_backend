@@ -132,6 +132,22 @@ func (r *Repository) FindCredentialByUserAndGmail(ctx context.Context, userID ui
 	return toDomainCredential(rec), nil
 }
 
+// FindCredentialByIDAndUser returns one persisted connection owned by the given user.
+func (r *Repository) FindCredentialByIDAndUser(ctx context.Context, credentialID, userID uint) (domain.EmailCredential, error) {
+	var rec credentialRecord
+	err := r.db.WithContext(ctx).
+		Where("id = ? AND user_id = ? AND o_auth_state IS NULL", credentialID, userID).
+		First(&rec).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return domain.EmailCredential{}, domain.ErrCredentialNotFound
+		}
+		logDBQueryFailed(r.log, "email_credentials", "find_by_id_and_user", err)
+		return domain.EmailCredential{}, fmt.Errorf("failed to find credential by id: %w", err)
+	}
+	return toDomainCredential(rec), nil
+}
+
 func (r *Repository) ListCredentialsByUser(ctx context.Context, userID uint) ([]domain.EmailCredential, error) {
 	var records []credentialRecord
 	if err := r.db.WithContext(ctx).
