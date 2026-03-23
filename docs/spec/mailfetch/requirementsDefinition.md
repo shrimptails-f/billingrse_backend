@@ -7,7 +7,7 @@
 - 現在のリポジトリでは `internal/mailaccountconnection` と Gmail クライアント群に加え、raw Email の取得・保存を担う `internal/mailfetch` が実装済みである。
 - `internal/common/domain.FetchedEmailDTO` は既に存在し、Gmail クライアントもこの DTO を返す。
 - `Email` は metadata 保存に責務を限定し、本文は永続化しない方針とする。
-- 後段の `emailanalysis` が本文を必要とする場合は、同一 workflow 内で fetch 結果を引き継ぐか、provider から再取得する前提で整理する。
+- 後段の `emailanalysis` が本文を必要とするため、同一 workflow 内で fetch 結果を `created_emails` として引き継ぐ前提で整理する。
 - Email の一意性は `user_id + external_message_id` を採用し、provider / account source は metadata として保持する。
 
 ## 目的
@@ -45,7 +45,8 @@
 5. `MailFetcher` は対象ラベルと期間に一致するメールを取得する。
 6. backend は取得した raw メールを idempotent に保存する。
 7. backend は `created_email_ids` と `existing_email_ids` を分けて返す。
-8. 上位の `manualmailworkflow` は、原則 `created_email_ids` のみを後段の `emailanalysis` に渡す。
+8. backend は新規保存できたメール本文を含む `created_emails` も返す。
+9. 上位の `manualmailworkflow` は、`created_emails` を後段の `emailanalysis` に渡す。
 
 ## 入力契約
 
@@ -69,6 +70,9 @@
 - `account_identifier`
 - `matched_message_count`
 - `created_email_ids`
+- `created_emails`
+  - 新規保存できた message の一時 payload
+  - 各要素は `email_id`, `external_message_id`, `subject`, `from`, `to`, `date`, `body` を持つ
 - `existing_email_ids`
 - `failures`
   - provider 取得や保存の途中で失敗した message 単位の失敗要約
@@ -77,7 +81,8 @@
 補足:
 - `account_identifier` は取得対象メールの `To` ではなく、「どのメールアカウントから取得したか」を表す source 識別子である。
   - Gmail では連携済み Gmail アドレスが入る。
-- 既存 Email の ID も返すが、下流の通常経路で使うのは `created_email_ids` を正とする。
+- `created_emails` は `created_email_ids` と同じ集合を入力順で表す一時 payload とする。
+- 既存 Email の ID も返すが、下流の通常経路で使うのは `created_emails` と `created_email_ids` を正とする。
 - 同一条件での再実行時に既存 Email を再解析し続けるのを避けるためである。
 
 ## 機能要件
@@ -91,6 +96,7 @@
 - provider 取得結果は `internal/common/domain.FetchedEmailDTO` に正規化すること。
 - raw Email の保存では件名・送信元・宛先・受信日時などの metadata を保存すること。
 - 本文は永続化対象に含めないこと。
+- `mailfetch` の結果には、新規保存できた message の本文を `created_emails` として含めること。
 - Email 保存は idempotent であること。
 - Email 保存は 20 件単位で batch 化され、短い DB transaction で処理されること。
 - idempotency key は `user_id + external_message_id` とすること。
@@ -113,7 +119,8 @@
 
 - `mailfetch` が永続化する `Email` は metadata のみに限定する。
 - 本文は `FetchedEmailDTO` の一時データとして扱い、保存対象には含めない。
-- `emailanalysis` が本文を必要とする場合は、同一 workflow 内で引き継ぐか、`provider + account_identifier + external_message_id` を使って再取得する。
+- `emailanalysis` が本文を必要とする場合は、同一 workflow 内で `created_emails` として引き継ぐ。
+- `provider + account_identifier + external_message_id` による再取得は、通常経路ではなく補助手段として扱う。
 
 ### 2. Email の一意性は `user_id + external_message_id` にする
 
@@ -135,10 +142,10 @@
 - `MailAccountConnection` と Email 保存の接続方法が明確であること。
 - Gmail v1 の実装方針と provider 拡張点が明確であること。
 - Email が metadata 保存に限定されることと、一意性ルールが明確であること。
-- `manualmailworkflow` が下流へ渡すべき ID 群を `created_email_ids` として明確にできること。
+- `manualmailworkflow` が下流へ渡すべき本文付き payload を `created_emails` として明確にできること。
 
 ## TODO:
-メール取得し保存に成功したメールのidを返却しメール解析にかける想定だが、
-解析処理済みのメールと解析に失敗したメールを返却対象にするのか要検討
+メール取得し保存に成功したメールの `created_emails` を返却しメール解析にかける想定だが、
+解析処理済みのメールと解析に失敗したメールを再度 `created_emails` の返却対象にするのか要検討
 解析成功していたら、基本は再解析はいらないはず。プロンプトが変わったから再解析したいとかなければ。
 失敗は原因しだいかな?

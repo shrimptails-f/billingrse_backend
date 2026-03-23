@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // ConnectionRepository resolves a user-owned and fetchable mail-account connection.
@@ -36,12 +37,24 @@ type Command struct {
 	Condition    mfdomain.FetchCondition
 }
 
+// CreatedEmail is a downstream-facing payload for newly persisted emails.
+type CreatedEmail struct {
+	EmailID           uint
+	ExternalMessageID string
+	Subject           string
+	From              string
+	To                []string
+	Date              time.Time
+	Body              string
+}
+
 // Result is the output contract for the manual mail fetch stage.
 type Result struct {
 	Provider            string
 	AccountIdentifier   string
 	MatchedMessageCount int
 	CreatedEmailIDs     []uint
+	CreatedEmails       []CreatedEmail
 	ExistingEmailIDs    []uint
 	Failures            []mfdomain.MessageFailure
 }
@@ -118,6 +131,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 	seenMessageIDs := make(map[string]struct{}, len(dtos))
 	source := conn.Source()
 	saveTargets := make([]cd.FetchedEmailDTO, 0, len(dtos))
+	saveTargetsByMessageID := make(map[string]cd.FetchedEmailDTO, len(dtos))
 
 	for _, dto := range dtos {
 		externalMessageID := strings.TrimSpace(dto.ID)
@@ -135,6 +149,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 		seenMessageIDs[externalMessageID] = struct{}{}
 		dto.ID = externalMessageID
 		saveTargets = append(saveTargets, dto)
+		saveTargetsByMessageID[externalMessageID] = dto
 	}
 
 	saveResults, saveFailures, saveErr := uc.emailRepo.SaveAllIfAbsent(ctx, cmd.UserID, source, saveTargets)
@@ -154,6 +169,23 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 		switch saveResult.Status {
 		case mfdomain.SaveStatusCreated:
 			result.CreatedEmailIDs = append(result.CreatedEmailIDs, saveResult.EmailID)
+			dto, ok := saveTargetsByMessageID[saveResult.ExternalMessageID]
+			if !ok {
+				reqLog.Error("manual_mail_fetch_created_email_payload_missing",
+					logger.Uint("email_id", saveResult.EmailID),
+					logger.String("external_message_id", saveResult.ExternalMessageID),
+				)
+				continue
+			}
+			result.CreatedEmails = append(result.CreatedEmails, CreatedEmail{
+				EmailID:           saveResult.EmailID,
+				ExternalMessageID: saveResult.ExternalMessageID,
+				Subject:           dto.Subject,
+				From:              dto.From,
+				To:                append([]string(nil), dto.To...),
+				Date:              dto.Date,
+				Body:              dto.Body,
+			})
 		case mfdomain.SaveStatusExisting:
 			result.ExistingEmailIDs = append(result.ExistingEmailIDs, saveResult.EmailID)
 		default:

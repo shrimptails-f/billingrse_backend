@@ -110,9 +110,9 @@ func TestUseCaseExecute_CreatesAndReturnsExistingIDs(t *testing.T) {
 				return &mockMailFetcher{
 					fetch: func(ctx context.Context, cond mfdomain.FetchCondition) ([]cd.FetchedEmailDTO, []mfdomain.MessageFailure, error) {
 						return []cd.FetchedEmailDTO{
-							{ID: "msg-1", Subject: "a", From: "from1", To: []string{"to1"}, Date: now},
-							{ID: "msg-2", Subject: "b", From: "from2", To: []string{"to2"}, Date: now},
-							{ID: "msg-2", Subject: "dup", From: "from2", To: []string{"to2"}, Date: now},
+							{ID: "msg-1", Subject: "a", From: "from1", To: []string{"to1"}, Date: now, Body: "body-1"},
+							{ID: "msg-2", Subject: "b", From: "from2", To: []string{"to2"}, Date: now, Body: "body-2"},
+							{ID: "msg-2", Subject: "dup", From: "from2", To: []string{"to2"}, Date: now, Body: "dup-body"},
 						}, nil, nil
 					},
 				}, nil
@@ -163,6 +163,12 @@ func TestUseCaseExecute_CreatesAndReturnsExistingIDs(t *testing.T) {
 	}
 	if len(result.CreatedEmailIDs) != 1 || result.CreatedEmailIDs[0] != 101 {
 		t.Fatalf("unexpected created ids: %+v", result.CreatedEmailIDs)
+	}
+	if len(result.CreatedEmails) != 1 {
+		t.Fatalf("unexpected created emails: %+v", result.CreatedEmails)
+	}
+	if result.CreatedEmails[0].EmailID != 101 || result.CreatedEmails[0].ExternalMessageID != "msg-1" || result.CreatedEmails[0].Body != "body-1" {
+		t.Fatalf("unexpected created email payload: %+v", result.CreatedEmails[0])
 	}
 	if len(result.ExistingEmailIDs) != 1 || result.ExistingEmailIDs[0] != 202 {
 		t.Fatalf("unexpected existing ids: %+v", result.ExistingEmailIDs)
@@ -233,8 +239,8 @@ func TestUseCaseExecute_PartialFailuresContinue(t *testing.T) {
 				return &mockMailFetcher{
 					fetch: func(ctx context.Context, cond mfdomain.FetchCondition) ([]cd.FetchedEmailDTO, []mfdomain.MessageFailure, error) {
 						return []cd.FetchedEmailDTO{
-								{ID: "msg-1", Subject: "ok", From: "from1", To: []string{"to1"}, Date: now},
-								{ID: "msg-2", Subject: "ng", From: "from2", To: []string{"to2"}, Date: now},
+								{ID: "msg-1", Subject: "ok", From: "from1", To: []string{"to1"}, Date: now, Body: "body-1"},
+								{ID: "msg-2", Subject: "ng", From: "from2", To: []string{"to2"}, Date: now, Body: "body-2"},
 							}, []mfdomain.MessageFailure{
 								{ExternalMessageID: "msg-0", Stage: mfdomain.FailureStageFetchDetail, Code: mfdomain.FailureCodeFetchDetailFailed},
 							}, nil
@@ -270,6 +276,9 @@ func TestUseCaseExecute_PartialFailuresContinue(t *testing.T) {
 	if len(result.CreatedEmailIDs) != 1 || result.CreatedEmailIDs[0] != 55 {
 		t.Fatalf("unexpected created ids: %+v", result.CreatedEmailIDs)
 	}
+	if len(result.CreatedEmails) != 1 || result.CreatedEmails[0].EmailID != 55 || result.CreatedEmails[0].Body != "body-1" {
+		t.Fatalf("unexpected created emails: %+v", result.CreatedEmails)
+	}
 	if len(result.Failures) != 2 {
 		t.Fatalf("expected 2 failures, got %+v", result.Failures)
 	}
@@ -303,7 +312,7 @@ func TestUseCaseExecute_ZeroReceivedAtBecomesNormalizeFailure(t *testing.T) {
 				return &mockMailFetcher{
 					fetch: func(ctx context.Context, cond mfdomain.FetchCondition) ([]cd.FetchedEmailDTO, []mfdomain.MessageFailure, error) {
 						return []cd.FetchedEmailDTO{
-							{ID: "msg-1", Subject: "ok", From: "from1", To: []string{"to1"}, Date: now},
+							{ID: "msg-1", Subject: "ok", From: "from1", To: []string{"to1"}, Date: now, Body: "body-1"},
 							{ID: "msg-2", Subject: "ng", From: "from2", To: []string{"to2"}},
 						}, nil, nil
 					},
@@ -338,6 +347,9 @@ func TestUseCaseExecute_ZeroReceivedAtBecomesNormalizeFailure(t *testing.T) {
 
 	if len(result.CreatedEmailIDs) != 1 || result.CreatedEmailIDs[0] != 55 {
 		t.Fatalf("unexpected created ids: %+v", result.CreatedEmailIDs)
+	}
+	if len(result.CreatedEmails) != 1 || result.CreatedEmails[0].Body != "body-1" {
+		t.Fatalf("unexpected created emails: %+v", result.CreatedEmails)
 	}
 	if len(result.Failures) != 1 {
 		t.Fatalf("expected 1 failure, got %+v", result.Failures)

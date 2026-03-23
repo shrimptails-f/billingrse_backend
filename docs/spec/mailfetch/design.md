@@ -48,13 +48,24 @@ type Command struct {
 	Condition    domain.FetchCondition
 }
 
+type CreatedEmail struct {
+	EmailID           uint
+	ExternalMessageID string
+	Subject           string
+	From              string
+	To                []string
+	Date              time.Time
+	Body              string
+}
+
 type Result struct {
-	Provider           string
-	AccountIdentifier  string
+	Provider            string
+	AccountIdentifier   string
 	MatchedMessageCount int
-	CreatedEmailIDs    []uint
-	ExistingEmailIDs   []uint
-	Failures           []domain.MessageFailure
+	CreatedEmailIDs     []uint
+	CreatedEmails       []CreatedEmail
+	ExistingEmailIDs    []uint
+	Failures            []domain.MessageFailure
 }
 
 type UseCase interface {
@@ -63,7 +74,8 @@ type UseCase interface {
 ```
 
 補足:
-- `CreatedEmailIDs` は下流 stage へ渡す正規 output とする。
+- `CreatedEmails` は下流 stage へ渡す本文付きの正規 output とする。
+- `CreatedEmailIDs` は保存済み Email の参照と運用確認に使う。
 - `ExistingEmailIDs` は idempotent 実行の観測と運用確認に使う。
 - `Failures` は message 単位の部分失敗を返す。
   - save 失敗は内部的には 20 件チャンク単位で判定し、失敗したチャンク内の message を `save` failure として返す。
@@ -201,7 +213,7 @@ sequenceDiagram
   UC->>EmailRepo: SaveAllIfAbsent(user_id, source, dto_list)
   EmailRepo-->>UC: SaveResult[], save_failures
 
-  UC-->>Workflow: Result(created_email_ids, existing_email_ids, failures)
+  UC-->>Workflow: Result(created_email_ids, created_emails, existing_email_ids, failures)
 ```
 
 ## 7. UseCase 詳細
@@ -213,12 +225,13 @@ sequenceDiagram
 5. `MailFetcher.Fetch` で provider から `FetchedEmailDTO` を取得する。
 6. 同一レスポンス内で `ExternalMessageID` が重複していた場合は usecase 内で一度だけ保存対象にする。
 7. 同一レスポンス内で重複を除いた DTO 群を `EmailRepository.SaveAllIfAbsent` へ 1 回渡す。
-8. `SaveStatus` に応じて `CreatedEmailIDs` / `ExistingEmailIDs` を振り分ける。
-9. provider 取得の部分失敗と、batch 保存から返る保存失敗を `Failures` に集約して返す。
+8. `SaveStatusCreated` の message は、保存済み `email_id` と fetch 済み本文を束ねた `CreatedEmails` に積む。
+9. `SaveStatus` に応じて `CreatedEmailIDs` / `ExistingEmailIDs` を振り分ける。
+10. provider 取得の部分失敗と、batch 保存から返る保存失敗を `Failures` に集約して返す。
 
 補足:
 - `mailfetch` は `emailanalysis` を直接呼ばない。
-- `manualmailworkflow` は通常 `CreatedEmailIDs` のみを次段へ流す。
+- `manualmailworkflow` は通常 `CreatedEmails` を次段へ流し、`CreatedEmailIDs` は保存済み Email 参照に使う。
 
 ## 8. Gmail adapter 設計
 
@@ -259,7 +272,8 @@ sequenceDiagram
 補足:
 - 既存 Gmail client は HTML を strip した本文文字列を `FetchedEmailDTO.Body` へ入れる
 - ただし `mailfetch` は本文を保存しない
-- 本文が必要な下流は fetch 結果の引き継ぎ、または provider 再取得で補う
+- 本文が必要な下流は `CreatedEmails` で fetch 結果を引き継ぐ
+- `provider + account_identifier + external_message_id` による再取得は補助手段として残す
 - raw MIME や添付ファイルは v1 の責務に含めない
 - label が存在しない場合は top-level error `ErrProviderLabelNotFound` を返す
 
@@ -397,4 +411,4 @@ UNIQUE KEY (user_id, external_message_id)
 - Email 保存は metadata のみに限定する
 - Email の一意キーは `user_id + external_message_id` にする
 - Email 保存 port は `SaveAllIfAbsent` とし、保存クエリは 20 件単位で batch 化する
-- 戻り値は `CreatedEmailIDs` と `ExistingEmailIDs` を分ける
+- 戻り値は `CreatedEmailIDs` / `CreatedEmails` / `ExistingEmailIDs` を分ける
