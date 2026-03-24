@@ -1,11 +1,11 @@
 <architecture_rules>
   <context>
     - Language: Go
-    - アーキテクチャ: Clean Architecture（HTTP + stage workflow）
+    - アーキテクチャ: Clean Architecture（HTTP + async workflow）
     - WebFramework: Gin
     - ORM: Gorm
     - マイグレーション: Atlas
-    - 主ワークフロー: `internal/manualmailworkflow`（mailfetch -> mailanalysis -> vendorresolution -> billingeligibility）
+    - 主ワークフロー: `internal/manualmailworkflow`（`POST` は受付のみを返し、バックグラウンドで `mailfetch -> mailanalysis -> vendorresolution -> billingeligibility -> billing` を実行する）
     - DI コンテナ: go.uber.org/dig
   </context>
 
@@ -39,7 +39,7 @@
         - mailanalysis/           // AI 解析 stage
         - vendorresolution/       // canonical Vendor 解決 stage
         - billingeligibility/     // Billing 成立可否判定 stage
-        - manualmailworkflow/     // fetch -> analysis -> vendorresolution -> billingeligibility を束ねる workflow
+        - manualmailworkflow/     // 非同期 workflow の受付、実行、状態参照を束ねる
     </root_packages>
   </directory_structure>
 
@@ -77,9 +77,10 @@
           - `mailanalysis/application`: OpenAI 解析、`ParsedEmail` 永続化
           - `vendorresolution/application`: alias lookup、必要なら canonical Vendor 自動登録
           - `billingeligibility/application`: `ParsedEmail` と解決済み Vendor から Billing 成立可否を評価
-          - `manualmailworkflow/application`: `mailfetch -> mailanalysis -> vendorresolution -> billingeligibility` の同期実行
+          - `manualmailworkflow/application`: workflow 受付、background 実行、状態取得
       - 注意点:
-        - 現行の workflow は HTTP リクエスト内で同期的に最後まで実行される。fire-and-forget や専用ジョブキューは入っていない。
+        - `POST /api/v1/manual-mail-workflows` は短時間で `202 Accepted` を返し、実処理はバックグラウンドで進める。
+        - workflow 結果保存用の履歴テーブル詳細は今後検討とし、現時点では TODO として扱う。
         - stage 単位の technical failure は `Failures` に集約し、業務上の unresolved は failure と分離する。
     </application>
 
@@ -120,13 +121,15 @@
   <workflow>
     - 入口:
       - `POST /api/v1/manual-mail-workflows`
+      - `GET /api/v1/manual-mail-workflows/:workflow_id`
     - 実行順:
-      - `manualmailworkflow/application.UseCase` が `mailfetch`, `mailanalysis`, `vendorresolution`, `billingeligibility` の各 stage を順に呼ぶ。
+      - start usecase が workflow を受け付け、dispatcher が background 実行へ渡す。
+      - background runner が `mailfetch`, `mailanalysis`, `vendorresolution`, `billingeligibility`, `billing` の各 stage を順に呼ぶ。
     - `mailfetch`:
       - 利用可能な `MailAccountConnection` を解決する。
       - Gmail セッションを生成して provider からメールを取得する。
       - `emails` テーブルへメタデータを idempotent に保存する。
-      - 取得した本文は HTTP リクエスト内の in-memory payload として `mailanalysis` に渡す。
+      - 取得した本文は background workflow 内の in-memory payload として `mailanalysis` に渡す。
     - `mailanalysis`:
       - OpenAI analyzer で本文を解析し、`parsed_emails` を保存する。
       - 保存済み `ParsedEmail` と source email の必要メタデータを workflow へ返す。
@@ -137,13 +140,18 @@
     - `billingeligibility`:
       - 解決済み Vendor と `ParsedEmail` をもとに Billing 成立可否を評価する。
       - `billing_date` は任意として扱い、必須項目不足や不正値は `ineligible` または `failure` に分類する。
+    - `billing`:
+      - `BillingEligibility` で成立した対象から `Billing` を生成し、idempotent に保存する。
+    - 履歴 / 状態参照:
+      - `GET /api/v1/manual-mail-workflows/:workflow_id` が受付済み workflow の状態と、取得可能なら最終結果を返す。
+      - 履歴テーブル設計は TODO とし、永続化スキーマ詳細は後続で詰める。
   </workflow>
 
   <context_management>
-    - 現行実装ではバックグラウンド実行を行わず、HTTP リクエストの `context.Context` を stage 全体にそのまま伝播する。
+    - HTTP request の `context.Context` は workflow 受付までに使い、background 実行では新しい `context.Context` を作る。
     - `RequestID` middleware が `request_id` を `gin.Context` と `context.Context` の両方へ設定する。
     - `AuthMiddleware` が認証済み `user_id` を `gin.Context` と `context.Context` に設定する。
-    - logger は `WithContext(ctx)` により `request_id` / `job_id` / `user_id` を自動付与する。
+    - background workflow では `job_id` と `user_id` を context に積み、logger は `WithContext(ctx)` により `request_id` / `job_id` / `user_id` を自動付与する。
   </context_management>
 
   <library_layer>
@@ -166,7 +174,7 @@
     - 依存注入は `internal/di` に集約する。
       - `dig.go` が共通依存（mysql, gmail, openai, oswrapper, ratelimit, logger, vault, clock）を登録する。
       - 各機能モジュールが repository / adapter / usecase / controller を Provide する。
-      - `manualmailworkflow` は direct adapter で stage usecase を束ねる。
+      - `manualmailworkflow` は direct stage adapter に加え、dispatcher / status repository を束ねる。
     - ブートストラップ手順:
       - `cmd/app/main.go` → `internal/app/server.Run`
       - `server.Run` が secret client、logger、MySQL、rate limit provider、Gmail / OpenAI client、Vault を初期化
