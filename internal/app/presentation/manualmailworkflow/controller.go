@@ -43,6 +43,7 @@ type executeResponse struct {
 	Analysis           analysisSummaryResponse           `json:"analysis"`
 	VendorResolution   vendorResolutionSummaryResponse   `json:"vendor_resolution"`
 	BillingEligibility billingEligibilitySummaryResponse `json:"billing_eligibility"`
+	Billing            billingSummaryResponse            `json:"billing"`
 }
 
 type fetchSummaryResponse struct {
@@ -146,6 +147,43 @@ type billingEligibilityFailureResponse struct {
 	Code              string `json:"code"`
 }
 
+type billingSummaryResponse struct {
+	CreatedCount   int                      `json:"created_count"`
+	CreatedItems   []billingCreatedItem     `json:"created_items"`
+	DuplicateCount int                      `json:"duplicate_count"`
+	DuplicateItems []billingDuplicateItem   `json:"duplicate_items"`
+	FailureCount   int                      `json:"failure_count"`
+	Failures       []billingFailureResponse `json:"failures"`
+}
+
+type billingCreatedItem struct {
+	BillingID         uint   `json:"billing_id"`
+	ParsedEmailID     uint   `json:"parsed_email_id"`
+	EmailID           uint   `json:"email_id"`
+	ExternalMessageID string `json:"external_message_id"`
+	VendorID          uint   `json:"vendor_id"`
+	VendorName        string `json:"vendor_name"`
+	BillingNumber     string `json:"billing_number"`
+}
+
+type billingDuplicateItem struct {
+	ExistingBillingID uint   `json:"existing_billing_id"`
+	ParsedEmailID     uint   `json:"parsed_email_id"`
+	EmailID           uint   `json:"email_id"`
+	ExternalMessageID string `json:"external_message_id"`
+	VendorID          uint   `json:"vendor_id"`
+	VendorName        string `json:"vendor_name"`
+	BillingNumber     string `json:"billing_number"`
+}
+
+type billingFailureResponse struct {
+	ParsedEmailID     uint   `json:"parsed_email_id"`
+	EmailID           uint   `json:"email_id"`
+	ExternalMessageID string `json:"external_message_id"`
+	Stage             string `json:"stage"`
+	Code              string `json:"code"`
+}
+
 // Execute handles POST /api/v1/manual-mail-workflows.
 func (ctrl *Controller) Execute(c *gin.Context) {
 	reqLog := ctrl.log
@@ -184,6 +222,7 @@ func (ctrl *Controller) Execute(c *gin.Context) {
 		Analysis:           buildAnalysisSummaryResponse(result.Analysis),
 		VendorResolution:   buildVendorResolutionSummaryResponse(result.VendorResolution),
 		BillingEligibility: buildBillingEligibilitySummaryResponse(result.BillingEligibility),
+		Billing:            buildBillingSummaryResponse(result.Billing),
 	})
 }
 
@@ -348,6 +387,54 @@ func buildBillingEligibilitySummaryResponse(result manualapp.BillingEligibilityR
 		IneligibleItems: ineligibleItems,
 		FailureCount:    len(result.Failures),
 		Failures:        failures,
+	}
+}
+
+func buildBillingSummaryResponse(result manualapp.BillingResult) billingSummaryResponse {
+	createdItems := make([]billingCreatedItem, 0, len(result.CreatedItems))
+	for _, item := range result.CreatedItems {
+		createdItems = append(createdItems, billingCreatedItem{
+			BillingID:         item.BillingID,
+			ParsedEmailID:     item.ParsedEmailID,
+			EmailID:           item.EmailID,
+			ExternalMessageID: item.ExternalMessageID,
+			VendorID:          item.VendorID,
+			VendorName:        item.VendorName,
+			BillingNumber:     item.BillingNumber,
+		})
+	}
+
+	duplicateItems := make([]billingDuplicateItem, 0, len(result.DuplicateItems))
+	for _, item := range result.DuplicateItems {
+		duplicateItems = append(duplicateItems, billingDuplicateItem{
+			ExistingBillingID: item.ExistingBillingID,
+			ParsedEmailID:     item.ParsedEmailID,
+			EmailID:           item.EmailID,
+			ExternalMessageID: item.ExternalMessageID,
+			VendorID:          item.VendorID,
+			VendorName:        item.VendorName,
+			BillingNumber:     item.BillingNumber,
+		})
+	}
+
+	failures := make([]billingFailureResponse, 0, len(result.Failures))
+	for _, failure := range result.Failures {
+		failures = append(failures, billingFailureResponse{
+			ParsedEmailID:     failure.ParsedEmailID,
+			EmailID:           failure.EmailID,
+			ExternalMessageID: failure.ExternalMessageID,
+			Stage:             failure.Stage,
+			Code:              failure.Code,
+		})
+	}
+
+	return billingSummaryResponse{
+		CreatedCount:   result.CreatedCount,
+		CreatedItems:   createdItems,
+		DuplicateCount: result.DuplicateCount,
+		DuplicateItems: duplicateItems,
+		FailureCount:   len(result.Failures),
+		Failures:       failures,
 	}
 }
 

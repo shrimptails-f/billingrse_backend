@@ -112,6 +112,35 @@ func TestExecute_200(t *testing.T) {
 				{ParsedEmailID: 303, EmailID: 103, ExternalMessageID: "msg-3", Stage: "normalize_input", Code: "invalid_eligibility_target"},
 			},
 		},
+		Billing: manualapp.BillingResult{
+			CreatedItems: []manualapp.BillingCreatedItem{
+				{
+					BillingID:         501,
+					ParsedEmailID:     301,
+					EmailID:           101,
+					ExternalMessageID: "msg-1",
+					VendorID:          401,
+					VendorName:        "Acme",
+					BillingNumber:     "digest_8e4b1c",
+				},
+			},
+			CreatedCount: 1,
+			DuplicateItems: []manualapp.BillingDuplicateItem{
+				{
+					ExistingBillingID: 500,
+					ParsedEmailID:     302,
+					EmailID:           102,
+					ExternalMessageID: "msg-2",
+					VendorID:          401,
+					VendorName:        "Acme",
+					BillingNumber:     "digest_9a7f00",
+				},
+			},
+			DuplicateCount: 1,
+			Failures: []manualapp.BillingFailure{
+				{ParsedEmailID: 303, EmailID: 103, ExternalMessageID: "msg-3", Stage: "save_billing", Code: "billing_persist_failed"},
+			},
+		},
 	}, nil).Once()
 
 	ctrl := newTestController(uc)
@@ -220,6 +249,42 @@ func TestExecute_200(t *testing.T) {
 					"external_message_id": "msg-3",
 					"stage": "normalize_input",
 					"code": "invalid_eligibility_target"
+				}
+			]
+		},
+		"billing": {
+			"created_count": 1,
+			"created_items": [
+				{
+					"billing_id": 501,
+					"parsed_email_id": 301,
+					"email_id": 101,
+					"external_message_id": "msg-1",
+					"vendor_id": 401,
+					"vendor_name": "Acme",
+					"billing_number": "digest_8e4b1c"
+				}
+			],
+			"duplicate_count": 1,
+			"duplicate_items": [
+				{
+					"existing_billing_id": 500,
+					"parsed_email_id": 302,
+					"email_id": 102,
+					"external_message_id": "msg-2",
+					"vendor_id": 401,
+					"vendor_name": "Acme",
+					"billing_number": "digest_9a7f00"
+				}
+			],
+			"failure_count": 1,
+			"failures": [
+				{
+					"parsed_email_id": 303,
+					"email_id": 103,
+					"external_message_id": "msg-3",
+					"stage": "save_billing",
+					"code": "billing_persist_failed"
 				}
 			]
 		}
