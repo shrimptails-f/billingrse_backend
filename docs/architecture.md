@@ -31,7 +31,7 @@
         - mailaccountconnection/  // MailAccountConnection 管理（backing store: email_credentials）
         - emailstore/             // 解析済みメールの永続化
         - common/                 // 共通 DTO とメール分析ログ
-        - emailanalysis/          // メッセージングパイプラインを呼び出すアプリケーション層
+        - mailanalysis/          // メッセージングパイプラインを呼び出すアプリケーション層
         - messaging/
           - domain/               // パイプラインのポート・JobParams・PipelineService 実装
           - application/          // PipelineFactory や Dispatcher のヘルパー
@@ -60,14 +60,14 @@
     <application>
       - 配置:
         - internal/{domain}/application（auth, agent, mailaccountconnection, emailstore, common/email-analysis-log 等）
-        - internal/emailanalysis/application（キュー投入ユースケース）
+        - internal/mailanalysis/application（キュー投入ユースケース）
         - internal/messaging/application（パイプラインの Factory / Dispatcher）
       - 役割:
-        - 各ユースケースの interface（`AuthUseCaseInterface`, `AgentUsecase`, `emailanalysisapp.UseCase` など）を保持し、オーケストレーション・バリデーション・トランザクション管理を実装する。
+        - 各ユースケースの interface（`AuthUseCaseInterface`, `AgentUsecase`, `mailanalysisapp.UseCase` など）を保持し、オーケストレーション・バリデーション・トランザクション管理を実装する。
         - リポジトリや他コンテキストと連携する：
           - `internal/agent/application` は複数テーブルを更新するため明示的に `*gorm.DB` トランザクションを管理。
           - `internal/mailaccountconnection/application` は `crypto.Vault` と oswrapper を使って OAuth トークンを暗号化/復号する。
-          - `internal/emailanalysis/application` は messaging ドメインを用いた事前チェックを行い、`PipelineService` を非同期実行。
+          - `internal/mailanalysis/application` は messaging ドメインを用いた事前チェックを行い、`PipelineService` を非同期実行。
           - `internal/common/application` はメール分析ログ操作を提供し、messaging の logging adapter から呼び出される。
         - DI された `oswrapper`, `timewrapper.ClockInterface`, `crypto.Vault`, `logger.Interface` などのヘルパー、および必要に応じて他アプリケーション層サービス（emailstore.UseCase など）へ依存する。
       - 注意点:
@@ -114,7 +114,7 @@
       - Result saver adapter が emailstore.UseCase 経由で結果を保存し、枝番の重複をスキップ。
       - Logging adapter が internal/common/application.EmailAnalysisLogUseCase を呼んでパイプラインの進捗を記録。
     - HTTP → 非同期分析の流れ:
-      - `internal/emailanalysis/application` が `JobParams` を組み立て、Session/Analyzer Factory で事前チェック後に `PipelineService.Execute` を `go` ルーチンで実行し、Controller は即座にレスポンスを返す。
+      - `internal/mailanalysis/application` が `JobParams` を組み立て、Session/Analyzer Factory で事前チェック後に `PipelineService.Execute` を `go` ルーチンで実行し、Controller は即座にレスポンスを返す。
       - goroutine 内では `runPipeline` が `recover` を仕込んでおり、panic が発生してもプロセス全体は落ちず、メール分析ログおよび構造化ログへ致命情報を残す。
       - エラー再実行方針:
         - パイプラインは fire-and-forget であり、自動リトライやジョブキューは現状存在しない。外部依存（Gmail/OpenAI）エラーで失敗した場合はメール分析ログに失敗理由が記録されるため、ユーザーからの再リクエスト、もしくは Ops による再実行で対応する。
@@ -129,7 +129,7 @@
   </messaging>
 
   <context_management>
-    - HTTP リクエスト由来の `gin.Context` だけに依存すると、レスポンス返却後のバックグラウンド処理へキャンセルが伝播してしまう。そのため `internal/emailanalysis/application` では `context.WithoutCancel` を利用している。
+    - HTTP リクエスト由来の `gin.Context` だけに依存すると、レスポンス返却後のバックグラウンド処理へキャンセルが伝播してしまう。そのため `internal/mailanalysis/application` では `context.WithoutCancel` を利用している。
     - 理想的なフロー:
       - `internal/app/server.Run` で `ctx, cancel := context.WithCancel(context.Background())` を生成し、DI 経由で「サーバ全体のベースコンテキスト」を注入する。
       - バックグラウンド処理は `(baseCtx)` を親に、`context.WithTimeout`/`context.WithCancel` で個別のジョブコンテキストを作り、HTTP リクエスト終了の影響を受けずに実行する。
@@ -158,7 +158,7 @@
     - 依存注入はすべて `internal/di` に集約する。
       - `di/dig.go` で `ProvideCommonDependencies`（mysql, gmailService, gmail client, OpenAI client, oswrapper, ratelimit Provider, logger, timewrapper, 名前付き limiter）と `BuildContainer` を定義し、機能別モジュールを束ねる。
       - `di/auth.go`, `di/agent.go`, `di/emailstore.go`, `di/email_credential.go`, `di/messaging.go`, `di/presentation.go` 等で各レイヤのコンストラクタを Provide。
-      - Messaging モジュールでは mailaccountconnection リポジトリや crypto.Vault、Gmail/OpenAI クライアント、emailstore UseCase、logging UseCase を組み合わせ、emailanalysis UseCase が抽象ポートだけに依存するようにしている。
+      - Messaging モジュールでは mailaccountconnection リポジトリや crypto.Vault、Gmail/OpenAI クライアント、emailstore UseCase、logging UseCase を組み合わせ、mailanalysis UseCase が抽象ポートだけに依存するようにしている。
     - ブートストラップ手順:
       - `cmd/app/main.go` → `internal/app/server.Run` を呼び出す。
       - `server.Run` が oswrapper・logger・MySQL・レートリミット Provider・Gmail/OpenAI クライアントを初期化し、dig コンテナを構築。

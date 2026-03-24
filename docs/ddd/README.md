@@ -157,7 +157,7 @@ classDiagram
 - 取得条件（FetchCondition）と実行スケジュールを持つ
 
 #### メール（Email）
-- 取得した加工前の一次情報
+- 取得したメールを表す
 - Billing の参照元として保持される
 
 #### メール解析結果（ParsedEmail）

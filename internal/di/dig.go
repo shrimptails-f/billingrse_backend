@@ -63,11 +63,6 @@ func ProvideCommonDependencies(
 		return conn.DB
 	})
 
-	// Clock の実体と interface alias を同じ instance で提供
-	_ = container.Provide(func() timewrapper.ClockInterface {
-		return clock
-	})
-
 	_ = container.Provide(func() *timewrapper.Clock {
 		return clock
 	})
@@ -97,7 +92,9 @@ func BuildContainer(
 	// 各機能群の依存性を登録
 	ProvideAuthDependencies(container)
 	ProvideMailAccountConnectionDependencies(container)
-	// ProvideEmailAnalysisDependencies(container) // Use messaging abstraction instead
+	ProvideMailFetchDependencies(container)
+	ProvideMailAnalysisDependencies(container)
+	ProvideManualMailWorkflowDependencies(container)
 	ProvidePresentationDependencies(container)
 
 	return container

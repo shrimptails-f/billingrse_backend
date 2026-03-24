@@ -37,9 +37,15 @@ tasks:
     cmds:
       - air -c .air.toml & ide/bin/remote-dev-server.sh run {{.APP_ROOT}} --listenOn 0.0.0.0 --port 5994
 
+  migration-hash:
+    desc: "hashを生成します。"
+    cmds:
+      - atlas migrate hash --dir file:///home/dev/backend/tools/migrations/ddl
+
   migration-create:
     desc: "マイグレーションを実行します。"
     cmds:
+      - task: migration-hash
       - atlas migrate apply --config file://atlas.hcl --env gorm
 
   migration-drop:
@@ -57,6 +63,7 @@ tasks:
     desc: "構造体からddlを生成します。"
     cmds:
       - atlas migrate diff --config file://atlas.hcl --env gorm
+
 
   seed:
     desc: "develop schema のテーブルにデータを投入する。"

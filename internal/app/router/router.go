@@ -4,6 +4,7 @@ import (
 	"business/internal/app/middleware"
 	authpresentation "business/internal/app/presentation/auth"
 	macpresentation "business/internal/app/presentation/mailaccountconnection"
+	manualpresentation "business/internal/app/presentation/manualmailworkflow"
 	"business/internal/library/logger"
 	"net/http"
 
@@ -58,6 +59,19 @@ func Router(g *gin.Engine, container *dig.Container, log logger.Interface, allow
 		group.POST("/gmail/callback", authMiddleware.Authenticate(), macController.Callback)
 	}
 	registerMailAccountConnectionRoutes(g.Group("/api/v1/mail-account-connections"))
+
+	// ManualMailWorkflow関連
+	var manualController *manualpresentation.Controller
+	if err := container.Invoke(func(mc *manualpresentation.Controller) {
+		manualController = mc
+	}); err != nil {
+		log.Error("failed to resolve manual mail workflow controller", logger.Err(err))
+		return g, err
+	}
+	registerManualMailWorkflowRoutes := func(group *gin.RouterGroup) {
+		group.POST("", authMiddleware.Authenticate(), manualController.Execute)
+	}
+	registerManualMailWorkflowRoutes(g.Group("/api/v1/manual-mail-workflows"))
 
 	return g, nil
 }
