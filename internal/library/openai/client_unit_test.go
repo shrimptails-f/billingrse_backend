@@ -1,8 +1,17 @@
 package openai
 
 import (
+	"business/internal/library/logger"
+	"business/internal/library/retry"
+	"context"
 	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // buildChatCompletionParams が意図したモデルと schema 構成を組み立てることを確認する。
@@ -124,4 +133,86 @@ func TestBuildChatCompletionParams_MarshalJSONIncludesStructuredOutputs(t *testi
 	if got := jsonSchema["strict"]; got != true {
 		t.Fatalf("unexpected strict flag in payload: %#v", got)
 	}
+}
+
+func TestChat_RateLimiterGatesEveryHTTPAttempt(t *testing.T) {
+	oldBackoff := retry.DefaultBackoff
+	retry.DefaultBackoff = []time.Duration{0}
+	defer func() {
+		retry.DefaultBackoff = oldBackoff
+	}()
+
+	var requestCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch atomic.AddInt32(&requestCount, 1) {
+		case 1:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = io.WriteString(w, `{"error":{"message":"server error","type":"server_error","param":"","code":""}}`)
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"id":"chatcmpl_test","object":"chat.completion","created":1,"model":"gpt-5-mini","choices":[{"index":0,"finish_reason":"stop","logprobs":{"content":[],"refusal":[]},"message":{"role":"assistant","content":"{\"parsedEmails\":[]}","refusal":""}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)
+		}
+	}))
+	defer server.Close()
+
+	t.Setenv("OPENAI_BASE_URL", server.URL+"/v1")
+
+	limiter := &countingLimiter{}
+	client := New("test-api-key", limiter, logger.NewNop())
+
+	raw, err := client.Chat(context.Background(), "extract billing information")
+	if err != nil {
+		t.Fatalf("Chat returned error: %v", err)
+	}
+	if raw != `{"parsedEmails":[]}` {
+		t.Fatalf("unexpected raw response: %s", raw)
+	}
+	if got := limiter.Calls(); got != 2 {
+		t.Fatalf("expected limiter to gate both attempts, got %d", got)
+	}
+	if got := int(atomic.LoadInt32(&requestCount)); got != 2 {
+		t.Fatalf("expected exactly 2 HTTP requests, got %d", got)
+	}
+}
+
+func TestChat_LimiterErrorPreventsHTTPRequest(t *testing.T) {
+	var requestCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requestCount, 1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"id":"chatcmpl_test","object":"chat.completion","created":1,"model":"gpt-5-mini","choices":[{"index":0,"finish_reason":"stop","logprobs":{"content":[],"refusal":[]},"message":{"role":"assistant","content":"{\"parsedEmails\":[]}","refusal":""}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)
+	}))
+	defer server.Close()
+
+	t.Setenv("OPENAI_BASE_URL", server.URL+"/v1")
+
+	expectedErr := errors.New("limiter unavailable")
+	limiter := &countingLimiter{err: expectedErr}
+	client := New("test-api-key", limiter, logger.NewNop())
+
+	_, err := client.Chat(context.Background(), "extract billing information")
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("expected limiter error, got %v", err)
+	}
+	if got := limiter.Calls(); got != 1 {
+		t.Fatalf("expected limiter to be called once, got %d", got)
+	}
+	if got := int(atomic.LoadInt32(&requestCount)); got != 0 {
+		t.Fatalf("expected no HTTP request when limiter fails, got %d", got)
+	}
+}
+
+type countingLimiter struct {
+	calls int32
+	err   error
+}
+
+func (l *countingLimiter) Wait(ctx context.Context) error {
+	atomic.AddInt32(&l.calls, 1)
+	return l.err
+}
+
+func (l *countingLimiter) Calls() int {
+	return int(atomic.LoadInt32(&l.calls))
 }

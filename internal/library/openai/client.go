@@ -37,6 +37,8 @@ func New(apiKey string, limiter ratelimit.Limiter, log logger.Interface) *Client
 
 	client := openaisdk.NewClient(
 		option.WithAPIKey(apiKey),
+		// Keep retries in this package so every outbound attempt is gated by the limiter.
+		option.WithMaxRetries(0),
 	)
 	return &Client{
 		sdk:     &client,
