@@ -1,44 +1,44 @@
 # VendorResolution による Vendor 正規化処理 設計
 
 ## 1. 設計方針
-- `VendorResolution` と `BillingEligibility` は `internal/billing` に置く。
+- `VendorResolution` は `BillingEligibility` や `Billing` 生成から分離し、単独の usecase として扱う。
+- package は `internal/vendorresolution` に切り出す。
 - `mailanalysis` は引き続き `ParsedEmail` 保存までに責務を限定し、canonical `Vendor` の解決は持たない。
 - vendor 解決は保存済みの `ParsedEmail` と `Email` メタデータのみで行う。
   - 本文は使わない。
   - LLM の再呼び出しはしない。
 - 解決ルールは全体共通ルールのみを対象にし、ユーザー単位の上書きは扱わない。
 - vendor 未解決時の監査は初期は構造化ログのみとし、snapshot テーブルは作らない。
-- `billing.UseCase.Execute` は、vendor 未解決だったメールの `external_message_id` 一覧を result に含める。
+- 今回のスコープに `BillingEligibility`、重複確認、`Billing` 保存は含めない。
 
 ## 2. package 構成
 
-### `internal/billing/application`
+### `internal/vendorresolution/application`
 - `UseCase`
 - `Command`, `Result`
 - port interface
 - `ParsedEmail` 読み込み
 - `Email` 読み込み
 - `VendorResolution` 適用
-- `BillingEligibility` 適用
-- 重複確認
-- `Billing` 保存
+- 解決結果サマリ返却
 
-### `internal/billing/domain`
-- stage 専用の read model / failure model / input model
+### `internal/vendorresolution/domain`
+- stage 専用の read model / failure model / result model / input model
 - `VendorResolutionInput`
-- `ParsedEmailForBilling`
+- `ParsedEmailForResolution`
 - `SourceEmail`
+- `ResolutionDecision`
+- `ResolvedItem`
 - `Failure`
 
 補足:
-- 初期実装では既存の `Vendor`, `VendorResolution`, `BillingEligibility`, `Billing`, `Money`, `PaymentCycle` は `internal/common/domain` を再利用する。
-- 既存 domain を billing package へ大きく移し替えるリファクタは今回スコープに入れない。
+- 初期実装では既存の `Vendor` と `VendorResolution` は `internal/common/domain` を再利用する。
+- 既存 domain を大きく移し替えるリファクタは今回スコープに入れない。
 
-### `internal/billing/infrastructure`
+### `internal/vendorresolution/infrastructure`
 - `VendorResolverAdapter`
 - `GormParsedEmailReaderAdapter`
 - `GormSourceEmailReaderAdapter`
-- `GormBillingRepositoryAdapter`
 - vendor master / alias の Gorm 読み出し
 
 ## 3. データモデル
@@ -80,29 +80,8 @@
 
 補足:
 - 同じ `alias_type + normalized_value` を複数 vendor に登録できるようにする。
-- resolver は `created_at DESC, id DESC` の順で 1 件を選ぶ。
-- `subject_keyword` は 1 subject に複数ヒットし得るため、実装では最長一致優先のあと、同長競合時は `created_at DESC, id DESC` で 1 件を選ぶ。
-
-### `billings`
-- 役割
-  - 請求 aggregate 永続化
-- カラム案
-  - `id`
-  - `user_id`
-  - `vendor_id`
-  - `email_id`
-  - `billing_number`
-  - `invoice_number`
-  - `amount`
-  - `currency`
-  - `billing_date`
-  - `payment_cycle`
-  - `created_at`
-  - `updated_at`
-- 制約
-  - `UNIQUE (user_id, vendor_id, billing_number)`
-  - `INDEX (user_id, email_id)`
-  - `INDEX (vendor_id)`
+- `name_exact` / `sender_domain` / `sender_name` の競合時は `created_at DESC, id DESC` の順で 1 件を選ぶ。
+- `subject_keyword` は最長一致優先とし、最長一致が複数 vendor にまたがる場合は unresolved とする。
 
 ## 4. resolution ルール
 
@@ -142,7 +121,8 @@
 - `Email.subject` を trim + lowercase + 空白圧縮した値に正規化する。
 - `subject_keyword` alias の `normalized_value` が subject に含まれるかで判定する。
 - 複数ヒット時は最長 keyword を優先する。
-- 最長 keyword が複数 vendor にまたがる場合は、その集合の中で `created_at DESC, id DESC` で 1 件を選ぶ。
+- 最長 keyword が複数 vendor にまたがる場合は unresolved とする。
+- 最長 keyword が同一 vendor 内で複数 alias に当たる場合は `created_at DESC, id DESC` で 1 件を選ぶ。
 
 #### unresolved
 - どの規則でも解決できなければ unresolved とする。
@@ -168,10 +148,8 @@ type Command struct {
 ### `Result`
 ```go
 type Result struct {
-	CreatedBillingIDs            []uint
-	CreatedCount                 int
-	DuplicateCount               int
-	IneligibleCount              int
+	ResolvedItems                []ResolvedItem
+	ResolvedCount                int
 	UnresolvedCount              int
 	UnresolvedExternalMessageIDs []string
 	Failures                     []Failure
@@ -179,17 +157,31 @@ type Result struct {
 ```
 
 補足:
+- `ResolvedItems` は解決済み `parsed_email_id -> vendor` の対応を返す。
 - `UnresolvedCount` は unresolved になった `ParsedEmail` 件数を表す。
 - `UnresolvedExternalMessageIDs` は unresolved になったメールの `external_message_id` を重複除去して保持する。
+- unresolved は業務上の結果であり、`Failures` には含めない。
+
+### `ResolvedItem`
+```go
+type ResolvedItem struct {
+	ParsedEmailID     uint
+	EmailID           uint
+	ExternalMessageID string
+	VendorID          uint
+	VendorName        string
+	MatchedBy         string
+}
+```
 
 ### `Failure`
 ```go
 type Failure struct {
-	ParsedEmailID      uint
-	EmailID            uint
-	ExternalMessageID  string
-	Stage              string
-	Code               string
+	ParsedEmailID     uint
+	EmailID           uint
+	ExternalMessageID string
+	Stage             string
+	Code              string
 }
 ```
 
@@ -197,48 +189,37 @@ type Failure struct {
 - `load_parsed_email`
 - `load_source_email`
 - `resolve_vendor`
-- `evaluate_billing`
-- `check_duplicate`
-- `save_billing`
 
 `Code` 例:
 - `parsed_email_not_found`
 - `source_email_not_found`
-- `vendor_unresolved`
 - `vendor_resolution_failed`
-- `billing_ineligible`
-- `billing_duplicate`
-- `billing_save_failed`
 
 ### `UseCase` の流れ
 1. `user_id` と `parsed_email_ids` を検証する。
 2. `parsed_email_ids` を順に処理する。
-3. `ParsedEmailRepository` で `ParsedEmailForBilling` を取得する。
+3. `ParsedEmailRepository` で `ParsedEmailForResolution` を取得する。
 4. `EmailRepository` で元 `SourceEmail` を取得する。
 5. `VendorResolver` に `VendorResolutionInput` を渡す。
 6. unresolved の場合:
   - `UnresolvedCount` を加算する。
   - `UnresolvedExternalMessageIDs` に `external_message_id` を重複なく追加する。
-  - `Failures` に `vendor_unresolved` を積む。
   - 構造化ログを出して次へ進む。
-7. 解決済みの場合、`BillingEligibility` を評価する。
-8. 非成立なら `IneligibleCount` を加算し、`Failures` に `billing_ineligible` を積んで次へ進む。
-9. 成立なら `common/domain.NewBilling(...)` で `Billing` を生成する。
-10. `BillingRepository.ExistsByIdentity(user_id, vendor_id, billing_number)` で重複確認する。
-11. 重複時は `DuplicateCount` を加算し、`Failures` に `billing_duplicate` を積んで次へ進む。
-12. 未登録なら保存し、`CreatedBillingIDs` と `CreatedCount` を更新する。
-13. 全件処理後に `Result` を返す。
+7. 解決済みの場合:
+  - `ResolvedItems` に `parsed_email_id -> vendor` を追加する。
+  - `ResolvedCount` を加算する。
+8. 全件処理後に `Result` を返す。
 
 補足:
-- unresolved / ineligible / duplicate は stage 失敗ではなく業務上の非作成結果として扱う。
 - `Execute` の `error` は command 不正、依存未設定などの stage 全体失敗に限定する。
+- `ParsedEmail` 未存在、`Email` 未存在、resolver 内部障害は個別 `Failure` として `Result` に積む。
 
 ## 6. port 設計
 
-### `internal/billing/application`
+### `internal/vendorresolution/application`
 ```go
 type ParsedEmailRepository interface {
-	FindForDerivation(ctx context.Context, userID, parsedEmailID uint) (domain.ParsedEmailForBilling, error)
+	FindForResolution(ctx context.Context, userID, parsedEmailID uint) (domain.ParsedEmailForResolution, error)
 }
 
 type EmailRepository interface {
@@ -246,53 +227,50 @@ type EmailRepository interface {
 }
 
 type VendorResolver interface {
-	Resolve(ctx context.Context, input domain.VendorResolutionInput) (commondomain.VendorResolution, error)
-}
-
-type BillingRepository interface {
-	ExistsByIdentity(ctx context.Context, userID, vendorID uint, billingNumber string) (bool, error)
-	Save(ctx context.Context, billing commondomain.Billing) (uint, error)
+	Resolve(ctx context.Context, input domain.VendorResolutionInput) (domain.ResolutionDecision, error)
 }
 ```
 
 ### `VendorResolutionInput`
 ```go
 type VendorResolutionInput struct {
-	UserID             uint
-	ParsedEmailID      uint
-	EmailID            uint
-	ExternalMessageID  string
+	UserID              uint
+	ParsedEmailID       uint
+	EmailID             uint
+	ExternalMessageID   string
 	CandidateVendorName *string
-	Subject            string
-	From               string
-	To                 []string
+	Subject             string
+	From                string
+	To                  []string
 }
 ```
 
-### `ParsedEmailForBilling`
+### `ParsedEmailForResolution`
 ```go
-type ParsedEmailForBilling struct {
-	ParsedEmailID      uint
-	EmailID            uint
-	VendorName         *string
-	BillingNumber      *string
-	InvoiceNumber      *string
-	Amount             *float64
-	Currency           *string
-	BillingDate        *time.Time
-	PaymentCycle       *string
+type ParsedEmailForResolution struct {
+	ParsedEmailID uint
+	EmailID       uint
+	VendorName    *string
 }
 ```
 
 ### `SourceEmail`
 ```go
 type SourceEmail struct {
-	EmailID            uint
-	ExternalMessageID  string
-	Subject            string
-	From               string
-	To                 []string
-	ReceivedAt         time.Time
+	EmailID           uint
+	ExternalMessageID string
+	Subject           string
+	From              string
+	To                []string
+	ReceivedAt        time.Time
+}
+```
+
+### `ResolutionDecision`
+```go
+type ResolutionDecision struct {
+	Resolution commondomain.VendorResolution
+	MatchedBy  string
 }
 ```
 
@@ -304,81 +282,62 @@ type SourceEmail struct {
   - `sender_domain` lookup
   - `sender_name` lookup
   - `subject_keyword` lookup
-- lookup 成功時は `common/domain.VendorResolution{ResolvedVendor: &Vendor{...}}` を返す。
-- unresolved 時は `ResolvedVendor=nil` で返す。
+- lookup 成功時は `ResolutionDecision{Resolution: VendorResolution{ResolvedVendor: &Vendor{...}}, MatchedBy: ...}` を返す。
+- unresolved 時は `ResolvedVendor=nil` と `MatchedBy=""` を返す。
 - DB 読み出し障害は `error` を返す。
 
 ### `GormParsedEmailReaderAdapter`
 - `parsed_emails` から user-owned な record を 1 件取得する。
-- 読み出すのは billing 生成に必要な列だけに限定する。
+- 読み出すのは vendor 解決に必要な列だけに限定する。
 
 ### `GormSourceEmailReaderAdapter`
 - `emails` から user-owned な source email を 1 件取得する。
 - `to_json` は `[]string` に decode する。
 
-### `GormBillingRepositoryAdapter`
-- `ExistsByIdentity` は `user_id + vendor_id + billing_number` で存在確認する。
-- `Save` は `billings` に insert し、採番 ID を返す。
-
 ## 8. `manualmailworkflow` への接続
 
+### 方針
+- `manualmailworkflow` に接続する場合は `vendorresolution` stage として追加する。
+- `analysis.ParsedEmailIDs` が 0 件なら `vendorresolution` は空結果で終了する。
+- `vendorresolution` の出力は `billingeligibility` stage の入力になる。
+
 ### `manualmailworkflow/application`
-- `BillingCommand`
 ```go
-type BillingCommand struct {
+type VendorResolutionCommand struct {
 	UserID         uint
 	ParsedEmailIDs []uint
 }
-```
 
-- `BillingResult`
-```go
-type BillingResult struct {
-	CreatedBillingIDs            []uint
-	CreatedCount                 int
-	DuplicateCount               int
-	IneligibleCount              int
+type VendorResolutionResult struct {
+	ResolvedItems                []ResolvedItem
+	ResolvedCount                int
 	UnresolvedCount              int
 	UnresolvedExternalMessageIDs []string
-	Failures                     []BillingFailure
+	Failures                     []VendorResolutionFailure
 }
 ```
 
-- `Result`
-  - 既存の `Fetch`, `Analysis` に加えて `Billing` を追加する。
-
-### workflow の流れ
-1. `fetch`
-2. `analysis`
-3. `analysis.ParsedEmailIDs` が 0 件なら `billing` は空結果で終了
-4. `billing`
-
-### `billing` response で返すべき要素
-- `created_billing_count`
-- `created_billing_ids`
-- `duplicate_count`
-- `ineligible_count`
+### response で返すべき要素
+- `resolved_count`
 - `unresolved_count`
 - `unresolved_external_message_ids`
 - `failure_count`
 - `failures`
 
 ## 9. DI 方針
-- `internal/di/billing.go` を追加する。
-- `ProvideBillingDependencies` で以下を登録する。
+- `internal/di/vendorresolution.go` を追加する。
+- `ProvideVendorResolutionDependencies` で以下を登録する。
   - `GormParsedEmailReaderAdapter`
   - `GormSourceEmailReaderAdapter`
   - `VendorResolverAdapter`
-  - `GormBillingRepositoryAdapter`
-  - `billing/application.UseCase`
-- `internal/di/manualmailworkflow.go` は `DirectBillingAdapter` を追加し、`manualmailworkflow.NewUseCase(fetch, analysis, billing, log)` に更新する。
+  - `vendorresolution/application.UseCase`
+- `manualmailworkflow` へ接続する場合は `DirectVendorResolutionAdapter` を追加する。
 
 ## 10. 今回の判断
 - vendor 解決は `ParsedEmail` と `Email` の保存済み具体値だけで行う。
 - vendor master は `vendors` と `vendor_aliases` に分ける。
 - 解決ルールは `name_exact -> sender_domain -> sender_name -> subject_keyword -> unresolved` の順にする。
-- alias 重複は許容し、resolver は `created_at DESC, id DESC` で 1 件を選ぶ。
-- `subject_keyword` は最長一致優先のあと、同長競合時も `created_at DESC, id DESC` で 1 件を選ぶ。
+- alias 重複は許容し、`name_exact` / `sender_domain` / `sender_name` は `created_at DESC, id DESC` で 1 件を選ぶ。
+- `subject_keyword` は最長一致優先で、同長競合が複数 vendor にまたがる場合は unresolved とする。
 - unresolved 監査は初期は構造化ログのみとする。
-- `billing.UseCase.Execute` と `manualmailworkflow` の result は `unresolved_external_message_ids` を返す。
 - ユーザー単位の上書きルールは後続エンハンスに送る。
