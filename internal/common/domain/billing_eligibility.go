@@ -16,8 +16,6 @@ var (
 	ErrBillingEligibilityCurrencyEmpty = errors.New("billing eligibility currency is empty")
 	// ErrBillingEligibilityCurrencyInvalid is returned when the currency is invalid.
 	ErrBillingEligibilityCurrencyInvalid = errors.New("billing eligibility currency is invalid")
-	// ErrBillingEligibilityBillingDateEmpty is returned when the billing date is missing.
-	ErrBillingEligibilityBillingDateEmpty = errors.New("billing eligibility billing date is empty")
 	// ErrBillingEligibilityPaymentCycleEmpty is returned when the payment cycle is missing.
 	ErrBillingEligibilityPaymentCycleEmpty = errors.New("billing eligibility payment cycle is empty")
 	// ErrBillingEligibilityPaymentCycleInvalid is returned when the payment cycle is invalid.
@@ -49,9 +47,6 @@ func (BillingEligibility) Evaluate(parsed ParsedEmail, resolution VendorResoluti
 	}
 	if _, err := NormalizeCurrency(*parsed.Currency); err != nil {
 		return ErrBillingEligibilityCurrencyInvalid
-	}
-	if parsed.BillingDate == nil || parsed.BillingDate.IsZero() {
-		return ErrBillingEligibilityBillingDateEmpty
 	}
 	if parsed.PaymentCycle == nil || strings.TrimSpace(*parsed.PaymentCycle) == "" {
 		return ErrBillingEligibilityPaymentCycleEmpty

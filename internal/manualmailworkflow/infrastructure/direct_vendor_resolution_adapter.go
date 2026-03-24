@@ -23,11 +23,14 @@ func (a *DirectVendorResolutionAdapter) Execute(ctx context.Context, cmd manuala
 		return manualapp.VendorResolutionResult{}, errors.New("vendorresolution usecase is not configured")
 	}
 
+	parsedEmailMap := make(map[uint]manualapp.ParsedEmail, len(cmd.ParsedEmails))
+
 	result, err := a.usecase.Execute(ctx, vrapp.Command{
 		UserID: cmd.UserID,
 		ParsedEmails: func() []vrapp.ResolutionTarget {
 			targets := make([]vrapp.ResolutionTarget, 0, len(cmd.ParsedEmails))
 			for _, parsedEmail := range cmd.ParsedEmails {
+				parsedEmailMap[parsedEmail.ParsedEmailID] = parsedEmail
 				targets = append(targets, vrapp.ResolutionTarget{
 					ParsedEmailID:     parsedEmail.ParsedEmailID,
 					EmailID:           parsedEmail.EmailID,
@@ -48,6 +51,7 @@ func (a *DirectVendorResolutionAdapter) Execute(ctx context.Context, cmd manuala
 
 	resolvedItems := make([]manualapp.ResolvedItem, 0, len(result.ResolvedItems))
 	for _, item := range result.ResolvedItems {
+		data := parsedEmailMap[item.ParsedEmailID]
 		resolvedItems = append(resolvedItems, manualapp.ResolvedItem{
 			ParsedEmailID:     item.ParsedEmailID,
 			EmailID:           item.EmailID,
@@ -56,6 +60,7 @@ func (a *DirectVendorResolutionAdapter) Execute(ctx context.Context, cmd manuala
 			VendorID:          item.VendorID,
 			VendorName:        item.VendorName,
 			MatchedBy:         item.MatchedBy,
+			Data:              data.Data,
 		})
 	}
 

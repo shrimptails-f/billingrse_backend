@@ -2,6 +2,7 @@ package di
 
 import (
 	manualpresentation "business/internal/app/presentation/manualmailworkflow"
+	beapp "business/internal/billingeligibility/application"
 	"business/internal/library/logger"
 	maapp "business/internal/mailanalysis/application"
 	mfapp "business/internal/mailfetch/application"
@@ -26,13 +27,18 @@ func ProvideManualMailWorkflowDependencies(container *dig.Container) {
 		return manualinfra.NewDirectVendorResolutionAdapter(usecase)
 	})
 
+	_ = container.Provide(func(usecase beapp.UseCase) *manualinfra.DirectBillingEligibilityAdapter {
+		return manualinfra.NewDirectBillingEligibilityAdapter(usecase)
+	})
+
 	_ = container.Provide(func(
 		fetchStage *manualinfra.DirectManualMailFetchAdapter,
 		analyzeStage *manualinfra.DirectMailAnalysisAdapter,
 		vendorResolutionStage *manualinfra.DirectVendorResolutionAdapter,
+		billingEligibilityStage *manualinfra.DirectBillingEligibilityAdapter,
 		log *logger.Logger,
 	) manualapp.UseCase {
-		return manualapp.NewUseCase(fetchStage, analyzeStage, vendorResolutionStage, log)
+		return manualapp.NewUseCase(fetchStage, analyzeStage, vendorResolutionStage, billingEligibilityStage, log)
 	})
 
 	_ = container.Provide(func(

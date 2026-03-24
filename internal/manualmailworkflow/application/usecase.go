@@ -123,6 +123,7 @@ type ResolvedItem struct {
 	VendorID          uint
 	VendorName        string
 	MatchedBy         string
+	Data              commondomain.ParsedEmail
 }
 
 // VendorResolutionFailure は vendorresolution stage の部分失敗。
@@ -143,11 +144,57 @@ type VendorResolutionResult struct {
 	Failures                     []VendorResolutionFailure
 }
 
+// EligibleItem は billingeligibility stage で請求成立と判定された 1 件分の結果。
+type EligibleItem struct {
+	ParsedEmailID     uint
+	EmailID           uint
+	ExternalMessageID string
+	VendorID          uint
+	VendorName        string
+	MatchedBy         string
+	BillingNumber     string
+	InvoiceNumber     *string
+	Amount            float64
+	BillingDate       *time.Time
+	Currency          string
+	PaymentCycle      string
+}
+
+// IneligibleItem は billingeligibility stage の業務上の非成立結果。
+type IneligibleItem struct {
+	ParsedEmailID     uint
+	EmailID           uint
+	ExternalMessageID string
+	VendorID          uint
+	VendorName        string
+	MatchedBy         string
+	ReasonCode        string
+}
+
+// BillingEligibilityFailure は billingeligibility stage の部分失敗。
+type BillingEligibilityFailure struct {
+	ParsedEmailID     uint
+	EmailID           uint
+	ExternalMessageID string
+	Stage             string
+	Code              string
+}
+
+// BillingEligibilityResult は billingeligibility stage の正規化済み出力。
+type BillingEligibilityResult struct {
+	EligibleItems   []EligibleItem
+	EligibleCount   int
+	IneligibleItems []IneligibleItem
+	IneligibleCount int
+	Failures        []BillingEligibilityFailure
+}
+
 // Result は workflow 全体の統合結果。
 type Result struct {
-	Fetch            FetchResult
-	Analysis         AnalyzeResult
-	VendorResolution VendorResolutionResult
+	Fetch              FetchResult
+	Analysis           AnalyzeResult
+	VendorResolution   VendorResolutionResult
+	BillingEligibility BillingEligibilityResult
 }
 
 // FetchCommand は workflow が所有する fetch stage 入力。
@@ -169,6 +216,12 @@ type VendorResolutionCommand struct {
 	ParsedEmails []ParsedEmail
 }
 
+// BillingEligibilityCommand は workflow が所有する billingeligibility stage 入力。
+type BillingEligibilityCommand struct {
+	UserID        uint
+	ResolvedItems []ResolvedItem
+}
+
 // FetchStage は workflow から mailfetch stage を実行する。
 type FetchStage interface {
 	Execute(ctx context.Context, cmd FetchCommand) (FetchResult, error)
@@ -184,16 +237,22 @@ type VendorResolutionStage interface {
 	Execute(ctx context.Context, cmd VendorResolutionCommand) (VendorResolutionResult, error)
 }
 
+// BillingEligibilityStage は workflow から billingeligibility stage を実行する。
+type BillingEligibilityStage interface {
+	Execute(ctx context.Context, cmd BillingEligibilityCommand) (BillingEligibilityResult, error)
+}
+
 // UseCase は manual mail workflow を実行する。
 type UseCase interface {
 	Execute(ctx context.Context, cmd Command) (Result, error)
 }
 
 type useCase struct {
-	fetchStage            FetchStage
-	analyzeStage          AnalyzeStage
-	vendorResolutionStage VendorResolutionStage
-	log                   logger.Interface
+	fetchStage              FetchStage
+	analyzeStage            AnalyzeStage
+	vendorResolutionStage   VendorResolutionStage
+	billingEligibilityStage BillingEligibilityStage
+	log                     logger.Interface
 }
 
 // NewUseCase は manual mail workflow の usecase を生成する。
@@ -201,6 +260,7 @@ func NewUseCase(
 	fetchStage FetchStage,
 	analyzeStage AnalyzeStage,
 	vendorResolutionStage VendorResolutionStage,
+	billingEligibilityStage BillingEligibilityStage,
 	log logger.Interface,
 ) UseCase {
 	if log == nil {
@@ -208,14 +268,15 @@ func NewUseCase(
 	}
 
 	return &useCase{
-		fetchStage:            fetchStage,
-		analyzeStage:          analyzeStage,
-		vendorResolutionStage: vendorResolutionStage,
-		log:                   log.With(logger.Component("manual_mail_workflow_usecase")),
+		fetchStage:              fetchStage,
+		analyzeStage:            analyzeStage,
+		vendorResolutionStage:   vendorResolutionStage,
+		billingEligibilityStage: billingEligibilityStage,
+		log:                     log.With(logger.Component("manual_mail_workflow_usecase")),
 	}
 }
 
-// Execute は fetch -> analysis -> vendorresolution の順で workflow を進める。
+// Execute は fetch -> analysis -> vendorresolution -> billingeligibility の順で workflow を進める。
 func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 	if ctx == nil {
 		return Result{}, logger.ErrNilContext
@@ -252,9 +313,12 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 			logger.Int("parsed_email_count", 0),
 			logger.Int("resolved_vendor_count", 0),
 			logger.Int("unresolved_vendor_count", 0),
+			logger.Int("eligible_billing_count", 0),
+			logger.Int("ineligible_billing_count", 0),
 			logger.Int("fetch_failure_count", len(fetchResult.Failures)),
 			logger.Int("analysis_failure_count", 0),
 			logger.Int("vendor_resolution_failure_count", 0),
+			logger.Int("billing_eligibility_failure_count", 0),
 		)
 		return result, nil
 	}
@@ -280,6 +344,16 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 			return Result{}, err
 		}
 		result.VendorResolution = vendorResolutionResult
+		if len(vendorResolutionResult.ResolvedItems) > 0 {
+			billingEligibilityResult, err := uc.billingEligibilityStage.Execute(ctx, BillingEligibilityCommand{
+				UserID:        cmd.UserID,
+				ResolvedItems: append([]ResolvedItem(nil), vendorResolutionResult.ResolvedItems...),
+			})
+			if err != nil {
+				return Result{}, err
+			}
+			result.BillingEligibility = billingEligibilityResult
+		}
 	}
 
 	reqLog.Info("manual_mail_workflow_succeeded",
@@ -289,9 +363,12 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 		logger.Int("parsed_email_count", len(analysisResult.ParsedEmailIDs)),
 		logger.Int("resolved_vendor_count", result.VendorResolution.ResolvedCount),
 		logger.Int("unresolved_vendor_count", result.VendorResolution.UnresolvedCount),
+		logger.Int("eligible_billing_count", result.BillingEligibility.EligibleCount),
+		logger.Int("ineligible_billing_count", result.BillingEligibility.IneligibleCount),
 		logger.Int("fetch_failure_count", len(fetchResult.Failures)),
 		logger.Int("analysis_failure_count", len(analysisResult.Failures)),
 		logger.Int("vendor_resolution_failure_count", len(result.VendorResolution.Failures)),
+		logger.Int("billing_eligibility_failure_count", len(result.BillingEligibility.Failures)),
 	)
 
 	return result, nil
@@ -306,6 +383,9 @@ func (uc *useCase) validateDependencies() error {
 	}
 	if uc.vendorResolutionStage == nil {
 		return errors.New("vendor_resolution_stage is not configured")
+	}
+	if uc.billingEligibilityStage == nil {
+		return errors.New("billing_eligibility_stage is not configured")
 	}
 	return nil
 }
