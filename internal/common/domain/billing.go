@@ -12,8 +12,8 @@ var (
 	ErrBillingVendorIDEmpty = errors.New("billing vendor id is empty")
 	// ErrBillingEmailIDEmpty is returned when the source email ID is missing.
 	ErrBillingEmailIDEmpty = errors.New("billing email id is empty")
-	// ErrBillingDateEmpty is returned when the billing date is missing.
-	ErrBillingDateEmpty = errors.New("billing date is empty")
+	// ErrBillingDateInvalid is returned when a provided billing date is invalid.
+	ErrBillingDateInvalid = errors.New("billing date is invalid")
 )
 
 // Billing represents the aggregate root for billing.
@@ -25,7 +25,7 @@ type Billing struct {
 	BillingNumber BillingNumber // Vendor-provided invoice/billing identifier.
 	InvoiceNumber InvoiceNumber // Invoice number (qualified invoice issuer number, optional).
 	Money         Money
-	BillingDate   time.Time // BillingDate is interpreted in JST.
+	BillingDate   *time.Time // BillingDate is optional when the source mail does not include it.
 	PaymentCycle  PaymentCycle
 }
 
@@ -38,7 +38,7 @@ func NewBilling(
 	invoiceNumber *string,
 	amount float64,
 	currency string,
-	billingDate time.Time,
+	billingDate *time.Time,
 	cycle string,
 ) (Billing, error) {
 	normalizedBillingNumber, err := NewBillingNumber(billingNumber)
@@ -68,7 +68,7 @@ func NewBilling(
 		BillingNumber: normalizedBillingNumber,
 		InvoiceNumber: normalizedInvoice,
 		Money:         money,
-		BillingDate:   billingDate,
+		BillingDate:   cloneBillingDate(billingDate),
 		PaymentCycle:  normalizedCycle,
 	}
 
@@ -100,11 +100,20 @@ func (b Billing) Validate() error {
 	if err := b.Money.Validate(); err != nil {
 		return err
 	}
-	if b.BillingDate.IsZero() {
-		return ErrBillingDateEmpty
+	if b.BillingDate != nil && b.BillingDate.IsZero() {
+		return ErrBillingDateInvalid
 	}
 	if err := b.PaymentCycle.Validate(); err != nil {
 		return err
 	}
 	return nil
+}
+
+func cloneBillingDate(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+
+	cloned := value.UTC()
+	return &cloned
 }

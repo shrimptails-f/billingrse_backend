@@ -192,7 +192,6 @@ type Failure struct {
   - `email_id`
   - `vendor_id`
   - `vendor_name`
-  - `billing_number`
 6. 検証に通ったら、`commondomain.VendorResolution{ResolvedVendor: &commondomain.Vendor{...}}` を組み立てる。
 7. `commondomain.BillingEligibility{}.Evaluate(target.Data, resolution)` を呼ぶ。
 8. `nil` の場合は `EligibleItem` に変換する。
@@ -203,6 +202,7 @@ type Failure struct {
 補足:
 - `Execute` の top-level `error` は command 不正や nil context などの stage 全体失敗に限定する。
 - 不成立は業務結果であり `error` にはしない。
+- `billing_number` の欠落は契約違反ではなく、policy が `billing_number_empty` として `IneligibleItem` に分類する。
 - 実装時は `common/domain.BillingEligibility` から `billing_date` 必須チェックだけを外す想定にする。
 - `billing_number` の補完ロジックや digest fallback の生成は、この stage の外で完了している前提にする。
 

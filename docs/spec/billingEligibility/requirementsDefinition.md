@@ -2,9 +2,9 @@
 
 ## 背景
 - DDD と ADR では、`BillingEligibility` は `VendorResolution` と分離された独立ポリシーとして扱うことが合意されている。
-- 現行実装では `mailfetch`・`mailanalysis`・`vendorresolution` が概ね実装済みで、`manualmailworkflow` も `fetch -> analysis -> vendorresolution` まで接続済みである。
+- 現行実装では `mailfetch`・`mailanalysis`・`vendorresolution`・`billingeligibility` が概ね実装済みで、`manualmailworkflow` も `fetch -> analysis -> vendorresolution -> billingeligibility` まで接続済みである。
 - `internal/common/domain` には `BillingEligibility` policy が既に存在し、請求成立に必要な必須項目チェックも定義されている。
-- 一方で `internal/billingeligibility` stage と、その `manualmailworkflow` への接続は未実装である。
+- 一方で後続の `billing` stage は未実装であり、`billingeligibility` は次段入力整備までを責務に留める必要がある。
 - メール本文由来の digest 生成と、`billing_number` 不在時の fallback 採番ルールは別タスクで扱い、ここでは「`billing_number` は受け取れる前提」とする。
 
 ## 目的
@@ -50,7 +50,7 @@
 ## 制約事項
 - 現行 `manualmailworkflow` は `analysis` 結果として `ParsedEmail` 実体を workflow payload に保持している。
 - 現行 `vendorresolution` は workflow から `ParsedEmail` 実体を受け取り処理しているが、返却結果には判定用 `ParsedEmail` 全体を含めていない。
-- `billingeligibility` stage は未実装であり、`manualmailworkflow` / DI / presentation の拡張が必要である。
+- `billingeligibility` stage は `manualmailworkflow` / DI / presentation まで含めて接続する前提で扱う。
 - 後続の `billing` stage も未実装であるため、今回は保存処理ではなく判定と次段入力整備に責務を限定する。
 - `billing_number` をどう生成するかは、このタスクの責務に含めない。
 - `BillingEligibility` は `billing_number` を入力として受け取る前提に固定する。

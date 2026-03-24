@@ -24,7 +24,7 @@ func TestBillingValidate(t *testing.T) {
 		BillingNumber: BillingNumber("INV-001"),
 		InvoiceNumber: "",
 		Money:         money,
-		BillingDate:   time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
+		BillingDate:   timePtr(time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC)),
 		PaymentCycle:  PaymentCycleRecurring,
 	}
 
@@ -86,20 +86,20 @@ func TestBillingValidate(t *testing.T) {
 			err: ErrMoneyCurrencyEmpty,
 		},
 		{
-			name: "missing billing date",
-			mutate: func(b Billing) Billing {
-				b.BillingDate = time.Time{}
-				return b
-			},
-			err: ErrBillingDateEmpty,
-		},
-		{
 			name: "missing payment cycle",
 			mutate: func(b Billing) Billing {
 				b.PaymentCycle = ""
 				return b
 			},
 			err: ErrPaymentCycleEmpty,
+		},
+		{
+			name: "zero billing date is invalid",
+			mutate: func(b Billing) Billing {
+				b.BillingDate = timePtr(time.Time{})
+				return b
+			},
+			err: ErrBillingDateInvalid,
 		},
 		{
 			name: "invalid invoice number format",
@@ -135,7 +135,7 @@ func TestNewBilling(t *testing.T) {
 		&invoice,
 		1200.5,
 		"usd",
-		time.Date(2025, 1, 5, 12, 30, 15, 0, time.UTC),
+		timePtr(time.Date(2025, 1, 5, 12, 30, 15, 0, time.UTC)),
 		"recurring",
 	)
 	assert.ErrorIs(t, err, ErrBillingNumberEmpty)
@@ -150,7 +150,7 @@ func TestNewBilling(t *testing.T) {
 		&invoice,
 		10,
 		"JPY",
-		time.Date(2025, 1, 5, 12, 30, 0, 0, time.UTC),
+		timePtr(time.Date(2025, 1, 5, 12, 30, 0, 0, time.UTC)),
 		"one_time",
 	)
 	if err != nil {
@@ -158,6 +158,9 @@ func TestNewBilling(t *testing.T) {
 	}
 	if billing.BillingNumber.String() != "INV-100" {
 		t.Fatalf("expected normalized billing number, got %v", billing.BillingNumber)
+	}
+	if billing.BillingDate == nil || !billing.BillingDate.Equal(time.Date(2025, 1, 5, 12, 30, 0, 0, time.UTC)) {
+		t.Fatalf("expected billing date to be preserved, got %+v", billing.BillingDate)
 	}
 
 	empty := "  "
@@ -169,7 +172,7 @@ func TestNewBilling(t *testing.T) {
 		&empty,
 		10,
 		"JPY",
-		time.Date(2025, 1, 5, 12, 30, 0, 0, time.UTC),
+		nil,
 		"one_time",
 	)
 	if err != nil {
@@ -178,4 +181,11 @@ func TestNewBilling(t *testing.T) {
 	if !billing.InvoiceNumber.IsEmpty() {
 		t.Fatalf("expected invoice number to be empty")
 	}
+	if billing.BillingDate != nil {
+		t.Fatalf("expected billing date to be optional, got %+v", billing.BillingDate)
+	}
+}
+
+func timePtr(value time.Time) *time.Time {
+	return &value
 }
