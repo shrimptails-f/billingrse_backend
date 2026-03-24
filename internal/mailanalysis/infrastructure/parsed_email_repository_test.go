@@ -15,9 +15,24 @@ import (
 )
 
 type parsedEmailRepoTestEnv struct {
-	repo  *GormParsedEmailRepositoryAdapter
-	db    *gorm.DB
-	clean func() error
+	repo   *GormParsedEmailRepositoryAdapter
+	db     *gorm.DB
+	nowUTC time.Time
+	clean  func() error
+}
+
+type parsedEmailFixedClock struct {
+	now time.Time
+}
+
+func (c *parsedEmailFixedClock) Now() time.Time {
+	return c.now
+}
+
+func (c *parsedEmailFixedClock) After(d time.Duration) <-chan time.Time {
+	ch := make(chan time.Time, 1)
+	ch <- c.now.Add(d)
+	return ch
 }
 
 func newParsedEmailRepoTestEnv(t *testing.T) *parsedEmailRepoTestEnv {
@@ -29,11 +44,13 @@ func newParsedEmailRepoTestEnv(t *testing.T) *parsedEmailRepoTestEnv {
 	}
 	require.NoError(t, err)
 	require.NoError(t, mysqlConn.DB.AutoMigrate(&parsedEmailRecord{}))
+	nowUTC := time.Date(2026, 3, 24, 12, 30, 0, 0, time.UTC)
 
 	return &parsedEmailRepoTestEnv{
-		repo:  NewGormParsedEmailRepositoryAdapter(mysqlConn.DB, logger.NewNop()),
-		db:    mysqlConn.DB,
-		clean: cleanup,
+		repo:   NewGormParsedEmailRepositoryAdapter(mysqlConn.DB, &parsedEmailFixedClock{now: nowUTC}, logger.NewNop()),
+		db:     mysqlConn.DB,
+		nowUTC: nowUTC,
+		clean:  cleanup,
 	}
 }
 
@@ -104,8 +121,8 @@ func TestGormParsedEmailRepositoryAdapter_SaveAll(t *testing.T) {
 	require.Equal(t, "one_time", *stored[0].PaymentCycle)
 	require.True(t, stored[0].ExtractedAt.Equal(extractedAt))
 	require.Equal(t, "emailanalysis_v1", stored[0].PromptVersion)
-	require.False(t, stored[0].CreatedAt.IsZero())
-	require.False(t, stored[0].UpdatedAt.IsZero())
+	require.True(t, stored[0].CreatedAt.Equal(env.nowUTC))
+	require.True(t, stored[0].UpdatedAt.Equal(env.nowUTC))
 
 	require.Equal(t, 6, stored[1].Position)
 	require.Equal(t, "USD", *stored[1].Currency)

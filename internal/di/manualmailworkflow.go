@@ -7,6 +7,7 @@ import (
 	mfapp "business/internal/mailfetch/application"
 	manualapp "business/internal/manualmailworkflow/application"
 	manualinfra "business/internal/manualmailworkflow/infrastructure"
+	vrapp "business/internal/vendorresolution/application"
 
 	"go.uber.org/dig"
 )
@@ -21,12 +22,17 @@ func ProvideManualMailWorkflowDependencies(container *dig.Container) {
 		return manualinfra.NewDirectMailAnalysisAdapter(usecase)
 	})
 
+	_ = container.Provide(func(usecase vrapp.UseCase) *manualinfra.DirectVendorResolutionAdapter {
+		return manualinfra.NewDirectVendorResolutionAdapter(usecase)
+	})
+
 	_ = container.Provide(func(
 		fetchStage *manualinfra.DirectManualMailFetchAdapter,
 		analyzeStage *manualinfra.DirectMailAnalysisAdapter,
+		vendorResolutionStage *manualinfra.DirectVendorResolutionAdapter,
 		log *logger.Logger,
 	) manualapp.UseCase {
-		return manualapp.NewUseCase(fetchStage, analyzeStage, log)
+		return manualapp.NewUseCase(fetchStage, analyzeStage, vendorResolutionStage, log)
 	})
 
 	_ = container.Provide(func(

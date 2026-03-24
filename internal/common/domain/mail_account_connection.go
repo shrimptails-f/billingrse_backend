@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"business/internal/library/timewrapper"
 	"errors"
 	"strings"
 	"time"
@@ -45,8 +46,13 @@ func (c MailAccountConnection) Validate() error {
 
 // IsActive reports whether the authorization state is still valid.
 func (c MailAccountConnection) IsActive() bool {
+	return c.IsActiveAt(timewrapper.NewClock().Now())
+}
+
+// IsActiveAt reports whether the authorization state is still valid at the given time.
+func (c MailAccountConnection) IsActiveAt(now time.Time) bool {
 	if c.OAuthStateExpiresAt == nil {
 		return false
 	}
-	return time.Now().Add(OAuthStateExpirySafetyOffset).Before(*c.OAuthStateExpiresAt)
+	return now.Add(OAuthStateExpirySafetyOffset).Before(*c.OAuthStateExpiresAt)
 }

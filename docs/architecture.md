@@ -1,16 +1,18 @@
 <architecture_rules>
   <context>
     - Language: Go
-    - アーキテクチャ: Clean Architecture（HTTP + メッセージングパイプライン）
+    - アーキテクチャ: Clean Architecture（HTTP + stage workflow）
     - WebFramework: Gin
     - ORM: Gorm
     - マイグレーション: Atlas
-    - 非同期パイプライン: internal/messaging（Gmail / OpenAI / emailstore）
+    - 主ワークフロー: `internal/manualmailworkflow`（mailfetch -> mailanalysis -> vendorresolution）
     - DI コンテナ: go.uber.org/dig
   </context>
 
   <related_documents>
     - HTTP API の詳細ルールは [こちら](./api_design.md) を参照してください
+    - ログの詳細ルールは [こちら](./log_rules.md) を参照してください
+    - ドメイン整理は `docs/ddd/**` を参照してください
   </related_documents>
 
   <directory_structure>
@@ -20,149 +22,148 @@
           - main.go               // エントリーポイント → internal/app/server.Run
       - internal/
         - app/
-          - server/               // Gin 起動、環境変数・MySQL・レートリミット・Gmail/OpenAI クライアントなどの初期化
+          - server/               // Gin 起動、共通依存初期化、CORS と middleware 登録
           - router/               // HTTP ルーティングと dig からの依存解決
-          - middleware/           // JWT 認証や共通ミドルウェア
-          - presentation/         // Controller・HTTP DTO・ローカル interface・Gin ベースのテスト
-        - di/                     // dig モジュール（auth.go, agent.go, emailstore.go, messaging.go, presentation.go 等）
-        - library/                // 共通ラッパー: logger, mysql, gmail/gmailService, openai, oswrapper, ratelimit, redis, retry, sendMailer, crypto, timewrapper
+          - middleware/           // RequestID, request summary, panic recovery, JWT 認証
+          - httpresponse/         // 標準エラーレスポンス
+          - presentation/
+            - auth/               // 認証系 controller と HTTP DTO
+            - mailaccountconnection/
+            - manualmailworkflow/
+        - di/                     // dig モジュール（auth.go, mail_account_connection.go, mailfetch.go, mailanalysis.go, vendorresolution.go, manualmailworkflow.go, presentation.go, dig.go）
+        - library/                // 共通ラッパー: logger, mysql, gmail/gmailService, openai, oswrapper, ratelimit, secret, sendMailer, crypto, timewrapper
         - auth/                   // 認証ドメイン（domain/application/infrastructure）
-        - agent/                  // AI エージェントトークン（domain/application/infrastructure）
-        - mailaccountconnection/  // MailAccountConnection 管理（backing store: email_credentials）
-        - emailstore/             // 解析済みメールの永続化
-        - common/                 // 共通 DTO とメール分析ログ
-        - mailanalysis/          // メッセージングパイプラインを呼び出すアプリケーション層
-        - messaging/
-          - domain/               // パイプラインのポート・JobParams・PipelineService 実装
-          - application/          // PipelineFactory や Dispatcher のヘルパー
-          - infrastructure/       // Gmail セッションアダプタ / OpenAI アナライザ / ロギング・emailstore アダプタ
+        - common/                 // 共有ドメインモデル（Email, ParsedEmail, Billing, Vendor, VendorResolutionPolicy 等）
+        - mailaccountconnection/  // Gmail OAuth 連携と資格情報管理
+        - mailfetch/              // メール取得 stage
+        - mailanalysis/           // AI 解析 stage
+        - vendorresolution/       // canonical Vendor 解決 stage
+        - manualmailworkflow/     // fetch -> analysis -> vendorresolution を束ねる workflow
     </root_packages>
   </directory_structure>
 
   <layers>
     <presentation>
       - 配置:
-        - internal/app/presentation/{feature}（機能別の controller と HTTP DTO）
-        - internal/app/middleware（JWT 検証・ユーザー情報注入）
-        - internal/app/router（ルート登録と dig 解決）
-        - internal/app/server（プロセス起動）
+        - `internal/app/presentation/{feature}`
+        - `internal/app/middleware`
+        - `internal/app/router`
+        - `internal/app/server`
       - 役割:
-        - Gin のリクエストをアプリケーション層 DTO に変換し、バリデーションを行った上で 1 controller method = 1 UseCase を呼び出す。
-        - 受け取ったエラーを HTTP ステータスへマッピングし、logger.Interface で構造化ログを出力する。
-        - 具体型ではなく振る舞いに依存したい場合は Controller 内で小さな interface を定義する（例: AgentUsecase）。
-        - ミドルウェアは oswrapper 経由で JWT 秘密鍵を取得し、トークン検証後に `userID` を Gin コンテキストへ保存する。
-      - 依存可能なレイヤ:
-        - application 層インターフェース、domain DTO、ミドルウェアのヘルパー、logger.Interface
+        - Gin のリクエストを受け、HTTP DTO へ bind / validate した上で application 層へ渡す。
+        - application 層の結果を HTTP ステータス / JSON レスポンスへ変換する。
+        - `RequestID`, `RequestSummary`, `Recovery`, `AuthMiddleware` により request-scoped 情報を `context.Context` へ載せる。
+      - 依存可能:
+        - application 層の interface / usecase
+        - domain DTO
+        - `internal/library/logger`
+        - `internal/app/httpresponse`
       - 禁止事項:
-        - Gorm や mysql 接続、Gmail/OpenAI クライアントなどの infrastructure 直接利用
+        - Gorm / Gmail / OpenAI など infrastructure 具体実装の直接利用
     </presentation>
 
     <application>
       - 配置:
-        - internal/{domain}/application（auth, agent, mailaccountconnection, emailstore, common/email-analysis-log 等）
-        - internal/mailanalysis/application（キュー投入ユースケース）
-        - internal/messaging/application（パイプラインの Factory / Dispatcher）
+        - `internal/{domain}/application`
+        - `internal/manualmailworkflow/application`
       - 役割:
-        - 各ユースケースの interface（`AuthUseCaseInterface`, `AgentUsecase`, `mailanalysisapp.UseCase` など）を保持し、オーケストレーション・バリデーション・トランザクション管理を実装する。
-        - リポジトリや他コンテキストと連携する：
-          - `internal/agent/application` は複数テーブルを更新するため明示的に `*gorm.DB` トランザクションを管理。
-          - `internal/mailaccountconnection/application` は `crypto.Vault` と oswrapper を使って OAuth トークンを暗号化/復号する。
-          - `internal/mailanalysis/application` は messaging ドメインを用いた事前チェックを行い、`PipelineService` を非同期実行。
-          - `internal/common/application` はメール分析ログ操作を提供し、messaging の logging adapter から呼び出される。
-        - DI された `oswrapper`, `timewrapper.ClockInterface`, `crypto.Vault`, `logger.Interface` などのヘルパー、および必要に応じて他アプリケーション層サービス（emailstore.UseCase など）へ依存する。
+        - ユースケース単位の入力検証、オーケストレーション、部分成功 / 部分失敗の集約を担当する。
+        - 代表例:
+          - `auth/application`: register / login / refresh / logout / verify email
+          - `mailaccountconnection/application`: Gmail OAuth state 管理、資格情報保存、一覧 / 解除
+          - `mailfetch/application`: 利用可能な連携解決、provider fetch、メール保存
+          - `mailanalysis/application`: OpenAI 解析、`ParsedEmail` 永続化
+          - `vendorresolution/application`: alias lookup、必要なら canonical Vendor 自動登録
+          - `manualmailworkflow/application`: `mailfetch -> mailanalysis -> vendorresolution` の同期実行
       - 注意点:
-        - パッケージ内で歴史的に `*gorm.DB` を受け取っている場合（agent usecase）はそれに従い、グローバル変数は作らない。
-        - 長時間処理（メール分析）はバックグラウンド goroutine で実行し、`context.Context` を通じてキャンセル情報を伝播させる。
+        - 現行の workflow は HTTP リクエスト内で同期的に最後まで実行される。fire-and-forget や専用ジョブキューは入っていない。
+        - stage 単位の technical failure は `Failures` に集約し、業務上の unresolved は failure と分離する。
     </application>
 
     <domain>
       - 配置:
-        - internal/{domain}/domain
-        - internal/common/domain（共有 DTO・エージェント定義・暗号ヘルパー）
-        - internal/messaging/domain（パイプライン用エンティティとポート）
+        - `internal/auth/domain`
+        - `internal/mailaccountconnection/domain`
+        - `internal/mailfetch/domain`
+        - `internal/mailanalysis/domain`
+        - `internal/vendorresolution/domain`
+        - `internal/common/domain`
       - 役割:
-        - `auth/domain.User`, `emailstore/domain.Email`, `common/domain.FetchedEmailDTO`, `messaging/domain.AnalysisResult` などビジネスエンティティとドメインロジックを保持する。
-        - 共有モデルが必要な場合は再エクスポート（agent ドメインが common/domain.Agent を alias する等）で重複を避ける。
-        - API レスポンスや永続化結果としてシリアライズする構造体は JSON タグを保持し、Gorm タグなどインフラ固有の情報は infrastructure 層に置く。
+        - ビジネスエンティティ、不変条件、値オブジェクト、policy を保持する。
+        - `internal/common/domain` には共有モデルと cross-stage policy を置く。
+          - `Email`, `ParsedEmail`, `Billing`, `Vendor`
+          - `VendorResolutionPolicy`, `BillingEligibility`
       - 禁止事項:
         - Gin / Gorm / 外部 SDK への依存
     </domain>
 
     <infrastructure>
       - 配置:
-        - internal/{domain}/infrastructure（Gorm リポジトリ、SMTP メーラ、トークンリフレッシュなど）
-        - internal/messaging/infrastructure（Gmail アダプタ、OpenAI アナライザ、emailstore/logging アダプタ）
+        - `internal/{domain}/infrastructure`
+        - `internal/manualmailworkflow/infrastructure`
       - 役割:
-        - ドメインエンティティとデータベースモデルを相互変換し、外部サービス呼び出しを `internal/library` のクライアント経由で行う。
-        - 既存ユースケースをアダプタ越しに再利用する（ResultSaverAdapter が emailstore.UseCase を呼ぶ、LoggingAdapter が common/application を呼ぶ）。
+        - Gorm repository、OAuth exchanger、Gmail profile fetcher、Gmail session builder、OpenAI analyzer adapter など外部依存との接続を担当する。
+        - `manualmailworkflow/infrastructure` は各 stage usecase を直接呼び出す adapter を持つ。
+        - `vendorresolution/infrastructure` は `vendors` / `vendor_aliases` の read / write に責務を限定する。
       - 依存可能:
-        - Gorm / Google SDK / OpenAI SDK / redis, oswrapper, logger, 再利用を許可したアプリケーション層
+        - Gorm / Gmail SDK / OpenAI SDK / `internal/library/**`
+        - application 層が定義した port
       - 禁止事項:
         - presentation 層への依存
     </infrastructure>
   </layers>
 
-  <messaging>
-    - Domain (`internal/messaging/domain`):
-      - `JobParams`・正規化された `Message`/`AnalysisResult`・資格情報オブジェクト・`PipelineService` を定義し、`SessionFactoryPort` / `AnalyzerFactoryPort` / `ResultSaverPort` / `AnalysisLogPort` を束ねる。
-    - Application (`internal/messaging/application`):
-      - `PipelineFactory` や Dispatcher を提供し、DI 層がプロバイダ/アナライザのファクトリを登録しやすくする。
-    - Infrastructure (`internal/messaging/infrastructure`):
-      - Gmail credential provider が mailaccountconnection リポジトリと crypto.Vault を用いてトークンを復号。
-      - Session factory が GmailService, Gmail REST ラッパー, emailstore.UseCase, token refresher, oswrapper の値を組み合わせ `domain.SessionFactoryPort` を生成。
-      - OpenAI analyzer factory が agent リポジトリ・トークン Vault・レートリミット Provider・openai.Client を用いてアナライザを構築。
-      - Result saver adapter が emailstore.UseCase 経由で結果を保存し、枝番の重複をスキップ。
-      - Logging adapter が internal/common/application.EmailAnalysisLogUseCase を呼んでパイプラインの進捗を記録。
-    - HTTP → 非同期分析の流れ:
-      - `internal/mailanalysis/application` が `JobParams` を組み立て、Session/Analyzer Factory で事前チェック後に `PipelineService.Execute` を `go` ルーチンで実行し、Controller は即座にレスポンスを返す。
-      - goroutine 内では `runPipeline` が `recover` を仕込んでおり、panic が発生してもプロセス全体は落ちず、メール分析ログおよび構造化ログへ致命情報を残す。
-      - エラー再実行方針:
-        - パイプラインは fire-and-forget であり、自動リトライやジョブキューは現状存在しない。外部依存（Gmail/OpenAI）エラーで失敗した場合はメール分析ログに失敗理由が記録されるため、ユーザーからの再リクエスト、もしくは Ops による再実行で対応する。
-        - OpenAI/Gmail への連続呼び出しは `internal/library/ratelimit.Provider` から注入されたリミッターでガードされており、HTTP リクエストが頻発しても API 側へ過負荷にならない。
-        - 追加リトライが必要な場合は messaging ドメインにバックオフ付き再試行を実装する方針とし、成功/失敗の監視は `internal/common/application.EmailAnalysisLogUseCase` 経由のログを CloudWatch 等で可視化する。
-      - バックプレッシャ/同時実行数:
-        - 1 HTTP リクエスト = 1 goroutine であり、Go ランタイム以外のジョブキューは介在しない。OpenAI/Gmail はリミッターで速度制御し、DB/メール保存は emailstore.UseCase の処理能力に依存する。
-        - 大量の同時起動を抑制したい場合は、将来的に HTTP レイヤでキューイングやセマフォ制限を設ける。暫定的にはレートリミット Provider の値（REDIS 経由）を調整し、過度な並列実行を避ける。
-      - 監視:
-        - メール分析ログにキュー投入／実行／成功／失敗が記録されるため、Ops は最新ログを監視して異常を検知する。
-        - アプリ全体の logger も component フィールド込みでエラーを出すので、ログ基盤にアラートを設定する。
-  </messaging>
+  <workflow>
+    - 入口:
+      - `POST /api/v1/manual-mail-workflows`
+    - 実行順:
+      - `manualmailworkflow/application.UseCase` が `mailfetch`, `mailanalysis`, `vendorresolution` の各 stage を順に呼ぶ。
+    - `mailfetch`:
+      - 利用可能な `MailAccountConnection` を解決する。
+      - Gmail セッションを生成して provider からメールを取得する。
+      - `emails` テーブルへメタデータを idempotent に保存する。
+      - 取得した本文は HTTP リクエスト内の in-memory payload として `mailanalysis` に渡す。
+    - `mailanalysis`:
+      - OpenAI analyzer で本文を解析し、`parsed_emails` を保存する。
+      - 保存済み `ParsedEmail` と source email の必要メタデータを workflow へ返す。
+    - `vendorresolution`:
+      - `ParsedEmail.vendorName` と source email の `subject` / `from` / `to` をもとに canonical Vendor を決定する。
+      - unresolved なら candidate vendor 名から `vendors` と `name_exact` alias の自動補完を試す。
+      - unresolved は業務結果として返し、technical failure とは分離する。
+  </workflow>
 
   <context_management>
-    - HTTP リクエスト由来の `gin.Context` だけに依存すると、レスポンス返却後のバックグラウンド処理へキャンセルが伝播してしまう。そのため `internal/mailanalysis/application` では `context.WithoutCancel` を利用している。
-    - 理想的なフロー:
-      - `internal/app/server.Run` で `ctx, cancel := context.WithCancel(context.Background())` を生成し、DI 経由で「サーバ全体のベースコンテキスト」を注入する。
-      - バックグラウンド処理は `(baseCtx)` を親に、`context.WithTimeout`/`context.WithCancel` で個別のジョブコンテキストを作り、HTTP リクエスト終了の影響を受けずに実行する。
-      - シャットダウン時は `cancel()` → `errgroup` 等で goroutine 完了を待機し、その間にメール分析ログへキャンセルステータスを記録する。
-    - 現状の暫定対応:
-      - HTTP ctx を `context.WithoutCancel` で分離しつつ、DB/外部接続は各 usecase/adapter が `context.Context` を渡しているため、キャンセル済み接続を再利用することはない。
-      - 将来の改善として、`internal/app/server` へベースコンテキストと `errgroup.Group` を導入し、DI 層からメール分析などのバックグラウンドジョブ管理を注入する計画である。
+    - 現行実装ではバックグラウンド実行を行わず、HTTP リクエストの `context.Context` を stage 全体にそのまま伝播する。
+    - `RequestID` middleware が `request_id` を `gin.Context` と `context.Context` の両方へ設定する。
+    - `AuthMiddleware` が認証済み `user_id` を `gin.Context` と `context.Context` に設定する。
+    - logger は `WithContext(ctx)` により `request_id` / `job_id` / `user_id` を自動付与する。
   </context_management>
 
   <library_layer>
-    - 目的: 外部 SDK やクロスカッティングな処理を `internal/library` に閉じ込め、上位レイヤがベンダー SDK へ直接依存しないようにする。
+    - 目的:
+      - 外部 SDK や cross-cutting concern を `internal/library` に閉じ込め、上位レイヤが SDK 直依存しないようにする。
     - 主なパッケージ:
-      - `logger`: zap ベースの構造化ログ。`Interface` と `NewNop` を提供。
-      - `mysql`: 接続生成・`Transactional` ヘルパー・テスト用 DB 作成。
-      - `gmail` / `gmailService`: Gmail API ラッパーと OAuth2 Service 生成。
-      - `openai`: レートリミット + リトライ付きのチャットクライアント。
-      - `crypto`: HKDF ベースの Vault（agent / mailaccountconnection で利用）。
-      - `oswrapper`: 環境変数取得とファイル読み込みの抽象化。
-      - `ratelimit`: Redis バックエンドのリミッター Provider（Gmail/OpenAI 用）。
-      - `redis`, `retry`, `sendMailer`, `timewrapper` などのユーティリティ。
+      - `logger`: zap ベースの構造化ログ
+      - `mysql`: 接続生成、transaction helper、テスト DB 作成
+      - `gmail` / `gmailService`: Gmail API / OAuth loader
+      - `openai`: OpenAI クライアント
+      - `ratelimit`: Redis-backed limiter provider
+      - `crypto`: OAuth token などの暗号化 / digest
+      - `secret`, `oswrapper`, `sendMailer`, `timewrapper`
     - 方針:
-      - これらのライブラリパッケージはインフラ境界そのものであるため `os.Getenv` を直接利用してよい。アプリケーション/プレゼンテーション層は必ずラッパーの interface を DI で受け取る。
+      - server 初期化や `internal/library` 配下では必要に応じて環境変数や secret を直接扱ってよい。
+      - application / presentation 層は interface 経由で受け取る。
   </library_layer>
 
   <dependency_injection>
-    - 依存注入はすべて `internal/di` に集約する。
-      - `di/dig.go` で `ProvideCommonDependencies`（mysql, gmailService, gmail client, OpenAI client, oswrapper, ratelimit Provider, logger, timewrapper, 名前付き limiter）と `BuildContainer` を定義し、機能別モジュールを束ねる。
-      - `di/auth.go`, `di/agent.go`, `di/emailstore.go`, `di/email_credential.go`, `di/messaging.go`, `di/presentation.go` 等で各レイヤのコンストラクタを Provide。
-      - Messaging モジュールでは mailaccountconnection リポジトリや crypto.Vault、Gmail/OpenAI クライアント、emailstore UseCase、logging UseCase を組み合わせ、mailanalysis UseCase が抽象ポートだけに依存するようにしている。
+    - 依存注入は `internal/di` に集約する。
+      - `dig.go` が共通依存（mysql, gmail, openai, oswrapper, ratelimit, logger, vault, clock）を登録する。
+      - 各機能モジュールが repository / adapter / usecase / controller を Provide する。
+      - `manualmailworkflow` は direct adapter で stage usecase を束ねる。
     - ブートストラップ手順:
-      - `cmd/app/main.go` → `internal/app/server.Run` を呼び出す。
-      - `server.Run` が oswrapper・logger・MySQL・レートリミット Provider・Gmail/OpenAI クライアントを初期化し、dig コンテナを構築。
-      - `internal/app/router.Router` が Gin Engine とコンテナを受け取り、`container.Invoke` で各 Controller/Middleware を 1 度だけ解決した後にルートへ登録。
-    - Controller / Middleware は dig を直接意識せず、コンストラクタ注入された依存だけで完結させる。
+      - `cmd/app/main.go` → `internal/app/server.Run`
+      - `server.Run` が secret client、logger、MySQL、rate limit provider、Gmail / OpenAI client、Vault を初期化
+      - `di.BuildContainer` が container を構築
+      - `router.Router` が controller / middleware を解決して route を登録
   </dependency_injection>
 </architecture_rules>

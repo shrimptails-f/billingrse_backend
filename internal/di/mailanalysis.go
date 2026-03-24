@@ -13,8 +13,12 @@ import (
 
 // ProvideMailAnalysisDependencies registers mailanalysis stage dependencies.
 func ProvideMailAnalysisDependencies(container *dig.Container) {
-	_ = container.Provide(func(db *gorm.DB, log *logger.Logger) *mainfra.GormParsedEmailRepositoryAdapter {
-		return mainfra.NewGormParsedEmailRepositoryAdapter(db, log)
+	_ = container.Provide(func(
+		db *gorm.DB,
+		clock *timewrapper.Clock,
+		log *logger.Logger,
+	) *mainfra.GormParsedEmailRepositoryAdapter {
+		return mainfra.NewGormParsedEmailRepositoryAdapter(db, clock, log)
 	})
 
 	_ = container.Provide(func(oa *openai.Client, log *logger.Logger) *mainfra.OpenAIAnalyzerAdapter {

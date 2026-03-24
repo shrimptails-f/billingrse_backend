@@ -8,17 +8,17 @@ import (
 	"errors"
 )
 
-// DirectManualMailFetchAdapter invokes the mailfetch use case directly.
+// DirectManualMailFetchAdapter は mailfetch usecase を直接呼び出す。
 type DirectManualMailFetchAdapter struct {
 	usecase mfapp.UseCase
 }
 
-// NewDirectManualMailFetchAdapter creates a direct mailfetch adapter.
+// NewDirectManualMailFetchAdapter は direct な mailfetch adapter を生成する。
 func NewDirectManualMailFetchAdapter(usecase mfapp.UseCase) *DirectManualMailFetchAdapter {
 	return &DirectManualMailFetchAdapter{usecase: usecase}
 }
 
-// Execute runs the mailfetch stage and converts its result into workflow-owned types.
+// Execute は mailfetch stage を実行し、workflow 側の型へ変換する。
 func (a *DirectManualMailFetchAdapter) Execute(ctx context.Context, cmd manualapp.FetchCommand) (manualapp.FetchResult, error) {
 	if a.usecase == nil {
 		return manualapp.FetchResult{}, errors.New("mailfetch usecase is not configured")

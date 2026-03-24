@@ -17,9 +17,24 @@ import (
 )
 
 type emailRepoTestEnv struct {
-	repo  *GormEmailRepositoryAdapter
-	db    *gorm.DB
-	clean func() error
+	repo   *GormEmailRepositoryAdapter
+	db     *gorm.DB
+	nowUTC time.Time
+	clean  func() error
+}
+
+type emailRepoFixedClock struct {
+	now time.Time
+}
+
+func (c *emailRepoFixedClock) Now() time.Time {
+	return c.now
+}
+
+func (c *emailRepoFixedClock) After(d time.Duration) <-chan time.Time {
+	ch := make(chan time.Time, 1)
+	ch <- c.now.Add(d)
+	return ch
 }
 
 type repoRecordedLogEntry struct {
@@ -67,11 +82,13 @@ func newEmailRepoTestEnv(t *testing.T) *emailRepoTestEnv {
 	}
 	require.NoError(t, err)
 	require.NoError(t, mysqlConn.DB.AutoMigrate(&emailRecord{}))
+	nowUTC := time.Date(2026, 3, 24, 12, 0, 0, 0, time.UTC)
 
 	return &emailRepoTestEnv{
-		repo:  NewGormEmailRepositoryAdapter(mysqlConn.DB, logger.NewNop()),
-		db:    mysqlConn.DB,
-		clean: cleanup,
+		repo:   NewGormEmailRepositoryAdapter(mysqlConn.DB, &emailRepoFixedClock{now: nowUTC}, logger.NewNop()),
+		db:     mysqlConn.DB,
+		nowUTC: nowUTC,
+		clean:  cleanup,
 	}
 }
 
@@ -84,11 +101,13 @@ func newEmailRepoTestEnvWithLogger(t *testing.T, log logger.Interface) *emailRep
 	}
 	require.NoError(t, err)
 	require.NoError(t, mysqlConn.DB.AutoMigrate(&emailRecord{}))
+	nowUTC := time.Date(2026, 3, 24, 12, 0, 0, 0, time.UTC)
 
 	return &emailRepoTestEnv{
-		repo:  NewGormEmailRepositoryAdapter(mysqlConn.DB, log),
-		db:    mysqlConn.DB,
-		clean: cleanup,
+		repo:   NewGormEmailRepositoryAdapter(mysqlConn.DB, &emailRepoFixedClock{now: nowUTC}, log),
+		db:     mysqlConn.DB,
+		nowUTC: nowUTC,
+		clean:  cleanup,
 	}
 }
 
@@ -139,6 +158,8 @@ func TestGormEmailRepositoryAdapter_SaveAllIfAbsent_CreatedAndExisting(t *testin
 	require.Equal(t, "msg-1", stored.ExternalMessageID)
 	require.NotNil(t, stored.CreatedRunID)
 	require.NotEmpty(t, *stored.CreatedRunID)
+	require.True(t, stored.CreatedAt.Equal(env.nowUTC))
+	require.True(t, stored.UpdatedAt.Equal(env.nowUTC))
 
 	var recipients []string
 	require.NoError(t, json.Unmarshal([]byte(stored.ToJSON), &recipients))

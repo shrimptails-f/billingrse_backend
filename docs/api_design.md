@@ -143,6 +143,10 @@
 
 バリデーションの詳細が必要な場合のみ `details` を追加してよい。
 
+注記:
+- 現行の `internal/app/httpresponse` 共通実装は `code` / `message` までを標準化しており、`details` はまだ共通 helper 化されていない。
+- `details` を契約として返す API を追加する場合は、endpoint 個別実装で済ませず共通レスポンス実装も合わせて拡張する。
+
 ```json
 {
   "error": {
