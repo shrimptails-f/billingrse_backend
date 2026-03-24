@@ -65,6 +65,7 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 							To:                []string{"user@example.com"},
 							ReceivedAt:        now,
 							Body:              "invoice body",
+							BodyDigest:        "digest-msg-1",
 						},
 					},
 					ExistingEmailIDs: []uint{202},
@@ -83,6 +84,9 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 				if len(cmd.Emails) != 1 || cmd.Emails[0].EmailID != 101 || cmd.Emails[0].ReceivedAt != now {
 					t.Fatalf("unexpected analyze emails: %+v", cmd.Emails)
 				}
+				if cmd.Emails[0].BodyDigest != "digest-msg-1" {
+					t.Fatalf("unexpected analyze body digest: %+v", cmd.Emails)
+				}
 				return AnalyzeResult{
 					ParsedEmailIDs: []uint{9001, 9002},
 					ParsedEmails: []ParsedEmail{
@@ -93,6 +97,7 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 							Subject:           "Invoice",
 							From:              "billing@example.com",
 							To:                []string{"user@example.com"},
+							BodyDigest:        "digest-msg-1",
 							Data:              commondomain.ParsedEmail{VendorName: stringPtr("Acme")},
 						},
 						{
@@ -102,6 +107,7 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 							Subject:           "Invoice",
 							From:              "billing@example.com",
 							To:                []string{"user@example.com"},
+							BodyDigest:        "digest-msg-1",
 							Data:              commondomain.ParsedEmail{VendorName: stringPtr("Unknown")},
 						},
 					},
@@ -122,12 +128,16 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 				if len(cmd.ParsedEmails) != 2 || cmd.ParsedEmails[0].ParsedEmailID != 9001 || cmd.ParsedEmails[1].ParsedEmailID != 9002 {
 					t.Fatalf("unexpected vendor resolution inputs: %+v", cmd.ParsedEmails)
 				}
+				if cmd.ParsedEmails[0].BodyDigest != "digest-msg-1" || cmd.ParsedEmails[1].BodyDigest != "digest-msg-1" {
+					t.Fatalf("unexpected vendor resolution body digest: %+v", cmd.ParsedEmails)
+				}
 				return VendorResolutionResult{
 					ResolvedItems: []ResolvedItem{
 						{
 							ParsedEmailID:     9001,
 							EmailID:           101,
 							ExternalMessageID: "msg-1",
+							BodyDigest:        "digest-msg-1",
 							VendorID:          3001,
 							VendorName:        "Acme",
 							MatchedBy:         "name_exact",

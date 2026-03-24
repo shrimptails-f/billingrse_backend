@@ -12,16 +12,19 @@ var (
 	ErrEmailUserIDEmpty = errors.New("email user id is empty")
 	// ErrEmailExternalMessageIDEmpty is returned when the external message ID is missing.
 	ErrEmailExternalMessageIDEmpty = errors.New("email external message id is empty")
+	// ErrEmailBodyDigestEmpty is returned when the body digest is missing.
+	ErrEmailBodyDigestEmpty = errors.New("email body digest is empty")
 )
 
 // FetchedEmailDTO は取得直後のメールを表す共通DTOです
 type FetchedEmailDTO struct {
-	ID      string    `json:"id"`
-	Subject string    `json:"subject"`
-	From    string    `json:"from"`
-	To      []string  `json:"to"`
-	Date    time.Time `json:"date"`
-	Body    string    `json:"body"`
+	ID         string    `json:"id"`
+	Subject    string    `json:"subject"`
+	From       string    `json:"from"`
+	To         []string  `json:"to"`
+	Date       time.Time `json:"date"`
+	Body       string    `json:"body"`
+	BodyDigest string    `json:"bodyDigest"`
 }
 
 // ExtractSenderName は From フィールドから送信者名を抽出します
@@ -51,6 +54,7 @@ type Email struct {
 	Subject           string
 	From              string
 	To                []string
+	BodyDigest        string
 	ReceivedAt        time.Time
 	ParsedEmails      []ParsedEmail
 }
@@ -63,6 +67,7 @@ func NewEmailFromFetchedDTO(userID uint, dto FetchedEmailDTO) (Email, error) {
 		Subject:           dto.Subject,
 		From:              dto.From,
 		To:                dto.To,
+		BodyDigest:        strings.TrimSpace(dto.BodyDigest),
 		ReceivedAt:        dto.Date,
 	}
 	if err := email.Validate(); err != nil {
@@ -78,6 +83,9 @@ func (e Email) Validate() error {
 	}
 	if strings.TrimSpace(e.ExternalMessageID) == "" {
 		return ErrEmailExternalMessageIDEmpty
+	}
+	if strings.TrimSpace(e.BodyDigest) == "" {
+		return ErrEmailBodyDigestEmpty
 	}
 	return nil
 }

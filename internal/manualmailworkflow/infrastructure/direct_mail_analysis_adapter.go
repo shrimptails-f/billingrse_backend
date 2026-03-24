@@ -33,6 +33,7 @@ func (a *DirectMailAnalysisAdapter) Execute(ctx context.Context, cmd manualapp.A
 			To:                append([]string{}, email.To...),
 			ReceivedAt:        email.ReceivedAt,
 			Body:              email.Body,
+			BodyDigest:        email.BodyDigest,
 		})
 	}
 
@@ -56,6 +57,7 @@ func (a *DirectMailAnalysisAdapter) Execute(ctx context.Context, cmd manualapp.A
 			Subject:           parsedEmail.Subject,
 			From:              parsedEmail.From,
 			To:                append([]string{}, parsedEmail.To...),
+			BodyDigest:        parsedEmail.BodyDigest,
 			Data:              parsedEmail.ParsedEmail,
 		})
 	}

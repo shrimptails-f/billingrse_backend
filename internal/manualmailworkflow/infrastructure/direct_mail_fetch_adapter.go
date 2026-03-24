@@ -50,6 +50,7 @@ func (a *DirectManualMailFetchAdapter) Execute(ctx context.Context, cmd manualap
 			To:                append([]string{}, createdEmail.To...),
 			ReceivedAt:        createdEmail.Date,
 			Body:              createdEmail.Body,
+			BodyDigest:        createdEmail.BodyDigest,
 		})
 	}
 

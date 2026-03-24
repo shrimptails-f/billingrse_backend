@@ -12,6 +12,7 @@ type Email struct {
 	Subject           string    `gorm:"type:text;not null"`
 	FromRaw           string    `gorm:"column:from_raw;type:text;not null"`
 	ToJSON            string    `gorm:"column:to_json;type:json;not null"`
+	BodyDigest        string    `gorm:"column:body_digest;size:64;not null"`
 	ReceivedAt        time.Time `gorm:"not null"`
 	CreatedRunID      *string   `gorm:"column:created_run_id;size:36"`
 	CreatedAt         time.Time

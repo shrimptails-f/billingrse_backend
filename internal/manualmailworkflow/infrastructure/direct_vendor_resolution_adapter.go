@@ -35,6 +35,7 @@ func (a *DirectVendorResolutionAdapter) Execute(ctx context.Context, cmd manuala
 					Subject:           parsedEmail.Subject,
 					From:              parsedEmail.From,
 					To:                append([]string{}, parsedEmail.To...),
+					BodyDigest:        parsedEmail.BodyDigest,
 					ParsedEmail:       parsedEmail.Data,
 				})
 			}
@@ -51,6 +52,7 @@ func (a *DirectVendorResolutionAdapter) Execute(ctx context.Context, cmd manuala
 			ParsedEmailID:     item.ParsedEmailID,
 			EmailID:           item.EmailID,
 			ExternalMessageID: item.ExternalMessageID,
+			BodyDigest:        item.BodyDigest,
 			VendorID:          item.VendorID,
 			VendorName:        item.VendorName,
 			MatchedBy:         item.MatchedBy,

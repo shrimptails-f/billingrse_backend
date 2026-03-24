@@ -28,6 +28,7 @@ type emailRecord struct {
 	Subject           string    `gorm:"column:subject;type:text;not null"`
 	FromRaw           string    `gorm:"column:from_raw;type:text;not null"`
 	ToJSON            string    `gorm:"column:to_json;type:json;not null"`
+	BodyDigest        string    `gorm:"column:body_digest;size:64;not null"`
 	ReceivedAt        time.Time `gorm:"column:received_at;not null"`
 	CreatedRunID      *string   `gorm:"column:created_run_id;size:36"`
 	CreatedAt         time.Time `gorm:"column:created_at;not null"`
@@ -223,6 +224,7 @@ func (r *GormEmailRepositoryAdapter) savePreparedEmails(
 			Subject:           item.email.Subject,
 			FromRaw:           item.email.From,
 			ToJSON:            item.toJSON,
+			BodyDigest:        item.email.BodyDigest,
 			ReceivedAt:        item.email.ReceivedAt,
 			CreatedRunID:      &runID,
 			CreatedAt:         now,

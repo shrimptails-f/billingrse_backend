@@ -43,6 +43,7 @@ type EmailForAnalysisTarget struct {
 	To                []string
 	ReceivedAt        time.Time
 	Body              string
+	BodyDigest        string
 }
 
 // Normalize は文字列項目と宛先一覧を整形する。
@@ -51,6 +52,7 @@ func (e EmailForAnalysisTarget) Normalize() EmailForAnalysisTarget {
 	e.Subject = strings.TrimSpace(e.Subject)
 	e.From = strings.TrimSpace(e.From)
 	e.Body = strings.TrimSpace(e.Body)
+	e.BodyDigest = strings.TrimSpace(e.BodyDigest)
 
 	recipients := make([]string, 0, len(e.To))
 	for _, recipient := range e.To {
@@ -93,6 +95,7 @@ type ParsedEmailResultItem struct {
 	Subject           string
 	From              string
 	To                []string
+	BodyDigest        string
 	ParsedEmail       commondomain.ParsedEmail
 }
 
@@ -190,6 +193,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 		}
 
 		output = output.Normalize()
+		output.ParsedEmails = applyFallbackBillingNumbers(output.ParsedEmails, email.BodyDigest)
 		result.AnalyzedEmailCount++
 
 		if len(output.ParsedEmails) == 0 {
@@ -248,6 +252,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 				Subject:           email.Subject,
 				From:              email.From,
 				To:                append([]string(nil), email.To...),
+				BodyDigest:        email.BodyDigest,
 				ParsedEmail:       output.ParsedEmails[idx],
 			})
 		}
@@ -280,6 +285,29 @@ func validateCommand(cmd Command) error {
 		return fmt.Errorf("%w: user_id is required", domain.ErrInvalidCommand)
 	}
 	return nil
+}
+
+const fallbackBillingNumberPrefix = "digest_"
+
+func applyFallbackBillingNumbers(parsedEmails []commondomain.ParsedEmail, bodyDigest string) []commondomain.ParsedEmail {
+	bodyDigest = strings.TrimSpace(bodyDigest)
+	if bodyDigest == "" {
+		return parsedEmails
+	}
+
+	fallback := fallbackBillingNumberPrefix + bodyDigest
+	for idx := range parsedEmails {
+		if parsedEmails[idx].BillingNumber != nil && strings.TrimSpace(*parsedEmails[idx].BillingNumber) != "" {
+			continue
+		}
+		parsedEmails[idx].BillingNumber = fallbackStringPtr(fallback)
+	}
+
+	return parsedEmails
+}
+
+func fallbackStringPtr(value string) *string {
+	return &value
 }
 
 func failureForAnalyzeError(email EmailForAnalysisTarget, err error) domain.MessageFailure {

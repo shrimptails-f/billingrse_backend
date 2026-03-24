@@ -5,6 +5,8 @@ import (
 	"business/internal/library/logger"
 	mfdomain "business/internal/mailfetch/domain"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -46,6 +48,7 @@ type CreatedEmail struct {
 	To                []string
 	Date              time.Time
 	Body              string
+	BodyDigest        string
 }
 
 // Result is the output contract for the manual mail fetch stage.
@@ -148,6 +151,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 		}
 		seenMessageIDs[externalMessageID] = struct{}{}
 		dto.ID = externalMessageID
+		dto.BodyDigest = computeBodyDigest(dto.Body)
 		saveTargets = append(saveTargets, dto)
 		saveTargetsByMessageID[externalMessageID] = dto
 	}
@@ -185,6 +189,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 				To:                append([]string(nil), dto.To...),
 				Date:              dto.Date,
 				Body:              dto.Body,
+				BodyDigest:        dto.BodyDigest,
 			})
 		case mfdomain.SaveStatusExisting:
 			result.ExistingEmailIDs = append(result.ExistingEmailIDs, saveResult.EmailID)
@@ -225,4 +230,9 @@ func validateCommand(cmd Command) error {
 		return err
 	}
 	return nil
+}
+
+func computeBodyDigest(body string) string {
+	sum := sha256.Sum256([]byte(body))
+	return hex.EncodeToString(sum[:])
 }
