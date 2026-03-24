@@ -3,6 +3,10 @@
 本ドキュメントは、billingrse のドメインモデルを概念レベルでまとめたドキュメントである。
 集約境界、主要なエンティティ / 値オブジェクト / ポリシー、関係と依存関係を整理する。
 
+注記:
+- ここでは将来の到達像を含む概念モデルも扱う。
+- 現行実装の `manualmailworkflow` は `mailfetch -> mailanalysis -> vendorresolution` までが接続済みであり、`BillingEligibility` と `Billing` 生成はまだ workflow に接続されていない。
+
 参照:
 - `docs/ddd/ubiquitous-language/README.md`
 - `docs/ddd/invariants.md`
@@ -275,7 +279,7 @@ sequenceDiagram
 
   else Vendor が未解決
     Resolve-->>App: unresolved
-    App-->>Trigger: Billing は作成しない(解析失敗と扱い、失敗件数としてカウント)
+    App-->>Trigger: Billing は作成しない（未解決件数としてカウントし、technical failure とは分離する）
   end
 ```
 

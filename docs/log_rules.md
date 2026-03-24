@@ -71,6 +71,7 @@ HTTP サマリでは次の追加項目を出力する。
 
 - panic recovery では `message: "panic recovered"` を出力する
 - `stack_trace` を構造化フィールドとして含める
+- 既存実装には transaction rollback 補助で `message: "panic recovered during transaction"` も存在する
 
 ## 共通スキーマ
 
@@ -82,7 +83,7 @@ HTTP サマリでは次の追加項目を出力する。
 | `service` | 必須 | サービス名。root logger の固定項目 |
 | `environment` | 必須 | 実行環境名。root logger の固定項目 |
 | `component` | 必須 | controller / middleware / repository / client などの責務単位 |
-| `message` | 必須 | 人間向けの短い説明。イベント名は snake_case を基本とする |
+| `message` | 必須 | 人間向けの短い説明。イベント名相当の値は snake_case を基本とするが、既存の panic recovery 系メッセージは互換性維持のため例外とする |
 | `request_id` | HTTP では必須 | HTTP 相関 ID。HTTP 以外では未設定時に省略する |
 | `job_id` | バッチ / 非同期では必須 | ジョブ相関 ID。未設定時に省略する |
 | `user_id` | 任意 | 認証済みユーザー ID。未設定時に省略する |

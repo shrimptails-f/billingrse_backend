@@ -336,6 +336,8 @@ type VendorResolutionCommand struct {
 ```
 
 ### response で返すべき要素
+- `resolved_items`
+  - 各要素は `parsed_email_id`, `email_id`, `external_message_id`, `vendor_id`, `vendor_name`, `matched_by` を持つ
 - `resolved_count`
 - `unresolved_count`
 - `unresolved_external_message_ids`

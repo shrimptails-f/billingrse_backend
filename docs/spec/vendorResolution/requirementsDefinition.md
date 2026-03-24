@@ -2,7 +2,7 @@
 
 ## 背景
 - DDD と ADR では、`ParsedEmail.vendorName` は canonical な `Vendor` ではなく候補値として扱うこと、`VendorResolution` と `BillingEligibility` を分離することが既に合意されている。
-- 実装上は `mailfetch` と `mailanalysis` は整備済みで、`manualmailworkflow` も `fetch -> analysis` までは実装されている。
+- 実装上は `mailfetch`・`mailanalysis`・`vendorresolution` が存在し、`manualmailworkflow` も `fetch -> analysis -> vendorresolution` まで接続されている。
 - 現行実装では `parsed_emails` に AI 解析結果は保存されるが、`emails` には本文は保存されず、件名・送信元・宛先・受信日時などのメタデータのみが保存される。
 - まず必要なのは `Billing` 生成ではなく、保存済みデータから canonical `Vendor` を決定的に引き当てる処理である。
 
@@ -19,7 +19,6 @@
   - 元 `Email` の件名
   - 元 `Email` の送信元
   - 元 `Email` の宛先
-  - 元 `Email` の provider / account identifier / 受信日時などのメタデータ
 - `VendorResolution` は保存済みデータだけで再実行可能であること。
   - `emails` に本文は保存されていないため、本文依存の解決を必須にしない。
 - `VendorResolution` は外部 AI 再呼び出しではなく、決定的な解決処理として扱うこと。
@@ -46,8 +45,8 @@
 - package 間依存は既存の Clean Architecture 方針に従い、application port 経由で接続すること。
 
 ## 制約事項
-- 現行 `manualmailworkflow` は `fetch -> analysis` までしか実装されていない。
-- 現行リポジトリには vendor 永続化実装がまだ存在しない。
+- 現行 `manualmailworkflow` は `fetch -> analysis -> vendorresolution` まで接続済みであり、`BillingEligibility` 以降は未実装である。
+- vendor 永続化は `vendors` / `vendor_aliases` と repository 実装まで存在し、手動補正 UI / API は未実装である。
 - `internal/common/domain` に DDD のモデルを集約する運用である。
 - `emails` テーブルには本文が保存されないため、`VendorResolution` は本文なしでも動作しなければならない。
 

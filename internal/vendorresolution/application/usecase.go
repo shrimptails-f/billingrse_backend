@@ -152,8 +152,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 				logger.Uint("email_id", target.EmailID),
 				logger.String("external_message_id", target.ExternalMessageID),
 				logger.String("candidate_vendor_name", stringValue(target.ParsedEmail.VendorName)),
-				logger.String("from", target.From),
-				logger.String("subject", target.Subject),
+				logger.String("sender_domain", uc.policy.BuildFetchPlan(buildVendorResolutionInput(target)).SenderDomainValue),
 			)
 			continue
 		}
