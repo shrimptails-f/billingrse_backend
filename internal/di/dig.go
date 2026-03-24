@@ -95,6 +95,7 @@ func BuildContainer(
 	ProvideMailFetchDependencies(container)
 	ProvideMailAnalysisDependencies(container)
 	ProvideVendorResolutionDependencies(container)
+	ProvideBillingEligibilityDependencies(container)
 	ProvideManualMailWorkflowDependencies(container)
 	ProvidePresentationDependencies(container)
 

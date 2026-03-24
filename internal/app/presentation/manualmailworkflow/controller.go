@@ -38,10 +38,11 @@ type executeRequest struct {
 }
 
 type executeResponse struct {
-	Message          string                          `json:"message"`
-	Fetch            fetchSummaryResponse            `json:"fetch"`
-	Analysis         analysisSummaryResponse         `json:"analysis"`
-	VendorResolution vendorResolutionSummaryResponse `json:"vendor_resolution"`
+	Message            string                            `json:"message"`
+	Fetch              fetchSummaryResponse              `json:"fetch"`
+	Analysis           analysisSummaryResponse           `json:"analysis"`
+	VendorResolution   vendorResolutionSummaryResponse   `json:"vendor_resolution"`
+	BillingEligibility billingEligibilitySummaryResponse `json:"billing_eligibility"`
 }
 
 type fetchSummaryResponse struct {
@@ -103,6 +104,48 @@ type vendorResolutionFailureResponse struct {
 	Code              string `json:"code"`
 }
 
+type billingEligibilitySummaryResponse struct {
+	EligibleCount   int                                 `json:"eligible_count"`
+	EligibleItems   []billingEligibilityEligibleItem    `json:"eligible_items"`
+	IneligibleCount int                                 `json:"ineligible_count"`
+	IneligibleItems []billingEligibilityIneligibleItem  `json:"ineligible_items"`
+	FailureCount    int                                 `json:"failure_count"`
+	Failures        []billingEligibilityFailureResponse `json:"failures"`
+}
+
+type billingEligibilityEligibleItem struct {
+	ParsedEmailID     uint       `json:"parsed_email_id"`
+	EmailID           uint       `json:"email_id"`
+	ExternalMessageID string     `json:"external_message_id"`
+	VendorID          uint       `json:"vendor_id"`
+	VendorName        string     `json:"vendor_name"`
+	MatchedBy         string     `json:"matched_by"`
+	BillingNumber     string     `json:"billing_number"`
+	InvoiceNumber     *string    `json:"invoice_number"`
+	Amount            float64    `json:"amount"`
+	Currency          string     `json:"currency"`
+	BillingDate       *time.Time `json:"billing_date"`
+	PaymentCycle      string     `json:"payment_cycle"`
+}
+
+type billingEligibilityIneligibleItem struct {
+	ParsedEmailID     uint   `json:"parsed_email_id"`
+	EmailID           uint   `json:"email_id"`
+	ExternalMessageID string `json:"external_message_id"`
+	VendorID          uint   `json:"vendor_id"`
+	VendorName        string `json:"vendor_name"`
+	MatchedBy         string `json:"matched_by"`
+	ReasonCode        string `json:"reason_code"`
+}
+
+type billingEligibilityFailureResponse struct {
+	ParsedEmailID     uint   `json:"parsed_email_id"`
+	EmailID           uint   `json:"email_id"`
+	ExternalMessageID string `json:"external_message_id"`
+	Stage             string `json:"stage"`
+	Code              string `json:"code"`
+}
+
 // Execute handles POST /api/v1/manual-mail-workflows.
 func (ctrl *Controller) Execute(c *gin.Context) {
 	reqLog := ctrl.log
@@ -136,10 +179,11 @@ func (ctrl *Controller) Execute(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, executeResponse{
-		Message:          "メール取得ワークフローが完了しました。",
-		Fetch:            buildFetchSummaryResponse(result.Fetch),
-		Analysis:         buildAnalysisSummaryResponse(result.Analysis),
-		VendorResolution: buildVendorResolutionSummaryResponse(result.VendorResolution),
+		Message:            "メール取得ワークフローが完了しました。",
+		Fetch:              buildFetchSummaryResponse(result.Fetch),
+		Analysis:           buildAnalysisSummaryResponse(result.Analysis),
+		VendorResolution:   buildVendorResolutionSummaryResponse(result.VendorResolution),
+		BillingEligibility: buildBillingEligibilitySummaryResponse(result.BillingEligibility),
 	})
 }
 
@@ -251,6 +295,59 @@ func buildVendorResolutionSummaryResponse(result manualapp.VendorResolutionResul
 		UnresolvedExternalMessageIDs: unresolvedExternalMessageIDs,
 		FailureCount:                 len(result.Failures),
 		Failures:                     failures,
+	}
+}
+
+func buildBillingEligibilitySummaryResponse(result manualapp.BillingEligibilityResult) billingEligibilitySummaryResponse {
+	eligibleItems := make([]billingEligibilityEligibleItem, 0, len(result.EligibleItems))
+	for _, item := range result.EligibleItems {
+		eligibleItems = append(eligibleItems, billingEligibilityEligibleItem{
+			ParsedEmailID:     item.ParsedEmailID,
+			EmailID:           item.EmailID,
+			ExternalMessageID: item.ExternalMessageID,
+			VendorID:          item.VendorID,
+			VendorName:        item.VendorName,
+			MatchedBy:         item.MatchedBy,
+			BillingNumber:     item.BillingNumber,
+			InvoiceNumber:     item.InvoiceNumber,
+			Amount:            item.Amount,
+			Currency:          item.Currency,
+			BillingDate:       item.BillingDate,
+			PaymentCycle:      item.PaymentCycle,
+		})
+	}
+
+	ineligibleItems := make([]billingEligibilityIneligibleItem, 0, len(result.IneligibleItems))
+	for _, item := range result.IneligibleItems {
+		ineligibleItems = append(ineligibleItems, billingEligibilityIneligibleItem{
+			ParsedEmailID:     item.ParsedEmailID,
+			EmailID:           item.EmailID,
+			ExternalMessageID: item.ExternalMessageID,
+			VendorID:          item.VendorID,
+			VendorName:        item.VendorName,
+			MatchedBy:         item.MatchedBy,
+			ReasonCode:        item.ReasonCode,
+		})
+	}
+
+	failures := make([]billingEligibilityFailureResponse, 0, len(result.Failures))
+	for _, failure := range result.Failures {
+		failures = append(failures, billingEligibilityFailureResponse{
+			ParsedEmailID:     failure.ParsedEmailID,
+			EmailID:           failure.EmailID,
+			ExternalMessageID: failure.ExternalMessageID,
+			Stage:             failure.Stage,
+			Code:              failure.Code,
+		})
+	}
+
+	return billingEligibilitySummaryResponse{
+		EligibleCount:   result.EligibleCount,
+		EligibleItems:   eligibleItems,
+		IneligibleCount: result.IneligibleCount,
+		IneligibleItems: ineligibleItems,
+		FailureCount:    len(result.Failures),
+		Failures:        failures,
 	}
 }
 

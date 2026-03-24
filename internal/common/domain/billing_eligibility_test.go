@@ -68,8 +68,8 @@ func TestBillingEligibility(t *testing.T) {
 
 	parsedMissingBillingDate := parsed
 	parsedMissingBillingDate.BillingDate = nil
-	if err := eligibility.Evaluate(parsedMissingBillingDate, resolution); !errors.Is(err, ErrBillingEligibilityBillingDateEmpty) {
-		t.Fatalf("expected ErrBillingEligibilityBillingDateEmpty, got %v", err)
+	if err := eligibility.Evaluate(parsedMissingBillingDate, resolution); err != nil {
+		t.Fatalf("expected nil billing date to be allowed, got %v", err)
 	}
 
 	parsedMissingPaymentCycle := parsed

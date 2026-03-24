@@ -5,7 +5,7 @@
 
 注記:
 - ここでは将来の到達像を含む概念モデルも扱う。
-- 現行実装の `manualmailworkflow` は `mailfetch -> mailanalysis -> vendorresolution` までが接続済みであり、`BillingEligibility` と `Billing` 生成はまだ workflow に接続されていない。
+- 現行実装の `manualmailworkflow` は `mailfetch -> mailanalysis -> vendorresolution -> billingeligibility` までが接続済みであり、`Billing` 生成はまだ workflow に接続されていない。
 
 参照:
 - `docs/ddd/ubiquitous-language/README.md`
@@ -83,7 +83,7 @@ classDiagram
   VendorResolution --> Vendor : 解決
   ParsedEmail --> BillingEligibility : 成立判定
   BillingEligibility ..> VendorResolution : 解決結果を利用
-  BillingEligibility --> Billing : 生成
+  BillingEligibility ..> Billing : 成立対象を決める
 
   Billing --> Vendor : 支払先
   Billing --> PaymentCycle : 支払周期

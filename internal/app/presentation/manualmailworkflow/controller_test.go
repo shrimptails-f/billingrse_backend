@@ -78,6 +78,40 @@ func TestExecute_200(t *testing.T) {
 				{ParsedEmailID: 302, EmailID: 102, ExternalMessageID: "msg-2", Stage: "resolve_vendor", Code: "vendor_resolution_failed"},
 			},
 		},
+		BillingEligibility: manualapp.BillingEligibilityResult{
+			EligibleItems: []manualapp.EligibleItem{
+				{
+					ParsedEmailID:     301,
+					EmailID:           101,
+					ExternalMessageID: "msg-1",
+					VendorID:          401,
+					VendorName:        "Acme",
+					MatchedBy:         "name_exact",
+					BillingNumber:     "digest_8e4b1c",
+					InvoiceNumber:     nil,
+					Amount:            1200,
+					Currency:          "JPY",
+					BillingDate:       nil,
+					PaymentCycle:      "one_time",
+				},
+			},
+			EligibleCount: 1,
+			IneligibleItems: []manualapp.IneligibleItem{
+				{
+					ParsedEmailID:     302,
+					EmailID:           102,
+					ExternalMessageID: "msg-2",
+					VendorID:          401,
+					VendorName:        "Acme",
+					MatchedBy:         "name_exact",
+					ReasonCode:        "currency_empty",
+				},
+			},
+			IneligibleCount: 1,
+			Failures: []manualapp.BillingEligibilityFailure{
+				{ParsedEmailID: 303, EmailID: 103, ExternalMessageID: "msg-3", Stage: "normalize_input", Code: "invalid_eligibility_target"},
+			},
+		},
 	}, nil).Once()
 
 	ctrl := newTestController(uc)
@@ -145,6 +179,47 @@ func TestExecute_200(t *testing.T) {
 					"external_message_id": "msg-2",
 					"stage": "resolve_vendor",
 					"code": "vendor_resolution_failed"
+				}
+			]
+		},
+		"billing_eligibility": {
+			"eligible_count": 1,
+			"eligible_items": [
+				{
+					"parsed_email_id": 301,
+					"email_id": 101,
+					"external_message_id": "msg-1",
+					"vendor_id": 401,
+					"vendor_name": "Acme",
+					"matched_by": "name_exact",
+					"billing_number": "digest_8e4b1c",
+					"invoice_number": null,
+					"amount": 1200,
+					"currency": "JPY",
+					"billing_date": null,
+					"payment_cycle": "one_time"
+				}
+			],
+			"ineligible_count": 1,
+			"ineligible_items": [
+				{
+					"parsed_email_id": 302,
+					"email_id": 102,
+					"external_message_id": "msg-2",
+					"vendor_id": 401,
+					"vendor_name": "Acme",
+					"matched_by": "name_exact",
+					"reason_code": "currency_empty"
+				}
+			],
+			"failure_count": 1,
+			"failures": [
+				{
+					"parsed_email_id": 303,
+					"email_id": 103,
+					"external_message_id": "msg-3",
+					"stage": "normalize_input",
+					"code": "invalid_eligibility_target"
 				}
 			]
 		}

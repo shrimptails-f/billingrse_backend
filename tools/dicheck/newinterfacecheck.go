@@ -32,6 +32,22 @@ var allowedConcreteParams = []struct {
 	},
 }
 
+// allowedConcreteParamsByFunction は特定の NewXxx 関数だけに許容する具体型。
+// 影響範囲を狭めるため、全体 whitelist ではなく関数単位で逃がす。
+var allowedConcreteParamsByFunction = []struct {
+	functionName     string
+	functionPkgPath  string
+	paramPackagePath string
+	typeName         string
+}{
+	{
+		functionName:     "NewBilling",
+		functionPkgPath:  "business/internal/common/domain",
+		paramPackagePath: "time",
+		typeName:         "Time",
+	},
+}
+
 // NewXxx ルール用の plugin 本体。
 // 今回は設定なしの最小構成に寄せる。
 type newInterfacePlugin struct{}
@@ -81,7 +97,7 @@ func runNewInterfaceCheck(pass *analysis.Pass) {
 
 			for _, field := range fn.Type.Params.List {
 				typ := pass.TypesInfo.TypeOf(field.Type)
-				if !shouldReportNewParamType(typ, pass.Pkg.Path()) {
+				if !shouldReportNewParamType(typ, pass.Pkg.Path(), fn.Name.Name) {
 					continue
 				}
 
@@ -109,7 +125,7 @@ func isNewLikeFunction(name string) bool {
 
 // shouldReportNewParamType は入口側の粗い判定。
 // interface / builtin は許容し、pointer 型だけを詳細判定に回す。
-func shouldReportNewParamType(typ types.Type, currentPkgPath string) bool {
+func shouldReportNewParamType(typ types.Type, currentPkgPath, functionName string) bool {
 	for typ != nil {
 		typ = types.Unalias(typ)
 
@@ -117,7 +133,7 @@ func shouldReportNewParamType(typ types.Type, currentPkgPath string) bool {
 		case *types.Interface, *types.Basic:
 			return false
 		case *types.Pointer:
-			return shouldReportPointerElem(t.Elem(), currentPkgPath)
+			return shouldReportPointerElem(t.Elem(), currentPkgPath, functionName)
 		case *types.Named:
 			return false
 		default:
@@ -130,7 +146,7 @@ func shouldReportNewParamType(typ types.Type, currentPkgPath string) bool {
 
 // shouldReportPointerElem は pointer を剥がした先が
 // 「他 package の Named concrete」かどうかを判定する。
-func shouldReportPointerElem(typ types.Type, currentPkgPath string) bool {
+func shouldReportPointerElem(typ types.Type, currentPkgPath, functionName string) bool {
 	for typ != nil {
 		typ = types.Unalias(typ)
 
@@ -144,7 +160,7 @@ func shouldReportPointerElem(typ types.Type, currentPkgPath string) bool {
 			if t.Obj() == nil || t.Obj().Pkg() == nil {
 				return false
 			}
-			if isAllowedConcreteParam(t) {
+			if isAllowedConcreteParam(t) || isAllowedConcreteParamForFunction(t, currentPkgPath, functionName) {
 				return false
 			}
 			return t.Obj().Pkg().Path() != currentPkgPath
@@ -164,6 +180,24 @@ func isAllowedConcreteParam(named *types.Named) bool {
 
 	for _, allowed := range allowedConcreteParams {
 		if named.Obj().Pkg().Path() == allowed.packagePath && named.Obj().Name() == allowed.typeName {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isAllowedConcreteParamForFunction は関数単位の例外 whitelist に含まれる具体型かを返す。
+func isAllowedConcreteParamForFunction(named *types.Named, currentPkgPath, functionName string) bool {
+	if named == nil || named.Obj() == nil || named.Obj().Pkg() == nil {
+		return false
+	}
+
+	for _, allowed := range allowedConcreteParamsByFunction {
+		if functionName == allowed.functionName &&
+			currentPkgPath == allowed.functionPkgPath &&
+			named.Obj().Pkg().Path() == allowed.paramPackagePath &&
+			named.Obj().Name() == allowed.typeName {
 			return true
 		}
 	}

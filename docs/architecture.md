@@ -5,7 +5,7 @@
     - WebFramework: Gin
     - ORM: Gorm
     - マイグレーション: Atlas
-    - 主ワークフロー: `internal/manualmailworkflow`（mailfetch -> mailanalysis -> vendorresolution）
+    - 主ワークフロー: `internal/manualmailworkflow`（mailfetch -> mailanalysis -> vendorresolution -> billingeligibility）
     - DI コンテナ: go.uber.org/dig
   </context>
 
@@ -30,7 +30,7 @@
             - auth/               // 認証系 controller と HTTP DTO
             - mailaccountconnection/
             - manualmailworkflow/
-        - di/                     // dig モジュール（auth.go, mail_account_connection.go, mailfetch.go, mailanalysis.go, vendorresolution.go, manualmailworkflow.go, presentation.go, dig.go）
+        - di/                     // dig モジュール（auth.go, mail_account_connection.go, mailfetch.go, mailanalysis.go, vendorresolution.go, billingeligibility.go, manualmailworkflow.go, presentation.go, dig.go）
         - library/                // 共通ラッパー: logger, mysql, gmail/gmailService, openai, oswrapper, ratelimit, secret, sendMailer, crypto, timewrapper
         - auth/                   // 認証ドメイン（domain/application/infrastructure）
         - common/                 // 共有ドメインモデル（Email, ParsedEmail, Billing, Vendor, VendorResolutionPolicy 等）
@@ -38,7 +38,8 @@
         - mailfetch/              // メール取得 stage
         - mailanalysis/           // AI 解析 stage
         - vendorresolution/       // canonical Vendor 解決 stage
-        - manualmailworkflow/     // fetch -> analysis -> vendorresolution を束ねる workflow
+        - billingeligibility/     // Billing 成立可否判定 stage
+        - manualmailworkflow/     // fetch -> analysis -> vendorresolution -> billingeligibility を束ねる workflow
     </root_packages>
   </directory_structure>
 
@@ -65,6 +66,7 @@
     <application>
       - 配置:
         - `internal/{domain}/application`
+        - `internal/billingeligibility/application`
         - `internal/manualmailworkflow/application`
       - 役割:
         - ユースケース単位の入力検証、オーケストレーション、部分成功 / 部分失敗の集約を担当する。
@@ -74,7 +76,8 @@
           - `mailfetch/application`: 利用可能な連携解決、provider fetch、メール保存
           - `mailanalysis/application`: OpenAI 解析、`ParsedEmail` 永続化
           - `vendorresolution/application`: alias lookup、必要なら canonical Vendor 自動登録
-          - `manualmailworkflow/application`: `mailfetch -> mailanalysis -> vendorresolution` の同期実行
+          - `billingeligibility/application`: `ParsedEmail` と解決済み Vendor から Billing 成立可否を評価
+          - `manualmailworkflow/application`: `mailfetch -> mailanalysis -> vendorresolution -> billingeligibility` の同期実行
       - 注意点:
         - 現行の workflow は HTTP リクエスト内で同期的に最後まで実行される。fire-and-forget や専用ジョブキューは入っていない。
         - stage 単位の technical failure は `Failures` に集約し、業務上の unresolved は failure と分離する。
@@ -87,6 +90,7 @@
         - `internal/mailfetch/domain`
         - `internal/mailanalysis/domain`
         - `internal/vendorresolution/domain`
+        - `internal/billingeligibility/domain`
         - `internal/common/domain`
       - 役割:
         - ビジネスエンティティ、不変条件、値オブジェクト、policy を保持する。
@@ -117,7 +121,7 @@
     - 入口:
       - `POST /api/v1/manual-mail-workflows`
     - 実行順:
-      - `manualmailworkflow/application.UseCase` が `mailfetch`, `mailanalysis`, `vendorresolution` の各 stage を順に呼ぶ。
+      - `manualmailworkflow/application.UseCase` が `mailfetch`, `mailanalysis`, `vendorresolution`, `billingeligibility` の各 stage を順に呼ぶ。
     - `mailfetch`:
       - 利用可能な `MailAccountConnection` を解決する。
       - Gmail セッションを生成して provider からメールを取得する。
@@ -130,6 +134,9 @@
       - `ParsedEmail.vendorName` と source email の `subject` / `from` / `to` をもとに canonical Vendor を決定する。
       - unresolved なら candidate vendor 名から `vendors` と `name_exact` alias の自動補完を試す。
       - unresolved は業務結果として返し、technical failure とは分離する。
+    - `billingeligibility`:
+      - 解決済み Vendor と `ParsedEmail` をもとに Billing 成立可否を評価する。
+      - `billing_date` は任意として扱い、必須項目不足や不正値は `ineligible` または `failure` に分類する。
   </workflow>
 
   <context_management>

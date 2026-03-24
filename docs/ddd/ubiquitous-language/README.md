@@ -86,7 +86,7 @@ classDiagram
   VendorResolution --> Vendor : 解決
   ParsedEmail --> BillingEligibility : 成立判定
   BillingEligibility ..> VendorResolution : 解決結果を利用
-  BillingEligibility --> Billing : 生成
+  BillingEligibility ..> Billing : 成立対象を決める
 
   Billing --> Vendor : 支払先
   Billing --> PaymentCycle : 支払周期
