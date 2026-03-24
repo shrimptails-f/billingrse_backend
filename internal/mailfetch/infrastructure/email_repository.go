@@ -3,6 +3,7 @@ package infrastructure
 import (
 	cd "business/internal/common/domain"
 	"business/internal/library/logger"
+	"business/internal/library/timewrapper"
 	mfdomain "business/internal/mailfetch/domain"
 	"context"
 	"encoding/json"
@@ -39,18 +40,27 @@ func (emailRecord) TableName() string {
 
 // GormEmailRepositoryAdapter persists fetched email metadata into the emails table.
 type GormEmailRepositoryAdapter struct {
-	db  *gorm.DB
-	log logger.Interface
+	db    *gorm.DB
+	clock timewrapper.ClockInterface
+	log   logger.Interface
 }
 
 // NewGormEmailRepositoryAdapter creates a Gorm-backed email repository adapter.
-func NewGormEmailRepositoryAdapter(db *gorm.DB, log logger.Interface) *GormEmailRepositoryAdapter {
+func NewGormEmailRepositoryAdapter(
+	db *gorm.DB,
+	clock timewrapper.ClockInterface,
+	log logger.Interface,
+) *GormEmailRepositoryAdapter {
+	if clock == nil {
+		clock = timewrapper.NewClock()
+	}
 	if log == nil {
 		log = logger.NewNop()
 	}
 	return &GormEmailRepositoryAdapter{
-		db:  db,
-		log: log.With(logger.Component("manual_mail_fetch_email_repository")),
+		db:    db,
+		clock: clock,
+		log:   log.With(logger.Component("manual_mail_fetch_email_repository")),
 	}
 }
 
@@ -202,7 +212,7 @@ func (r *GormEmailRepositoryAdapter) savePreparedEmails(
 	runID := uuid.NewString()
 	externalMessageIDs := make([]string, 0, len(prepared))
 	records := make([]emailRecord, 0, len(prepared))
-	now := time.Now().UTC()
+	now := r.clock.Now().UTC()
 	for _, item := range prepared {
 		externalMessageIDs = append(externalMessageIDs, item.email.ExternalMessageID)
 		records = append(records, emailRecord{

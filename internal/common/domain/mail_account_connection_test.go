@@ -78,12 +78,13 @@ func TestMailAccountConnectionValidate(t *testing.T) {
 
 func TestMailAccountConnectionIsActive(t *testing.T) {
 	t.Parallel()
+	now := time.Date(2026, 3, 24, 10, 0, 0, 0, time.UTC)
 
 	t.Run("returns false when expires at is nil", func(t *testing.T) {
 		t.Parallel()
 
 		conn := MailAccountConnection{UserID: 1}
-		if conn.IsActive() {
+		if conn.IsActiveAt(now) {
 			t.Fatalf("expected IsActive to be false")
 		}
 	})
@@ -91,9 +92,9 @@ func TestMailAccountConnectionIsActive(t *testing.T) {
 	t.Run("returns true when expiry is sufficiently in the future", func(t *testing.T) {
 		t.Parallel()
 
-		expiresAt := time.Now().Add(OAuthStateExpirySafetyOffset + time.Second)
+		expiresAt := now.Add(OAuthStateExpirySafetyOffset + time.Second)
 		conn := MailAccountConnection{UserID: 1, OAuthStateExpiresAt: &expiresAt}
-		if !conn.IsActive() {
+		if !conn.IsActiveAt(now) {
 			t.Fatalf("expected IsActive to be true")
 		}
 	})
@@ -101,9 +102,9 @@ func TestMailAccountConnectionIsActive(t *testing.T) {
 	t.Run("returns false when expiry is within safety offset", func(t *testing.T) {
 		t.Parallel()
 
-		expiresAt := time.Now().Add(OAuthStateExpirySafetyOffset - time.Second)
+		expiresAt := now.Add(OAuthStateExpirySafetyOffset - time.Second)
 		conn := MailAccountConnection{UserID: 1, OAuthStateExpiresAt: &expiresAt}
-		if conn.IsActive() {
+		if conn.IsActiveAt(now) {
 			t.Fatalf("expected IsActive to be false")
 		}
 	})

@@ -2,6 +2,7 @@ package infrastructure
 
 import (
 	"business/internal/library/logger"
+	"business/internal/library/timewrapper"
 	madomain "business/internal/mailanalysis/domain"
 	"context"
 	"fmt"
@@ -37,19 +38,28 @@ func (parsedEmailRecord) TableName() string {
 
 // GormParsedEmailRepositoryAdapter persists ParsedEmail history into MySQL.
 type GormParsedEmailRepositoryAdapter struct {
-	db  *gorm.DB
-	log logger.Interface
+	db    *gorm.DB
+	clock timewrapper.ClockInterface
+	log   logger.Interface
 }
 
 // NewGormParsedEmailRepositoryAdapter creates a Gorm-backed ParsedEmail repository.
-func NewGormParsedEmailRepositoryAdapter(db *gorm.DB, log logger.Interface) *GormParsedEmailRepositoryAdapter {
+func NewGormParsedEmailRepositoryAdapter(
+	db *gorm.DB,
+	clock timewrapper.ClockInterface,
+	log logger.Interface,
+) *GormParsedEmailRepositoryAdapter {
+	if clock == nil {
+		clock = timewrapper.NewClock()
+	}
 	if log == nil {
 		log = logger.NewNop()
 	}
 
 	return &GormParsedEmailRepositoryAdapter{
-		db:  db,
-		log: log.With(logger.Component("parsed_email_repository")),
+		db:    db,
+		clock: clock,
+		log:   log.With(logger.Component("parsed_email_repository")),
 	}
 }
 
@@ -75,7 +85,7 @@ func (r *GormParsedEmailRepositoryAdapter) SaveAll(ctx context.Context, input ma
 		reqLog = withContext
 	}
 
-	now := time.Now().UTC()
+	now := r.clock.Now().UTC()
 	records := make([]parsedEmailRecord, 0, len(input.ParsedEmails))
 	for idx, parsedEmail := range input.ParsedEmails {
 		parsed := parsedEmail.WithExtractedAt(input.ExtractedAt)

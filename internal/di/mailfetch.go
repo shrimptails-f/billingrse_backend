@@ -5,6 +5,7 @@ import (
 	"business/internal/library/gmail"
 	"business/internal/library/gmailService"
 	"business/internal/library/logger"
+	"business/internal/library/timewrapper"
 	macinfra "business/internal/mailaccountconnection/infrastructure"
 	mfapp "business/internal/mailfetch/application"
 	mfinfra "business/internal/mailfetch/infrastructure"
@@ -15,8 +16,12 @@ import (
 
 // ProvideMailFetchDependencies registers manualmailfetch stage dependencies.
 func ProvideMailFetchDependencies(container *dig.Container) {
-	_ = container.Provide(func(db *gorm.DB, log *logger.Logger) *mfinfra.GormEmailRepositoryAdapter {
-		return mfinfra.NewGormEmailRepositoryAdapter(db, log)
+	_ = container.Provide(func(
+		db *gorm.DB,
+		clock *timewrapper.Clock,
+		log *logger.Logger,
+	) *mfinfra.GormEmailRepositoryAdapter {
+		return mfinfra.NewGormEmailRepositoryAdapter(db, clock, log)
 	})
 
 	_ = container.Provide(func(repo *macinfra.Repository, log *logger.Logger) *mfinfra.MailAccountConnectionReaderAdapter {
