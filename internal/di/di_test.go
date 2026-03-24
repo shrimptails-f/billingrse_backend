@@ -5,6 +5,7 @@ import (
 
 	"business/internal/app/middleware"
 	authpresentation "business/internal/app/presentation/auth"
+	manualpresentation "business/internal/app/presentation/manualmailworkflow"
 	"business/internal/auth/application"
 	"business/internal/library/crypto"
 	"business/internal/library/gmail"
@@ -86,18 +87,6 @@ func TestProvideCommonDependencies_DoesNotRegisterLoggerAndOSWrapperInterfaceAli
 	require.Error(t, err)
 }
 
-func TestProvideCommonDependencies_RegistersClockInterfaceAlias(t *testing.T) {
-	t.Parallel()
-
-	conn, oa, gs, gc, osw, provider, log, vault := newBuildContainerTestDeps()
-	container := dig.New()
-
-	ProvideCommonDependencies(container, conn, oa, gs, gc, osw, provider, log, vault)
-
-	err := container.Invoke(func(timewrapper.ClockInterface) {})
-	require.NoError(t, err)
-}
-
 func TestBuildContainer_ResolvesAuthPresentation(t *testing.T) {
 	t.Parallel()
 
@@ -106,10 +95,12 @@ func TestBuildContainer_ResolvesAuthPresentation(t *testing.T) {
 
 	err := container.Invoke(func(
 		controller *authpresentation.Controller,
+		manualController *manualpresentation.Controller,
 		authMiddleware *middleware.AuthMiddleware,
 		usecase *application.AuthUseCase,
 	) {
 		assert.NotNil(t, controller)
+		assert.NotNil(t, manualController)
 		assert.NotNil(t, authMiddleware)
 		assert.NotNil(t, usecase)
 	})

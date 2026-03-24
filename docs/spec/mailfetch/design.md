@@ -230,7 +230,7 @@ sequenceDiagram
 10. provider 取得の部分失敗と、batch 保存から返る保存失敗を `Failures` に集約して返す。
 
 補足:
-- `mailfetch` は `emailanalysis` を直接呼ばない。
+- `mailfetch` は `mailanalysis` を直接呼ばない。
 - `manualmailworkflow` は通常 `CreatedEmails` を次段へ流し、`CreatedEmailIDs` は保存済み Email 参照に使う。
 
 ## 8. Gmail adapter 設計

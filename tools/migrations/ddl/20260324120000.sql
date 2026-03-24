@@ -1,0 +1,25 @@
+-- Create "parsed_emails" table for append-only mailanalysis history
+CREATE TABLE `parsed_emails` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` bigint unsigned NOT NULL,
+  `email_id` bigint unsigned NOT NULL,
+  `analysis_run_id` char(36) NOT NULL,
+  `position` int NOT NULL,
+  `product_name_raw` text NULL,
+  `product_name_display` varchar(255) NULL,
+  `vendor_name` text NULL,
+  `billing_number` varchar(255) NULL,
+  `invoice_number` varchar(14) NULL,
+  `amount` decimal(18,3) NULL,
+  `currency` char(3) NULL,
+  `billing_date` datetime(3) NULL,
+  `payment_cycle` varchar(32) NULL,
+  `extracted_at` datetime(3) NOT NULL,
+  `prompt_version` varchar(50) NOT NULL,
+  `created_at` datetime(3) NOT NULL,
+  `updated_at` datetime(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `idx_parsed_emails_user_email` (`user_id`, `email_id`),
+  INDEX `idx_parsed_emails_analysis_run` (`analysis_run_id`),
+  UNIQUE INDEX `uni_parsed_emails_run_position` (`analysis_run_id`, `position`)
+) CHARSET utf8mb4 COLLATE utf8mb4_0900_ai_ci;

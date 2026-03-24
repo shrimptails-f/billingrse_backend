@@ -23,7 +23,7 @@
   <naming_conventions>
     <common>
       - 変数／関数は camelCase、公開識別子は PascalCase。
-      - import alias は lowerCamelCase（例: `emailanalysisapp`, `gc`, `gs`, `cd`）。
+      - import alias は lowerCamelCase（例: `mailanalysisapp`, `gc`, `gs`, `cd`）。
       - 複数形は `List` を付与（`agentList`, `ListAgentsResponse`）。
       - 関数動詞は既存規約（`GetXxx`, `SaveXxx`, `UpdateXxx`, `ListXxx`, `CreateXxx`）に揃える。
       - interface 名はパッケージ既存の命名を踏襲しつつ、移行可能であれば `FooUseCase`（interface）＋`fooUseCase`（具象 struct）形式へ段階的に寄せてもよい。既存コードの互換性を壊さない範囲で徐々に統一する。
@@ -57,7 +57,7 @@
     </doc_comments>
 
     <error_handling>
-      - 想定される失敗は型付きエラー（`application.ErrInvalidCredentials`, `emailanalysisapp.ErrCredentialNotFound` 等）で返し、`fmt.Errorf("component: %w", err)` で原因をラップする。
+      - 想定される失敗は型付きエラー（`application.ErrInvalidCredentials`, `mailanalysisapp.ErrCredentialNotFound` 等）で返し、`fmt.Errorf("component: %w", err)` で原因をラップする。
       - ランタイムで `panic` しない。`error` を返して呼び出し元（Controller 等）で HTTP ステータスにマッピングする。
       - Controller / Middleware でエラーからレスポンスを組み立てる実装を統一的に保つ。
     </error_handling>
@@ -67,7 +67,7 @@
     </logging>
 
     <context_handling>
-      - application / messaging の公開メソッドは先頭に `context.Context` を受け取る。HTTP リクエストより長生きさせたい処理のみ `context.WithoutCancel` を利用する（emailanalysis 参照）。
+      - application / messaging の公開メソッドは先頭に `context.Context` を受け取る。HTTP リクエストより長生きさせたい処理のみ `context.WithoutCancel` を利用する（mailanalysis 参照）。
     </context_handling>
 
     <transactions>
@@ -89,6 +89,6 @@
     - 複数パターンを検証する場合はテーブルドリブンテストを推奨。
     - MySQL を用いるテストは `mysql.CreateNewTestDB()` を使い、戻り値のクリーンアップ関数で DB を削除する。必要に応じて `mysql.Transactional` でトランザクションを張る。
     - 既に testify の `assert` / `require` / `mock` を使用しているパッケージではそれに従い、新規パッケージは標準ライブラリ or testify いずれかを選んで統一する。
-    - モック/フェイクはテストファイル内に配置し（例: `mockEmailAnalysisUseCase`）、依存を局所化する。
+    - モック/フェイクはテストファイル内に配置し（例: `mockMailAnalysisUseCase`）、依存を局所化する。
   </testing_rules>
 </code_editing_rules>

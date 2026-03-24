@@ -1,0 +1,206 @@
+package manualmailworkflow
+
+import (
+	"business/internal/app/httpresponse"
+	"business/internal/library/logger"
+	mfdomain "business/internal/mailfetch/domain"
+	manualapp "business/internal/manualmailworkflow/application"
+	"errors"
+	"net/http"
+	"time"
+
+	"github.com/gin-gonic/gin"
+)
+
+// Controller handles manual mail workflow HTTP requests.
+type Controller struct {
+	usecase manualapp.UseCase
+	log     logger.Interface
+}
+
+// NewController creates a new Controller.
+func NewController(usecase manualapp.UseCase, log logger.Interface) *Controller {
+	if log == nil {
+		log = logger.NewNop()
+	}
+
+	return &Controller{
+		usecase: usecase,
+		log:     log.With(logger.Component("manual_mail_workflow_controller")),
+	}
+}
+
+type executeRequest struct {
+	ConnectionID uint      `json:"connection_id" binding:"required"`
+	LabelName    string    `json:"label_name" binding:"required"`
+	Since        time.Time `json:"since" binding:"required"`
+	Until        time.Time `json:"until" binding:"required"`
+}
+
+type executeResponse struct {
+	Message  string                  `json:"message"`
+	Fetch    fetchSummaryResponse    `json:"fetch"`
+	Analysis analysisSummaryResponse `json:"analysis"`
+}
+
+type fetchSummaryResponse struct {
+	Provider            string                 `json:"provider"`
+	AccountIdentifier   string                 `json:"account_identifier"`
+	MatchedMessageCount int                    `json:"matched_message_count"`
+	CreatedEmailCount   int                    `json:"created_email_count"`
+	CreatedEmailIDs     []uint                 `json:"created_email_ids"`
+	ExistingEmailCount  int                    `json:"existing_email_count"`
+	ExistingEmailIDs    []uint                 `json:"existing_email_ids"`
+	FailureCount        int                    `json:"failure_count"`
+	Failures            []fetchFailureResponse `json:"failures"`
+}
+
+type fetchFailureResponse struct {
+	ExternalMessageID string `json:"external_message_id"`
+	Stage             string `json:"stage"`
+	Code              string `json:"code"`
+}
+
+type analysisSummaryResponse struct {
+	AnalyzedEmailCount int                       `json:"analyzed_email_count"`
+	ParsedEmailCount   int                       `json:"parsed_email_count"`
+	ParsedEmailIDs     []uint                    `json:"parsed_email_ids"`
+	FailureCount       int                       `json:"failure_count"`
+	Failures           []analysisFailureResponse `json:"failures"`
+}
+
+type analysisFailureResponse struct {
+	EmailID           uint   `json:"email_id"`
+	ExternalMessageID string `json:"external_message_id"`
+	Stage             string `json:"stage"`
+	Code              string `json:"code"`
+}
+
+// Execute handles POST /api/v1/manual-mail-workflows.
+func (ctrl *Controller) Execute(c *gin.Context) {
+	reqLog := ctrl.log
+	if l, err := ctrl.log.WithContext(c.Request.Context()); err == nil {
+		reqLog = l
+	}
+
+	uid, ok := currentUserID(c)
+	if !ok {
+		return
+	}
+
+	var req executeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpresponse.WriteInvalidRequest(c)
+		return
+	}
+
+	result, err := ctrl.usecase.Execute(c.Request.Context(), manualapp.Command{
+		UserID:       uid,
+		ConnectionID: req.ConnectionID,
+		Condition: manualapp.FetchCondition{
+			LabelName: req.LabelName,
+			Since:     req.Since,
+			Until:     req.Until,
+		},
+	})
+	if err != nil {
+		ctrl.writeExecutionError(c, reqLog, uid, req.ConnectionID, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, executeResponse{
+		Message:  "メール取得ワークフローが完了しました。",
+		Fetch:    buildFetchSummaryResponse(result.Fetch),
+		Analysis: buildAnalysisSummaryResponse(result.Analysis),
+	})
+}
+
+func (ctrl *Controller) writeExecutionError(c *gin.Context, reqLog logger.Interface, userID, connectionID uint, err error) {
+	switch {
+	case errors.Is(err, manualapp.ErrInvalidCommand), errors.Is(err, manualapp.ErrFetchConditionInvalid), errors.Is(err, mfdomain.ErrInvalidCommand), errors.Is(err, mfdomain.ErrFetchConditionInvalid):
+		httpresponse.WriteInvalidRequest(c)
+	case errors.Is(err, mfdomain.ErrConnectionNotFound):
+		httpresponse.WriteError(c, http.StatusNotFound, "mail_account_connection_not_found", "対象のメール連携は見つかりません。")
+	case errors.Is(err, mfdomain.ErrConnectionUnavailable):
+		httpresponse.WriteError(c, http.StatusForbidden, "mail_account_connection_unavailable", "対象のメール連携は現在利用できません。")
+	case errors.Is(err, mfdomain.ErrProviderLabelNotFound):
+		httpresponse.WriteError(c, http.StatusBadRequest, "mail_label_not_found", "指定したラベルは見つかりません。")
+	case errors.Is(err, mfdomain.ErrProviderSessionBuildFailed), errors.Is(err, mfdomain.ErrProviderListFailed):
+		httpresponse.WriteServiceUnavailable(c, "mail_provider_unavailable", "メールプロバイダへの接続に失敗しました。しばらくしてから再度お試しください。")
+	default:
+		reqLog.Error("manual_mail_workflow_failed",
+			logger.UserID(userID),
+			logger.Uint("connection_id", connectionID),
+			logger.Err(err),
+		)
+		httpresponse.WriteInternalServerError(c)
+	}
+}
+
+func buildFetchSummaryResponse(result manualapp.FetchResult) fetchSummaryResponse {
+	createdEmailIDs := make([]uint, 0, len(result.CreatedEmailIDs))
+	createdEmailIDs = append(createdEmailIDs, result.CreatedEmailIDs...)
+
+	existingEmailIDs := make([]uint, 0, len(result.ExistingEmailIDs))
+	existingEmailIDs = append(existingEmailIDs, result.ExistingEmailIDs...)
+
+	failures := make([]fetchFailureResponse, 0, len(result.Failures))
+	for _, failure := range result.Failures {
+		failures = append(failures, fetchFailureResponse{
+			ExternalMessageID: failure.ExternalMessageID,
+			Stage:             failure.Stage,
+			Code:              failure.Code,
+		})
+	}
+
+	return fetchSummaryResponse{
+		Provider:            result.Provider,
+		AccountIdentifier:   result.AccountIdentifier,
+		MatchedMessageCount: result.MatchedMessageCount,
+		CreatedEmailCount:   len(result.CreatedEmailIDs),
+		CreatedEmailIDs:     createdEmailIDs,
+		ExistingEmailCount:  len(result.ExistingEmailIDs),
+		ExistingEmailIDs:    existingEmailIDs,
+		FailureCount:        len(result.Failures),
+		Failures:            failures,
+	}
+}
+
+func buildAnalysisSummaryResponse(result manualapp.AnalyzeResult) analysisSummaryResponse {
+	parsedEmailIDs := make([]uint, 0, len(result.ParsedEmailIDs))
+	parsedEmailIDs = append(parsedEmailIDs, result.ParsedEmailIDs...)
+
+	failures := make([]analysisFailureResponse, 0, len(result.Failures))
+	for _, failure := range result.Failures {
+		failures = append(failures, analysisFailureResponse{
+			EmailID:           failure.EmailID,
+			ExternalMessageID: failure.ExternalMessageID,
+			Stage:             failure.Stage,
+			Code:              failure.Code,
+		})
+	}
+
+	return analysisSummaryResponse{
+		AnalyzedEmailCount: result.AnalyzedEmailCount,
+		ParsedEmailCount:   result.ParsedEmailCount,
+		ParsedEmailIDs:     parsedEmailIDs,
+		FailureCount:       len(result.Failures),
+		Failures:           failures,
+	}
+}
+
+func currentUserID(c *gin.Context) (uint, bool) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		httpresponse.WriteError(c, http.StatusUnauthorized, "unauthorized", "認証が必要です。")
+		return 0, false
+	}
+
+	uid, ok := userID.(uint)
+	if !ok {
+		httpresponse.WriteInternalServerError(c)
+		return 0, false
+	}
+
+	return uid, true
+}

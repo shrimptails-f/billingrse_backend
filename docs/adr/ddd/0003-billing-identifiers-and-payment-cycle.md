@@ -32,7 +32,8 @@ InvoiceNumber の意味が曖昧だった。インボイス番号を持たない
 - 請求成立の必須項目は「Vendor + 金額（通貨含む） + 請求日 + 支払周期 + 請求番号」とする。
 - 支払いの分類は PaymentType ではなく PaymentCycle（単発/定期）を採用する。
 - ParsedEmail の推定項目は以下に整理する。
-  - vendorName, billingNumber, invoiceNumber, amount, currency, billingDate, paymentCycle, extractedAt
+  - productNameRaw, productNameDisplay, vendorName, billingNumber, invoiceNumber, amount, currency, billingDate, paymentCycle
+  - extractedAt は推定項目ではなく、保存時にシステム側で付与する metadata とする。
   - amount は小数第3位までの数値を許容する。
 - Money は float ではなく decimal を採用し、小数第3位までのスケールを保証する。
 - 通貨コードは ISO 4217 の3文字コードを前提としつつ、当面は JPY / USD のみ許容する。
