@@ -12,8 +12,7 @@
 - 今後 `BillingEligibility` や `Billing` を実装するときに、その前段として再利用できる vendor 正規化処理を用意する。
 
 ## 機能要件
-- `VendorResolution` は `user_id` と `parsed_email_ids` を入力として処理できること。
-- 各 `parsed_email_id` から対象 `ParsedEmail` を読み込み、対応する元 `Email` を取得できること。
+- `VendorResolution` は `user_id` と、保存済み `ParsedEmail` 実体および source email の必要メタデータをまとめた入力を受けて処理できること。
 - `VendorResolution` は `ParsedEmail.vendorName` を候補値として扱い、canonical `Vendor` と同一視しないこと。
 - `VendorResolution` は少なくとも以下の保存済み情報を使って解決できること。
   - `ParsedEmail` の候補値
@@ -33,6 +32,8 @@
   - どのルールで解決したかを示す `matched_by`
 - 1 回の実行内で複数 `ParsedEmail` を処理でき、部分成功・部分失敗を扱えること。
 - vendor 解決ルールは将来の alias 追加や既知マッピング拡張に耐えられること。
+- unresolved の candidate vendor 名から、`Vendor` と `name_exact` alias を自動補完できること。
+- 自動補完は `sender_domain` / `sender_name` / `subject_keyword` には適用しないこと。
 
 ## 非機能要件
 - 責務配置は `mailanalysis` へ逆流させないこと。
@@ -47,7 +48,7 @@
 ## 制約事項
 - 現行 `manualmailworkflow` は `fetch -> analysis` までしか実装されていない。
 - 現行リポジトリには vendor 永続化実装がまだ存在しない。
-- `internal/common/domain` には `Vendor` と `VendorResolution` の基本モデルはあるが、解決ルール本体は未実装である。
+- `internal/common/domain` に DDD のモデルを集約する運用である。
 - `emails` テーブルには本文が保存されないため、`VendorResolution` は本文なしでも動作しなければならない。
 
 ## 確定事項
@@ -63,7 +64,9 @@
 - `subject` 補助判定は最長一致優先とし、同長で複数 vendor に競合した場合は unresolved とする。
 - vendor 未解決時の監査は初期は構造化ログのみとする。
 - `vendor_aliases` は同じ `alias_type + normalized_value` を複数 vendor に持てる設計とする。
-- `name_exact` / `sender_domain` / `sender_name` の alias 競合時は resolver が `created_at DESC, id DESC` で 1 件選ぶ。
+- `name_exact` / `sender_domain` / `sender_name` の alias 競合時は domain policy が `created_at DESC, id DESC` で 1 件選ぶ。
+- 判定ルールと自動登録ルールは `internal/common/domain/vendor_resolution.go` に置く。
+- `internal/vendorresolution/infrastructure` は判定材料の収集と保存だけを担当する repository とする。
 - ユーザー単位の上書きルールは初期スコープに含めず、後続エンハンスとする。
 
 ## 成功条件

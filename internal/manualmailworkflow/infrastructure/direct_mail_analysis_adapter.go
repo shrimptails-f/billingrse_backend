@@ -7,17 +7,17 @@ import (
 	"errors"
 )
 
-// DirectMailAnalysisAdapter invokes the mailanalysis use case directly.
+// DirectMailAnalysisAdapter は mailanalysis usecase を直接呼び出す。
 type DirectMailAnalysisAdapter struct {
 	usecase maapp.UseCase
 }
 
-// NewDirectMailAnalysisAdapter creates a direct mailanalysis adapter.
+// NewDirectMailAnalysisAdapter は direct な mailanalysis adapter を生成する。
 func NewDirectMailAnalysisAdapter(usecase maapp.UseCase) *DirectMailAnalysisAdapter {
 	return &DirectMailAnalysisAdapter{usecase: usecase}
 }
 
-// Execute runs the mailanalysis stage and converts its result into workflow-owned types.
+// Execute は mailanalysis stage を実行し、workflow 側の型へ変換する。
 func (a *DirectMailAnalysisAdapter) Execute(ctx context.Context, cmd manualapp.AnalyzeCommand) (manualapp.AnalyzeResult, error) {
 	if a.usecase == nil {
 		return manualapp.AnalyzeResult{}, errors.New("mailanalysis usecase is not configured")
@@ -47,6 +47,19 @@ func (a *DirectMailAnalysisAdapter) Execute(ctx context.Context, cmd manualapp.A
 	parsedEmailIDs := make([]uint, 0, len(result.ParsedEmailIDs))
 	parsedEmailIDs = append(parsedEmailIDs, result.ParsedEmailIDs...)
 
+	parsedEmails := make([]manualapp.ParsedEmail, 0, len(result.ParsedEmails))
+	for _, parsedEmail := range result.ParsedEmails {
+		parsedEmails = append(parsedEmails, manualapp.ParsedEmail{
+			ParsedEmailID:     parsedEmail.ParsedEmailID,
+			EmailID:           parsedEmail.EmailID,
+			ExternalMessageID: parsedEmail.ExternalMessageID,
+			Subject:           parsedEmail.Subject,
+			From:              parsedEmail.From,
+			To:                append([]string{}, parsedEmail.To...),
+			Data:              parsedEmail.ParsedEmail,
+		})
+	}
+
 	failures := make([]manualapp.AnalysisFailure, 0, len(result.Failures))
 	for _, failure := range result.Failures {
 		failures = append(failures, manualapp.AnalysisFailure{
@@ -59,6 +72,7 @@ func (a *DirectMailAnalysisAdapter) Execute(ctx context.Context, cmd manualapp.A
 
 	return manualapp.AnalyzeResult{
 		ParsedEmailIDs:     parsedEmailIDs,
+		ParsedEmails:       parsedEmails,
 		AnalyzedEmailCount: result.AnalyzedEmailCount,
 		ParsedEmailCount:   result.ParsedEmailCount,
 		Failures:           failures,

@@ -1,6 +1,7 @@
 package application
 
 import (
+	commondomain "business/internal/common/domain"
 	"business/internal/library/logger"
 	"business/internal/library/timewrapper"
 	"business/internal/mailanalysis/domain"
@@ -13,27 +14,27 @@ import (
 	"github.com/google/uuid"
 )
 
-// AnalyzerSpec describes the context used to resolve an analyzer implementation.
+// AnalyzerSpec は analyzer 実装を選ぶための実行コンテキスト。
 type AnalyzerSpec struct {
 	UserID uint
 }
 
-// AnalyzerFactory creates analyzers for the current execution.
+// AnalyzerFactory は現在の実行に使う analyzer を生成する。
 type AnalyzerFactory interface {
 	Create(ctx context.Context, spec AnalyzerSpec) (Analyzer, error)
 }
 
-// Analyzer runs the AI analysis and returns normalized drafts.
+// Analyzer は AI 解析を実行し、正規化済みの draft を返す。
 type Analyzer interface {
 	Analyze(ctx context.Context, email EmailForAnalysisTarget) (domain.AnalysisOutput, error)
 }
 
-// ParsedEmailRepository persists ParsedEmail history records.
+// ParsedEmailRepository は ParsedEmail の履歴を永続化する。
 type ParsedEmailRepository interface {
 	SaveAll(ctx context.Context, input domain.SaveInput) ([]domain.ParsedEmailRecord, error)
 }
 
-// EmailForAnalysisTarget is the workflow boundary DTO consumed by mailanalysis.
+// EmailForAnalysisTarget は mailanalysis が受け取る workflow 境界 DTO。
 type EmailForAnalysisTarget struct {
 	EmailID           uint
 	ExternalMessageID string
@@ -44,7 +45,7 @@ type EmailForAnalysisTarget struct {
 	Body              string
 }
 
-// Normalize trims string fields and recipient values.
+// Normalize は文字列項目と宛先一覧を整形する。
 func (e EmailForAnalysisTarget) Normalize() EmailForAnalysisTarget {
 	e.ExternalMessageID = strings.TrimSpace(e.ExternalMessageID)
 	e.Subject = strings.TrimSpace(e.Subject)
@@ -64,7 +65,7 @@ func (e EmailForAnalysisTarget) Normalize() EmailForAnalysisTarget {
 	return e
 }
 
-// Validate enforces the minimum invariants for analyzer input.
+// Validate は analyzer 入力に必要な最小不変条件を検証する。
 func (e EmailForAnalysisTarget) Validate() error {
 	if e.EmailID == 0 {
 		return fmt.Errorf("%w: email_id is required", domain.ErrEmailForAnalysisInvalid)
@@ -78,21 +79,33 @@ func (e EmailForAnalysisTarget) Validate() error {
 	return nil
 }
 
-// Command is the input contract for the mailanalysis stage.
+// Command は mailanalysis stage の入力。
 type Command struct {
 	UserID uint
 	Emails []EmailForAnalysisTarget
 }
 
-// Result is the output contract for the mailanalysis stage.
+// ParsedEmailResultItem は保存済み ParsedEmail と source email の必要情報をまとめたもの。
+type ParsedEmailResultItem struct {
+	ParsedEmailID     uint
+	EmailID           uint
+	ExternalMessageID string
+	Subject           string
+	From              string
+	To                []string
+	ParsedEmail       commondomain.ParsedEmail
+}
+
+// Result は mailanalysis stage の出力。
 type Result struct {
 	ParsedEmailIDs     []uint
+	ParsedEmails       []ParsedEmailResultItem
 	AnalyzedEmailCount int
 	ParsedEmailCount   int
 	Failures           []domain.MessageFailure
 }
 
-// UseCase executes the mailanalysis stage.
+// UseCase は mailanalysis stage を実行する。
 type UseCase interface {
 	Execute(ctx context.Context, cmd Command) (Result, error)
 }
@@ -104,7 +117,7 @@ type useCase struct {
 	log             logger.Interface
 }
 
-// NewUseCase creates a mailanalysis use case.
+// NewUseCase は mailanalysis の usecase を生成する。
 func NewUseCase(
 	clock timewrapper.ClockInterface,
 	analyzerFactory AnalyzerFactory,
@@ -126,7 +139,7 @@ func NewUseCase(
 	}
 }
 
-// Execute validates the command, analyzes each email, and persists ParsedEmail history.
+// Execute は入力検証、AI 解析、ParsedEmail 履歴保存を順に実行する。
 func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 	if ctx == nil {
 		return Result{}, logger.ErrNilContext
@@ -216,6 +229,27 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 
 		for _, record := range records {
 			result.ParsedEmailIDs = append(result.ParsedEmailIDs, record.ID)
+		}
+		// SaveAll の返却順は analyzer の出力順と同じ前提で、保存済み ID を ParsedEmail にひも付ける。
+		for idx, record := range records {
+			if idx >= len(output.ParsedEmails) {
+				reqLog.Error("parsed_email_record_count_mismatch",
+					logger.UserID(cmd.UserID),
+					logger.Uint("email_id", email.EmailID),
+					logger.Int("saved_record_count", len(records)),
+					logger.Int("analyzed_parsed_email_count", len(output.ParsedEmails)),
+				)
+				break
+			}
+			result.ParsedEmails = append(result.ParsedEmails, ParsedEmailResultItem{
+				ParsedEmailID:     record.ID,
+				EmailID:           record.EmailID,
+				ExternalMessageID: email.ExternalMessageID,
+				Subject:           email.Subject,
+				From:              email.From,
+				To:                append([]string(nil), email.To...),
+				ParsedEmail:       output.ParsedEmails[idx],
+			})
 		}
 		result.ParsedEmailCount += len(records)
 	}

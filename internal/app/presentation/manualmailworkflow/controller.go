@@ -38,9 +38,10 @@ type executeRequest struct {
 }
 
 type executeResponse struct {
-	Message  string                  `json:"message"`
-	Fetch    fetchSummaryResponse    `json:"fetch"`
-	Analysis analysisSummaryResponse `json:"analysis"`
+	Message          string                          `json:"message"`
+	Fetch            fetchSummaryResponse            `json:"fetch"`
+	Analysis         analysisSummaryResponse         `json:"analysis"`
+	VendorResolution vendorResolutionSummaryResponse `json:"vendor_resolution"`
 }
 
 type fetchSummaryResponse struct {
@@ -70,6 +71,32 @@ type analysisSummaryResponse struct {
 }
 
 type analysisFailureResponse struct {
+	EmailID           uint   `json:"email_id"`
+	ExternalMessageID string `json:"external_message_id"`
+	Stage             string `json:"stage"`
+	Code              string `json:"code"`
+}
+
+type vendorResolutionSummaryResponse struct {
+	ResolvedCount                int                               `json:"resolved_count"`
+	ResolvedItems                []vendorResolutionResolvedItem    `json:"resolved_items"`
+	UnresolvedCount              int                               `json:"unresolved_count"`
+	UnresolvedExternalMessageIDs []string                          `json:"unresolved_external_message_ids"`
+	FailureCount                 int                               `json:"failure_count"`
+	Failures                     []vendorResolutionFailureResponse `json:"failures"`
+}
+
+type vendorResolutionResolvedItem struct {
+	ParsedEmailID     uint   `json:"parsed_email_id"`
+	EmailID           uint   `json:"email_id"`
+	ExternalMessageID string `json:"external_message_id"`
+	VendorID          uint   `json:"vendor_id"`
+	VendorName        string `json:"vendor_name"`
+	MatchedBy         string `json:"matched_by"`
+}
+
+type vendorResolutionFailureResponse struct {
+	ParsedEmailID     uint   `json:"parsed_email_id"`
 	EmailID           uint   `json:"email_id"`
 	ExternalMessageID string `json:"external_message_id"`
 	Stage             string `json:"stage"`
@@ -109,9 +136,10 @@ func (ctrl *Controller) Execute(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, executeResponse{
-		Message:  "メール取得ワークフローが完了しました。",
-		Fetch:    buildFetchSummaryResponse(result.Fetch),
-		Analysis: buildAnalysisSummaryResponse(result.Analysis),
+		Message:          "メール取得ワークフローが完了しました。",
+		Fetch:            buildFetchSummaryResponse(result.Fetch),
+		Analysis:         buildAnalysisSummaryResponse(result.Analysis),
+		VendorResolution: buildVendorResolutionSummaryResponse(result.VendorResolution),
 	})
 }
 
@@ -186,6 +214,43 @@ func buildAnalysisSummaryResponse(result manualapp.AnalyzeResult) analysisSummar
 		ParsedEmailIDs:     parsedEmailIDs,
 		FailureCount:       len(result.Failures),
 		Failures:           failures,
+	}
+}
+
+func buildVendorResolutionSummaryResponse(result manualapp.VendorResolutionResult) vendorResolutionSummaryResponse {
+	resolvedItems := make([]vendorResolutionResolvedItem, 0, len(result.ResolvedItems))
+	for _, item := range result.ResolvedItems {
+		resolvedItems = append(resolvedItems, vendorResolutionResolvedItem{
+			ParsedEmailID:     item.ParsedEmailID,
+			EmailID:           item.EmailID,
+			ExternalMessageID: item.ExternalMessageID,
+			VendorID:          item.VendorID,
+			VendorName:        item.VendorName,
+			MatchedBy:         item.MatchedBy,
+		})
+	}
+
+	unresolvedExternalMessageIDs := make([]string, 0, len(result.UnresolvedExternalMessageIDs))
+	unresolvedExternalMessageIDs = append(unresolvedExternalMessageIDs, result.UnresolvedExternalMessageIDs...)
+
+	failures := make([]vendorResolutionFailureResponse, 0, len(result.Failures))
+	for _, failure := range result.Failures {
+		failures = append(failures, vendorResolutionFailureResponse{
+			ParsedEmailID:     failure.ParsedEmailID,
+			EmailID:           failure.EmailID,
+			ExternalMessageID: failure.ExternalMessageID,
+			Stage:             failure.Stage,
+			Code:              failure.Code,
+		})
+	}
+
+	return vendorResolutionSummaryResponse{
+		ResolvedCount:                result.ResolvedCount,
+		ResolvedItems:                resolvedItems,
+		UnresolvedCount:              result.UnresolvedCount,
+		UnresolvedExternalMessageIDs: unresolvedExternalMessageIDs,
+		FailureCount:                 len(result.Failures),
+		Failures:                     failures,
 	}
 }
 

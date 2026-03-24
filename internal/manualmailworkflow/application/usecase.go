@@ -1,6 +1,7 @@
 package application
 
 import (
+	commondomain "business/internal/common/domain"
 	"business/internal/library/logger"
 	"context"
 	"errors"
@@ -10,26 +11,26 @@ import (
 )
 
 var (
-	// ErrInvalidCommand is returned when required workflow command fields are missing.
+	// ErrInvalidCommand は workflow の必須入力が不足しているときに返る。
 	ErrInvalidCommand = errors.New("manual mail workflow command is invalid")
-	// ErrFetchConditionInvalid is returned when the workflow fetch condition is malformed.
+	// ErrFetchConditionInvalid は fetch 条件が不正なときに返る。
 	ErrFetchConditionInvalid = errors.New("manual mail workflow fetch condition is invalid")
 )
 
-// FetchCondition represents the mail-fetch condition accepted by the workflow endpoint.
+// FetchCondition は workflow endpoint が受け取るメール取得条件。
 type FetchCondition struct {
 	LabelName string
 	Since     time.Time
 	Until     time.Time
 }
 
-// Normalize trims free-form fields while preserving timestamps.
+// Normalize は文字列だけを整形し、時刻はそのまま保持する。
 func (c FetchCondition) Normalize() FetchCondition {
 	c.LabelName = strings.TrimSpace(c.LabelName)
 	return c
 }
 
-// Validate enforces the minimum fetch-condition invariants for the workflow.
+// Validate は workflow で必要な fetch 条件の最小不変条件を検証する。
 func (c FetchCondition) Validate() error {
 	normalized := c.Normalize()
 	if normalized.LabelName == "" {
@@ -47,14 +48,14 @@ func (c FetchCondition) Validate() error {
 	return nil
 }
 
-// Command is the input contract for the manual mail workflow.
+// Command は manual mail workflow の入力。
 type Command struct {
 	UserID       uint
 	ConnectionID uint
 	Condition    FetchCondition
 }
 
-// CreatedEmail is the workflow-internal payload passed from fetch to analysis.
+// CreatedEmail は fetch から analysis に渡す workflow 内部 payload。
 type CreatedEmail struct {
 	EmailID           uint
 	ExternalMessageID string
@@ -65,14 +66,14 @@ type CreatedEmail struct {
 	Body              string
 }
 
-// FetchFailure describes a partial failure returned from the fetch stage.
+// FetchFailure は fetch stage から返る部分失敗。
 type FetchFailure struct {
 	ExternalMessageID string
 	Stage             string
 	Code              string
 }
 
-// AnalysisFailure describes a partial failure returned from the analysis stage.
+// AnalysisFailure は analysis stage から返る部分失敗。
 type AnalysisFailure struct {
 	EmailID           uint
 	ExternalMessageID string
@@ -80,7 +81,7 @@ type AnalysisFailure struct {
 	Code              string
 }
 
-// FetchResult is the normalized output contract of the fetch stage.
+// FetchResult は fetch stage の正規化済み出力。
 type FetchResult struct {
 	Provider            string
 	AccountIdentifier   string
@@ -91,68 +92,127 @@ type FetchResult struct {
 	Failures            []FetchFailure
 }
 
-// AnalyzeResult is the normalized output contract of the analysis stage.
+// AnalyzeResult は analysis stage の正規化済み出力。
 type AnalyzeResult struct {
 	ParsedEmailIDs     []uint
+	ParsedEmails       []ParsedEmail
 	AnalyzedEmailCount int
 	ParsedEmailCount   int
 	Failures           []AnalysisFailure
 }
 
-// Result is the combined output returned by the workflow.
-type Result struct {
-	Fetch    FetchResult
-	Analysis AnalyzeResult
+// ParsedEmail は保存済み ParsedEmail と下流で使う source email 情報を束ねた workflow 所有の型。
+type ParsedEmail struct {
+	ParsedEmailID     uint
+	EmailID           uint
+	ExternalMessageID string
+	Subject           string
+	From              string
+	To                []string
+	Data              commondomain.ParsedEmail
 }
 
-// FetchCommand is the fetch-stage input contract owned by the workflow.
+// ResolvedItem は vendor 解決に成功した 1 件分の結果。
+type ResolvedItem struct {
+	ParsedEmailID     uint
+	EmailID           uint
+	ExternalMessageID string
+	VendorID          uint
+	VendorName        string
+	MatchedBy         string
+}
+
+// VendorResolutionFailure は vendorresolution stage の部分失敗。
+type VendorResolutionFailure struct {
+	ParsedEmailID     uint
+	EmailID           uint
+	ExternalMessageID string
+	Stage             string
+	Code              string
+}
+
+// VendorResolutionResult は vendorresolution stage の正規化済み出力。
+type VendorResolutionResult struct {
+	ResolvedItems                []ResolvedItem
+	ResolvedCount                int
+	UnresolvedCount              int
+	UnresolvedExternalMessageIDs []string
+	Failures                     []VendorResolutionFailure
+}
+
+// Result は workflow 全体の統合結果。
+type Result struct {
+	Fetch            FetchResult
+	Analysis         AnalyzeResult
+	VendorResolution VendorResolutionResult
+}
+
+// FetchCommand は workflow が所有する fetch stage 入力。
 type FetchCommand struct {
 	UserID       uint
 	ConnectionID uint
 	Condition    FetchCondition
 }
 
-// AnalyzeCommand is the analysis-stage input contract owned by the workflow.
+// AnalyzeCommand は workflow が所有する analysis stage 入力。
 type AnalyzeCommand struct {
 	UserID uint
 	Emails []CreatedEmail
 }
 
-// FetchStage executes the mailfetch stage for the workflow.
+// VendorResolutionCommand は workflow が所有する vendorresolution stage 入力。
+type VendorResolutionCommand struct {
+	UserID       uint
+	ParsedEmails []ParsedEmail
+}
+
+// FetchStage は workflow から mailfetch stage を実行する。
 type FetchStage interface {
 	Execute(ctx context.Context, cmd FetchCommand) (FetchResult, error)
 }
 
-// AnalyzeStage executes the mailanalysis stage for the workflow.
+// AnalyzeStage は workflow から mailanalysis stage を実行する。
 type AnalyzeStage interface {
 	Execute(ctx context.Context, cmd AnalyzeCommand) (AnalyzeResult, error)
 }
 
-// UseCase executes the manual mail workflow.
+// VendorResolutionStage は workflow から vendorresolution stage を実行する。
+type VendorResolutionStage interface {
+	Execute(ctx context.Context, cmd VendorResolutionCommand) (VendorResolutionResult, error)
+}
+
+// UseCase は manual mail workflow を実行する。
 type UseCase interface {
 	Execute(ctx context.Context, cmd Command) (Result, error)
 }
 
 type useCase struct {
-	fetchStage   FetchStage
-	analyzeStage AnalyzeStage
-	log          logger.Interface
+	fetchStage            FetchStage
+	analyzeStage          AnalyzeStage
+	vendorResolutionStage VendorResolutionStage
+	log                   logger.Interface
 }
 
-// NewUseCase creates a manual mail workflow use case.
-func NewUseCase(fetchStage FetchStage, analyzeStage AnalyzeStage, log logger.Interface) UseCase {
+// NewUseCase は manual mail workflow の usecase を生成する。
+func NewUseCase(
+	fetchStage FetchStage,
+	analyzeStage AnalyzeStage,
+	vendorResolutionStage VendorResolutionStage,
+	log logger.Interface,
+) UseCase {
 	if log == nil {
 		log = logger.NewNop()
 	}
 
 	return &useCase{
-		fetchStage:   fetchStage,
-		analyzeStage: analyzeStage,
-		log:          log.With(logger.Component("manual_mail_workflow_usecase")),
+		fetchStage:            fetchStage,
+		analyzeStage:          analyzeStage,
+		vendorResolutionStage: vendorResolutionStage,
+		log:                   log.With(logger.Component("manual_mail_workflow_usecase")),
 	}
 }
 
-// Execute runs mailfetch and then mailanalysis using the newly created emails.
+// Execute は fetch -> analysis -> vendorresolution の順で workflow を進める。
 func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 	if ctx == nil {
 		return Result{}, logger.ErrNilContext
@@ -187,8 +247,11 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 			logger.Uint("connection_id", cmd.ConnectionID),
 			logger.Int("created_email_count", len(fetchResult.CreatedEmailIDs)),
 			logger.Int("parsed_email_count", 0),
+			logger.Int("resolved_vendor_count", 0),
+			logger.Int("unresolved_vendor_count", 0),
 			logger.Int("fetch_failure_count", len(fetchResult.Failures)),
 			logger.Int("analysis_failure_count", 0),
+			logger.Int("vendor_resolution_failure_count", 0),
 		)
 		return result, nil
 	}
@@ -205,14 +268,27 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 	}
 
 	result.Analysis = analysisResult
+	if len(analysisResult.ParsedEmails) > 0 {
+		vendorResolutionResult, err := uc.vendorResolutionStage.Execute(ctx, VendorResolutionCommand{
+			UserID:       cmd.UserID,
+			ParsedEmails: append([]ParsedEmail(nil), analysisResult.ParsedEmails...),
+		})
+		if err != nil {
+			return Result{}, err
+		}
+		result.VendorResolution = vendorResolutionResult
+	}
 
 	reqLog.Info("manual_mail_workflow_succeeded",
 		logger.UserID(cmd.UserID),
 		logger.Uint("connection_id", cmd.ConnectionID),
 		logger.Int("created_email_count", len(fetchResult.CreatedEmailIDs)),
 		logger.Int("parsed_email_count", len(analysisResult.ParsedEmailIDs)),
+		logger.Int("resolved_vendor_count", result.VendorResolution.ResolvedCount),
+		logger.Int("unresolved_vendor_count", result.VendorResolution.UnresolvedCount),
 		logger.Int("fetch_failure_count", len(fetchResult.Failures)),
 		logger.Int("analysis_failure_count", len(analysisResult.Failures)),
+		logger.Int("vendor_resolution_failure_count", len(result.VendorResolution.Failures)),
 	)
 
 	return result, nil
@@ -224,6 +300,9 @@ func (uc *useCase) validateDependencies() error {
 	}
 	if uc.analyzeStage == nil {
 		return errors.New("analyze_stage is not configured")
+	}
+	if uc.vendorResolutionStage == nil {
+		return errors.New("vendor_resolution_stage is not configured")
 	}
 	return nil
 }

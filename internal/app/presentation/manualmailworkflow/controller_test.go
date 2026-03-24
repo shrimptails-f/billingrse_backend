@@ -60,6 +60,24 @@ func TestExecute_200(t *testing.T) {
 				{EmailID: 102, ExternalMessageID: "msg-2", Stage: "analyze", Code: "analysis_failed"},
 			},
 		},
+		VendorResolution: manualapp.VendorResolutionResult{
+			ResolvedItems: []manualapp.ResolvedItem{
+				{
+					ParsedEmailID:     301,
+					EmailID:           101,
+					ExternalMessageID: "msg-1",
+					VendorID:          401,
+					VendorName:        "Acme",
+					MatchedBy:         "name_exact",
+				},
+			},
+			ResolvedCount:                1,
+			UnresolvedCount:              1,
+			UnresolvedExternalMessageIDs: []string{"msg-2"},
+			Failures: []manualapp.VendorResolutionFailure{
+				{ParsedEmailID: 302, EmailID: 102, ExternalMessageID: "msg-2", Stage: "resolve_vendor", Code: "vendor_resolution_failed"},
+			},
+		},
 	}, nil).Once()
 
 	ctrl := newTestController(uc)
@@ -102,6 +120,31 @@ func TestExecute_200(t *testing.T) {
 					"external_message_id": "msg-2",
 					"stage": "analyze",
 					"code": "analysis_failed"
+				}
+			]
+		},
+		"vendor_resolution": {
+			"resolved_count": 1,
+			"resolved_items": [
+				{
+					"parsed_email_id": 301,
+					"email_id": 101,
+					"external_message_id": "msg-1",
+					"vendor_id": 401,
+					"vendor_name": "Acme",
+					"matched_by": "name_exact"
+				}
+			],
+			"unresolved_count": 1,
+			"unresolved_external_message_ids": ["msg-2"],
+			"failure_count": 1,
+			"failures": [
+				{
+					"parsed_email_id": 302,
+					"email_id": 102,
+					"external_message_id": "msg-2",
+					"stage": "resolve_vendor",
+					"code": "vendor_resolution_failed"
 				}
 			]
 		}
