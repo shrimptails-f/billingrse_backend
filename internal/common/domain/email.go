@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode"
 )
 
 var (
@@ -95,12 +96,100 @@ func (e *Email) AppendParsedEmail(parsed ParsedEmail) {
 // VendorName is a candidate extracted by AI and not a canonical Vendor.
 // ParsedEmail does not represent a final billing decision.
 type ParsedEmail struct {
-	VendorName    *string    `json:"vendorName"`
-	BillingNumber *string    `json:"billingNumber"`
-	InvoiceNumber *string    `json:"invoiceNumber"`
-	Amount        *float64   `json:"amount"`
-	Currency      *string    `json:"currency"`
-	BillingDate   *time.Time `json:"billingDate"`
-	PaymentCycle  *string    `json:"paymentCycle"`
-	ExtractedAt   time.Time  `json:"extractedAt"`
+	ProductNameRaw     *string    `json:"productNameRaw"`
+	ProductNameDisplay *string    `json:"productNameDisplay"`
+	VendorName         *string    `json:"vendorName"`
+	BillingNumber      *string    `json:"billingNumber"`
+	InvoiceNumber      *string    `json:"invoiceNumber"`
+	Amount             *float64   `json:"amount"`
+	Currency           *string    `json:"currency"`
+	BillingDate        *time.Time `json:"billingDate"`
+	PaymentCycle       *string    `json:"paymentCycle"`
+	ExtractedAt        time.Time  `json:"extractedAt"`
+}
+
+// IsEmpty reports whether no parsed fields were extracted.
+func (p ParsedEmail) IsEmpty() bool {
+	return p.ProductNameRaw == nil &&
+		p.ProductNameDisplay == nil &&
+		p.VendorName == nil &&
+		p.BillingNumber == nil &&
+		p.InvoiceNumber == nil &&
+		p.Amount == nil &&
+		p.Currency == nil &&
+		p.BillingDate == nil &&
+		p.PaymentCycle == nil
+}
+
+// Normalize trims optional strings, canonicalizes casing, and UTC-normalizes timestamps.
+// It does not enforce billing invariants; strict validation is delegated to downstream policies.
+func (p ParsedEmail) Normalize() ParsedEmail {
+	p.ProductNameRaw = normalizeOptionalString(p.ProductNameRaw)
+	p.ProductNameDisplay = normalizeOptionalString(p.ProductNameDisplay)
+	p.VendorName = normalizeOptionalString(p.VendorName)
+	p.BillingNumber = normalizeOptionalString(p.BillingNumber)
+	p.InvoiceNumber = normalizeOptionalString(p.InvoiceNumber)
+	p.Currency = normalizeOptionalUpperString(p.Currency)
+	p.PaymentCycle = normalizeOptionalPaymentCycle(p.PaymentCycle)
+	p.BillingDate = normalizeOptionalTime(p.BillingDate)
+	if !p.ExtractedAt.IsZero() {
+		p.ExtractedAt = p.ExtractedAt.UTC()
+	}
+
+	return p
+}
+
+// WithExtractedAt returns a normalized ParsedEmail with the given extracted-at timestamp applied.
+func (p ParsedEmail) WithExtractedAt(extractedAt time.Time) ParsedEmail {
+	p.ExtractedAt = extractedAt
+	return p.Normalize()
+}
+
+func normalizeOptionalString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return nil
+	}
+
+	return &trimmed
+}
+
+func normalizeOptionalUpperString(value *string) *string {
+	normalized := normalizeOptionalString(value)
+	if normalized == nil {
+		return nil
+	}
+
+	upper := strings.ToUpper(*normalized)
+	return &upper
+}
+
+func normalizeOptionalPaymentCycle(value *string) *string {
+	normalized := normalizeOptionalString(value)
+	if normalized == nil {
+		return nil
+	}
+
+	parts := strings.FieldsFunc(strings.ToLower(*normalized), func(r rune) bool {
+		return r == '_' || r == '-' || unicode.IsSpace(r)
+	})
+	if len(parts) == 0 {
+		return nil
+	}
+
+	cycle := strings.Join(parts, "_")
+	return &cycle
+}
+
+func normalizeOptionalTime(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+
+	utc := value.UTC()
+	return &utc
 }

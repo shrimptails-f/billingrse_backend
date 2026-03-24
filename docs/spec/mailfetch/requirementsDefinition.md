@@ -3,18 +3,18 @@
 ## 背景
 
 - `docs/ddd/ubiquitous-language/mail-integration-fetch.md` では、`ManualMailFetch` は「手動トリガーで即時実行される Email 取得」であり、Email の意味解釈を持たない。
-- `docs/spec/manualmailworkflow/設計.md` では、手動メール取得全体を `manualmailworkflow -> mailfetch -> emailanalysis -> billing` の stage に分割する方針が定義されている。
+- `docs/spec/manualmailworkflow/設計.md` では、手動メール取得全体を `manualmailworkflow -> mailfetch -> mailanalysis -> billing` の stage に分割する方針が定義されている。
 - 現在のリポジトリでは `internal/mailaccountconnection` と Gmail クライアント群に加え、raw Email の取得・保存を担う `internal/mailfetch` が実装済みである。
 - `internal/common/domain.FetchedEmailDTO` は既に存在し、Gmail クライアントもこの DTO を返す。
 - `Email` は metadata 保存に責務を限定し、本文は永続化しない方針とする。
-- 後段の `emailanalysis` が本文を必要とするため、同一 workflow 内で fetch 結果を `created_emails` として引き継ぐ前提で整理する。
+- 後段の `mailanalysis` が本文を必要とするため、同一 workflow 内で fetch 結果を `created_emails` として引き継ぐ前提で整理する。
 - Email の一意性は `user_id + external_message_id` を採用し、provider / account source は metadata として保持する。
 
 ## 目的
 
 - `internal/mailfetch` を、選択された `MailAccountConnection` から raw Email を取得し、idempotent に保存する stage package として定義する。
 - `mailfetch` の責務を「取得条件の検証」「接続情報の解決」「provider からの取得」「Email 保存」「取得結果サマリ返却」に限定する。
-- 後段の `emailanalysis` と `billing` が安定して利用できるよう、保存対象・一意性・戻り値を先に確定する。
+- 後段の `mailanalysis` と `billing` が安定して利用できるよう、保存対象・一意性・戻り値を先に確定する。
 
 ## スコープ
 
@@ -29,7 +29,7 @@
 ## 非スコープ
 
 - `manualmailworkflow` 全体の orchestration
-- `emailanalysis` の prompt / AI 実行 / `ParsedEmail` 保存
+- `mailanalysis` の prompt / AI 実行 / `ParsedEmail` 保存
 - `billing` の `VendorResolution` / `BillingEligibility` / `Billing` 保存
 - 定期実行の `MailFetchBatch`
 - 添付ファイル保存
@@ -46,7 +46,7 @@
 6. backend は取得した raw メールを idempotent に保存する。
 7. backend は `created_email_ids` と `existing_email_ids` を分けて返す。
 8. backend は新規保存できたメール本文を含む `created_emails` も返す。
-9. 上位の `manualmailworkflow` は、`created_emails` を後段の `emailanalysis` に渡す。
+9. 上位の `manualmailworkflow` は、`created_emails` を後段の `mailanalysis` に渡す。
 
 ## 入力契約
 
@@ -102,7 +102,7 @@
 - idempotency key は `user_id + external_message_id` とすること。
 - provider の一覧取得成功後、一部 message detail または保存で失敗しても、残りを継続できること。
 - batch insert が失敗した chunk は、その chunk 内の message を `save` failure として扱い、後続 chunk の保存は継続すること。
-- `mailfetch` は `emailanalysis` を直接起動しないこと。
+- `mailfetch` は `mailanalysis` を直接起動しないこと。
 
 ## 非機能要件
 
@@ -119,7 +119,7 @@
 
 - `mailfetch` が永続化する `Email` は metadata のみに限定する。
 - 本文は `FetchedEmailDTO` の一時データとして扱い、保存対象には含めない。
-- `emailanalysis` が本文を必要とする場合は、同一 workflow 内で `created_emails` として引き継ぐ。
+- `mailanalysis` が本文を必要とする場合は、同一 workflow 内で `created_emails` として引き継ぐ。
 - `provider + account_identifier + external_message_id` による再取得は、通常経路ではなく補助手段として扱う。
 
 ### 2. Email の一意性は `user_id + external_message_id` にする

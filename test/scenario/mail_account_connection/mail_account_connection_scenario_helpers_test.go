@@ -4,6 +4,7 @@ import (
 	"business/internal/app/middleware"
 	authpresentation "business/internal/app/presentation/auth"
 	macpresentation "business/internal/app/presentation/mailaccountconnection"
+	manualpresentation "business/internal/app/presentation/manualmailworkflow"
 	v1 "business/internal/app/router"
 	authapp "business/internal/auth/application"
 	authdomain "business/internal/auth/domain"
@@ -14,6 +15,7 @@ import (
 	"business/internal/library/mysql"
 	macapp "business/internal/mailaccountconnection/application"
 	macinfra "business/internal/mailaccountconnection/infrastructure"
+	manualapp "business/internal/manualmailworkflow/application"
 	mocklibrary "business/test/mock/library"
 	model "business/tools/migrations/models"
 	"bytes"
@@ -105,6 +107,8 @@ type scenarioGmailProfileFetcher struct {
 
 type scenarioStubAuthUseCase struct{}
 
+type scenarioStubManualMailWorkflowUseCase struct{}
+
 func newMailAccountConnectionScenarioEnv(t *testing.T) *mailAccountConnectionScenarioEnv {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -153,12 +157,14 @@ func newMailAccountConnectionScenarioEnv(t *testing.T) *mailAccountConnectionSce
 	macRepo := macinfra.NewRepository(mysqlConn.DB, log)
 	macUseCase := macapp.NewUseCase(macRepo, oauthCfg, exchanger, profileFetcher, vault, nil, log)
 	macController := macpresentation.NewController(macUseCase, log)
+	manualController := manualpresentation.NewController(&scenarioStubManualMailWorkflowUseCase{}, log)
 
 	router := gin.New()
 	container := dig.New()
 	require.NoError(t, container.Provide(func() *authpresentation.Controller { return authController }))
 	require.NoError(t, container.Provide(func() *middleware.AuthMiddleware { return authMiddleware }))
 	require.NoError(t, container.Provide(func() *macpresentation.Controller { return macController }))
+	require.NoError(t, container.Provide(func() *manualpresentation.Controller { return manualController }))
 	_, err = v1.Router(router, container, log, scenarioAllowedOrigin)
 	require.NoError(t, err)
 
@@ -443,3 +449,9 @@ func (s *scenarioStubAuthUseCase) Logout(ctx context.Context, req authdomain.Log
 }
 
 var _ authapp.AuthUseCaseInterface = (*scenarioStubAuthUseCase)(nil)
+
+func (s *scenarioStubManualMailWorkflowUseCase) Execute(ctx context.Context, cmd manualapp.Command) (manualapp.Result, error) {
+	return manualapp.Result{}, nil
+}
+
+var _ manualapp.UseCase = (*scenarioStubManualMailWorkflowUseCase)(nil)

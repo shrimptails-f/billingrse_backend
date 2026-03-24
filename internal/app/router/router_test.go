@@ -8,11 +8,13 @@ import (
 	"business/internal/app/middleware"
 	authpresentation "business/internal/app/presentation/auth"
 	macpresentation "business/internal/app/presentation/mailaccountconnection"
+	manualpresentation "business/internal/app/presentation/manualmailworkflow"
 	v1 "business/internal/app/router"
 	"business/internal/auth/domain"
 	"business/internal/library/logger"
 	macapp "business/internal/mailaccountconnection/application"
 	macdomain "business/internal/mailaccountconnection/domain"
+	manualapp "business/internal/manualmailworkflow/application"
 	mocklibrary "business/test/mock/library"
 
 	"github.com/gin-gonic/gin"
@@ -93,6 +95,12 @@ func (s *stubEmailCredentialUsecase) Disconnect(ctx context.Context, userID uint
 	return nil
 }
 
+type stubManualMailWorkflowUseCase struct{}
+
+func (s *stubManualMailWorkflowUseCase) Execute(ctx context.Context, cmd manualapp.Command) (manualapp.Result, error) {
+	return manualapp.Result{}, nil
+}
+
 func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -115,6 +123,10 @@ func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 	assert.NoError(t, err)
 	err = container.Provide(func() *macpresentation.Controller {
 		return macpresentation.NewController(&stubEmailCredentialUsecase{}, log)
+	})
+	assert.NoError(t, err)
+	err = container.Provide(func() *manualpresentation.Controller {
+		return manualpresentation.NewController(&stubManualMailWorkflowUseCase{}, log)
 	})
 	assert.NoError(t, err)
 
@@ -141,6 +153,7 @@ func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 		"DELETE /api/v1/mail-account-connections/:connection_id",
 		"POST /api/v1/mail-account-connections/gmail/authorize",
 		"POST /api/v1/mail-account-connections/gmail/callback",
+		"POST /api/v1/manual-mail-workflows",
 	}
 	for _, route := range expectedRoutes {
 		assert.Contains(t, routes, route)

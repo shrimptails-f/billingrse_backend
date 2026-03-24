@@ -83,3 +83,93 @@ func TestEmailAppendParsedEmail(t *testing.T) {
 		t.Fatalf("expected 2 parsed emails, got %d", len(email.ParsedEmails))
 	}
 }
+
+func TestParsedEmailNormalize(t *testing.T) {
+	t.Parallel()
+
+	billingDate := time.Date(2026, 3, 24, 12, 0, 0, 0, time.FixedZone("JST", 9*60*60))
+	extractedAt := time.Date(2026, 3, 24, 13, 0, 0, 0, time.FixedZone("JST", 9*60*60))
+
+	parsed := ParsedEmail{
+		ProductNameRaw:     stringPtr(" Example Product Full Name "),
+		ProductNameDisplay: stringPtr(" Example Product "),
+		VendorName:         stringPtr(" Example Vendor "),
+		BillingNumber:      stringPtr(" INV-001 "),
+		InvoiceNumber:      stringPtr(" inv-001 "),
+		Amount:             float64Ptr(123.456),
+		Currency:           stringPtr(" jpy "),
+		BillingDate:        &billingDate,
+		PaymentCycle:       stringPtr(" One Time "),
+		ExtractedAt:        extractedAt,
+	}.Normalize()
+
+	if got := *parsed.ProductNameRaw; got != "Example Product Full Name" {
+		t.Fatalf("unexpected raw product name: %q", got)
+	}
+	if got := *parsed.ProductNameDisplay; got != "Example Product" {
+		t.Fatalf("unexpected display product name: %q", got)
+	}
+	if got := *parsed.VendorName; got != "Example Vendor" {
+		t.Fatalf("unexpected vendor name: %q", got)
+	}
+	if got := *parsed.BillingNumber; got != "INV-001" {
+		t.Fatalf("unexpected billing number: %q", got)
+	}
+	if got := *parsed.InvoiceNumber; got != "inv-001" {
+		t.Fatalf("unexpected invoice number: %q", got)
+	}
+	if got := *parsed.Currency; got != "JPY" {
+		t.Fatalf("unexpected currency: %q", got)
+	}
+	if got := *parsed.PaymentCycle; got != "one_time" {
+		t.Fatalf("unexpected payment cycle: %q", got)
+	}
+	if parsed.BillingDate == nil || parsed.BillingDate.Location() != time.UTC {
+		t.Fatalf("expected UTC billing date, got %+v", parsed.BillingDate)
+	}
+	if parsed.ExtractedAt.Location() != time.UTC {
+		t.Fatalf("expected UTC extracted_at, got %+v", parsed.ExtractedAt)
+	}
+}
+
+func TestParsedEmailNormalize_BlankOptionalValuesBecomeNil(t *testing.T) {
+	t.Parallel()
+
+	parsed := ParsedEmail{
+		ProductNameRaw:     stringPtr(" "),
+		ProductNameDisplay: stringPtr(" "),
+		VendorName:         stringPtr(" "),
+		BillingNumber:      stringPtr(" "),
+		InvoiceNumber:      stringPtr(" "),
+		Currency:           stringPtr(" "),
+		PaymentCycle:       stringPtr(" "),
+	}.Normalize()
+
+	if !parsed.IsEmpty() {
+		t.Fatalf("expected parsed email to become empty, got %+v", parsed)
+	}
+}
+
+func TestParsedEmailWithExtractedAt(t *testing.T) {
+	t.Parallel()
+
+	extractedAt := time.Date(2026, 3, 24, 13, 0, 0, 0, time.FixedZone("JST", 9*60*60))
+	parsed := ParsedEmail{
+		ProductNameDisplay: stringPtr("Product"),
+	}.WithExtractedAt(extractedAt)
+
+	if got := *parsed.ProductNameDisplay; got != "Product" {
+		t.Fatalf("unexpected product name: %q", got)
+	}
+	if parsed.ExtractedAt.Location() != time.UTC {
+		t.Fatalf("expected UTC extracted_at, got %+v", parsed.ExtractedAt)
+	}
+}
+
+func stringPtr(value string) *string {
+	return &value
+}
+
+func float64Ptr(value float64) *float64 {
+	return &value
+}
