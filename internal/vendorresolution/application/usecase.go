@@ -28,6 +28,7 @@ type ResolutionTarget struct {
 	Subject           string
 	From              string
 	To                []string
+	BodyDigest        string
 	ParsedEmail       commondomain.ParsedEmail
 }
 
@@ -37,6 +38,7 @@ func (t ResolutionTarget) Normalize() ResolutionTarget {
 	t.Subject = strings.TrimSpace(t.Subject)
 	t.From = strings.TrimSpace(t.From)
 	t.To = normalizeStrings(t.To)
+	t.BodyDigest = strings.TrimSpace(t.BodyDigest)
 	t.ParsedEmail = t.ParsedEmail.Normalize()
 	return t
 }
@@ -172,6 +174,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 			ParsedEmailID:     target.ParsedEmailID,
 			EmailID:           target.EmailID,
 			ExternalMessageID: target.ExternalMessageID,
+			BodyDigest:        target.BodyDigest,
 			VendorID:          decision.Resolution.ResolvedVendor.ID,
 			VendorName:        decision.Resolution.ResolvedVendor.Name,
 			MatchedBy:         decision.MatchedBy,

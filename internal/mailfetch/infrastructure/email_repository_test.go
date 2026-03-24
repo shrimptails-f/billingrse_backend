@@ -130,11 +130,12 @@ func TestGormEmailRepositoryAdapter_SaveAllIfAbsent_CreatedAndExisting(t *testin
 	ctx := context.Background()
 	source := mfdomain.EmailSource{Provider: "gmail", AccountIdentifier: "user@gmail.com"}
 	dto := cd.FetchedEmailDTO{
-		ID:      "msg-1",
-		Subject: "subject",
-		From:    "from@example.com",
-		To:      []string{"to1@example.com", "to2@example.com"},
-		Date:    time.Date(2026, 3, 23, 10, 0, 0, 0, time.UTC),
+		ID:         "msg-1",
+		Subject:    "subject",
+		From:       "from@example.com",
+		To:         []string{"to1@example.com", "to2@example.com"},
+		Date:       time.Date(2026, 3, 23, 10, 0, 0, 0, time.UTC),
+		BodyDigest: "digest-msg-1",
 	}
 
 	firstResults, firstFailures, err := env.repo.SaveAllIfAbsent(ctx, 1, source, []cd.FetchedEmailDTO{dto})
@@ -156,6 +157,7 @@ func TestGormEmailRepositoryAdapter_SaveAllIfAbsent_CreatedAndExisting(t *testin
 	require.Equal(t, "gmail", stored.Provider)
 	require.Equal(t, "user@gmail.com", stored.AccountIdentifier)
 	require.Equal(t, "msg-1", stored.ExternalMessageID)
+	require.Equal(t, "digest-msg-1", stored.BodyDigest)
 	require.NotNil(t, stored.CreatedRunID)
 	require.NotEmpty(t, *stored.CreatedRunID)
 	require.True(t, stored.CreatedAt.Equal(env.nowUTC))
@@ -174,11 +176,12 @@ func TestGormEmailRepositoryAdapter_SaveAllIfAbsent_DifferentAccountIdentifierRe
 
 	ctx := context.Background()
 	dto := cd.FetchedEmailDTO{
-		ID:      "msg-1",
-		Subject: "subject",
-		From:    "from@example.com",
-		To:      []string{"to@example.com"},
-		Date:    time.Date(2026, 3, 23, 10, 0, 0, 0, time.UTC),
+		ID:         "msg-1",
+		Subject:    "subject",
+		From:       "from@example.com",
+		To:         []string{"to@example.com"},
+		Date:       time.Date(2026, 3, 23, 10, 0, 0, 0, time.UTC),
+		BodyDigest: "digest-msg-1",
 	}
 
 	firstResults, firstFailures, err := env.repo.SaveAllIfAbsent(ctx, 1, mfdomain.EmailSource{Provider: "gmail", AccountIdentifier: "first@gmail.com"}, []cd.FetchedEmailDTO{dto})
@@ -208,18 +211,20 @@ func TestGormEmailRepositoryAdapter_SaveAllIfAbsent_MixedBatch(t *testing.T) {
 	ctx := context.Background()
 	source := mfdomain.EmailSource{Provider: "gmail", AccountIdentifier: "batch@gmail.com"}
 	existingDTO := cd.FetchedEmailDTO{
-		ID:      "msg-existing",
-		Subject: "existing",
-		From:    "from@example.com",
-		To:      []string{"to@example.com"},
-		Date:    time.Date(2026, 3, 23, 10, 0, 0, 0, time.UTC),
+		ID:         "msg-existing",
+		Subject:    "existing",
+		From:       "from@example.com",
+		To:         []string{"to@example.com"},
+		Date:       time.Date(2026, 3, 23, 10, 0, 0, 0, time.UTC),
+		BodyDigest: "digest-existing",
 	}
 	newDTO := cd.FetchedEmailDTO{
-		ID:      "msg-new",
-		Subject: "new",
-		From:    "from@example.com",
-		To:      []string{"to@example.com"},
-		Date:    time.Date(2026, 3, 23, 11, 0, 0, 0, time.UTC),
+		ID:         "msg-new",
+		Subject:    "new",
+		From:       "from@example.com",
+		To:         []string{"to@example.com"},
+		Date:       time.Date(2026, 3, 23, 11, 0, 0, 0, time.UTC),
+		BodyDigest: "digest-new",
 	}
 
 	initialResults, initialFailures, err := env.repo.SaveAllIfAbsent(ctx, 1, source, []cd.FetchedEmailDTO{existingDTO})
@@ -256,11 +261,12 @@ func TestGormEmailRepositoryAdapter_SaveAllIfAbsent_ContinuesAfterChunkFailure(t
 			id = "msg-too-long-" + strings.Repeat("x", 280)
 		}
 		dtos = append(dtos, cd.FetchedEmailDTO{
-			ID:      id,
-			Subject: subject,
-			From:    "from@example.com",
-			To:      []string{"to@example.com"},
-			Date:    baseDate.Add(time.Duration(i) * time.Minute),
+			ID:         id,
+			Subject:    subject,
+			From:       "from@example.com",
+			To:         []string{"to@example.com"},
+			Date:       baseDate.Add(time.Duration(i) * time.Minute),
+			BodyDigest: fmt.Sprintf("digest-%02d", i),
 		})
 	}
 

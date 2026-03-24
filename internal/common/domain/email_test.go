@@ -13,11 +13,12 @@ func TestNewEmailFromFetchedDTO(t *testing.T) {
 		t.Parallel()
 
 		dto := FetchedEmailDTO{
-			ID:      "msg-123",
-			Subject: "subject",
-			From:    "sender@example.com",
-			To:      []string{"to@example.com"},
-			Date:    time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC),
+			ID:         "msg-123",
+			Subject:    "subject",
+			From:       "sender@example.com",
+			To:         []string{"to@example.com"},
+			Date:       time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC),
+			BodyDigest: "digest-123",
 		}
 
 		email, err := NewEmailFromFetchedDTO(1, dto)
@@ -40,6 +41,9 @@ func TestNewEmailFromFetchedDTO(t *testing.T) {
 		if len(email.To) != 1 || email.To[0] != "to@example.com" {
 			t.Fatalf("unexpected to list: %v", email.To)
 		}
+		if email.BodyDigest != "digest-123" {
+			t.Fatalf("want body digest digest-123, got %s", email.BodyDigest)
+		}
 		if !email.ReceivedAt.Equal(dto.Date) {
 			t.Fatalf("want receivedAt %v, got %v", dto.Date, email.ReceivedAt)
 		}
@@ -58,10 +62,20 @@ func TestNewEmailFromFetchedDTO(t *testing.T) {
 	t.Run("returns error when external id is empty", func(t *testing.T) {
 		t.Parallel()
 
-		dto := FetchedEmailDTO{ID: "  "}
+		dto := FetchedEmailDTO{ID: "  ", BodyDigest: "digest-123"}
 		_, err := NewEmailFromFetchedDTO(1, dto)
 		if !errors.Is(err, ErrEmailExternalMessageIDEmpty) {
 			t.Fatalf("expected ErrEmailExternalMessageIDEmpty, got %v", err)
+		}
+	})
+
+	t.Run("returns error when body digest is empty", func(t *testing.T) {
+		t.Parallel()
+
+		dto := FetchedEmailDTO{ID: "msg-123"}
+		_, err := NewEmailFromFetchedDTO(1, dto)
+		if !errors.Is(err, ErrEmailBodyDigestEmpty) {
+			t.Fatalf("expected ErrEmailBodyDigestEmpty, got %v", err)
 		}
 	})
 }

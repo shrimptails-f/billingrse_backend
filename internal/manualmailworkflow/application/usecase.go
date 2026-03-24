@@ -64,6 +64,7 @@ type CreatedEmail struct {
 	To                []string
 	ReceivedAt        time.Time
 	Body              string
+	BodyDigest        string
 }
 
 // FetchFailure は fetch stage から返る部分失敗。
@@ -109,6 +110,7 @@ type ParsedEmail struct {
 	Subject           string
 	From              string
 	To                []string
+	BodyDigest        string
 	Data              commondomain.ParsedEmail
 }
 
@@ -117,6 +119,7 @@ type ResolvedItem struct {
 	ParsedEmailID     uint
 	EmailID           uint
 	ExternalMessageID string
+	BodyDigest        string
 	VendorID          uint
 	VendorName        string
 	MatchedBy         string

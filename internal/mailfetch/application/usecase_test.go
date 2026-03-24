@@ -130,6 +130,12 @@ func TestUseCaseExecute_CreatesAndReturnsExistingIDs(t *testing.T) {
 				if len(dtos) != 2 {
 					t.Fatalf("expected 2 deduped save targets, got %+v", dtos)
 				}
+				if dtos[0].BodyDigest != computeBodyDigest("body-1") {
+					t.Fatalf("unexpected body digest for msg-1: %+v", dtos[0])
+				}
+				if dtos[1].BodyDigest != computeBodyDigest("body-2") {
+					t.Fatalf("unexpected body digest for msg-2: %+v", dtos[1])
+				}
 				return []mfdomain.SaveResult{
 					{EmailID: 101, ExternalMessageID: "msg-1", Status: mfdomain.SaveStatusCreated},
 					{EmailID: 202, ExternalMessageID: "msg-2", Status: mfdomain.SaveStatusExisting},
@@ -169,6 +175,9 @@ func TestUseCaseExecute_CreatesAndReturnsExistingIDs(t *testing.T) {
 	}
 	if result.CreatedEmails[0].EmailID != 101 || result.CreatedEmails[0].ExternalMessageID != "msg-1" || result.CreatedEmails[0].Body != "body-1" {
 		t.Fatalf("unexpected created email payload: %+v", result.CreatedEmails[0])
+	}
+	if result.CreatedEmails[0].BodyDigest != computeBodyDigest("body-1") {
+		t.Fatalf("unexpected created email body digest: %+v", result.CreatedEmails[0])
 	}
 	if len(result.ExistingEmailIDs) != 1 || result.ExistingEmailIDs[0] != 202 {
 		t.Fatalf("unexpected existing ids: %+v", result.ExistingEmailIDs)

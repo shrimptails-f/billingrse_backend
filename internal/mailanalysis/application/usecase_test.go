@@ -112,6 +112,9 @@ func TestUseCaseExecute_SavesParsedEmailsAndReturnsSummary(t *testing.T) {
 				if got := *input.ParsedEmails[0].Currency; got != "JPY" {
 					t.Fatalf("unexpected normalized currency: %q", got)
 				}
+				if got := *input.ParsedEmails[1].BillingNumber; got != "digest_0123abcd" {
+					t.Fatalf("unexpected fallback billing number: %q", got)
+				}
 				if got := *input.ParsedEmails[0].PaymentCycle; got != "one_time" {
 					t.Fatalf("unexpected normalized payment cycle: %q", got)
 				}
@@ -138,6 +141,7 @@ func TestUseCaseExecute_SavesParsedEmailsAndReturnsSummary(t *testing.T) {
 				From:              "from@example.com",
 				ReceivedAt:        now,
 				Body:              "body",
+				BodyDigest:        "0123abcd",
 			},
 		},
 	})
@@ -162,6 +166,12 @@ func TestUseCaseExecute_SavesParsedEmailsAndReturnsSummary(t *testing.T) {
 	}
 	if len(result.Failures) != 0 {
 		t.Fatalf("unexpected failures: %+v", result.Failures)
+	}
+	if len(result.ParsedEmails) != 2 {
+		t.Fatalf("unexpected parsed email results: %+v", result.ParsedEmails)
+	}
+	if result.ParsedEmails[0].BodyDigest != "0123abcd" || result.ParsedEmails[1].BodyDigest != "0123abcd" {
+		t.Fatalf("unexpected body digest propagation: %+v", result.ParsedEmails)
 	}
 }
 

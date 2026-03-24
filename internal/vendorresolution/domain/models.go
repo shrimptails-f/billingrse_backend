@@ -40,6 +40,7 @@ type ResolvedItem struct {
 	ParsedEmailID     uint
 	EmailID           uint
 	ExternalMessageID string
+	BodyDigest        string
 	VendorID          uint
 	VendorName        string
 	MatchedBy         string
