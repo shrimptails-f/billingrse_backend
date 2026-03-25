@@ -13,7 +13,7 @@ type stubWorkflowStatusRepository struct {
 	markRunning  func(ctx context.Context, historyID uint64, currentStage string) error
 	saveStage    func(ctx context.Context, progress StageProgress) error
 	complete     func(ctx context.Context, historyID uint64, status string, finishedAt time.Time) error
-	fail         func(ctx context.Context, historyID uint64, currentStage string, finishedAt time.Time) error
+	fail         func(ctx context.Context, historyID uint64, currentStage string, finishedAt time.Time, errorMessage string) error
 	list         func(ctx context.Context, query ListQuery) (ListResult, error)
 }
 
@@ -45,11 +45,17 @@ func (s *stubWorkflowStatusRepository) Complete(ctx context.Context, historyID u
 	return s.complete(ctx, historyID, status, finishedAt)
 }
 
-func (s *stubWorkflowStatusRepository) Fail(ctx context.Context, historyID uint64, currentStage string, finishedAt time.Time) error {
+func (s *stubWorkflowStatusRepository) Fail(
+	ctx context.Context,
+	historyID uint64,
+	currentStage string,
+	finishedAt time.Time,
+	errorMessage string,
+) error {
 	if s.fail == nil {
 		return nil
 	}
-	return s.fail(ctx, historyID, currentStage, finishedAt)
+	return s.fail(ctx, historyID, currentStage, finishedAt, errorMessage)
 }
 
 func (s *stubWorkflowStatusRepository) List(ctx context.Context, query ListQuery) (ListResult, error) {
@@ -184,7 +190,7 @@ func TestStartUseCase_Start_DispatchFailure(t *testing.T) {
 		createQueued: func(ctx context.Context, cmd QueuedWorkflowHistory) (WorkflowHistoryRef, error) {
 			return WorkflowHistoryRef{HistoryID: 55, WorkflowID: cmd.WorkflowID}, nil
 		},
-		fail: func(ctx context.Context, historyID uint64, currentStage string, finishedAt time.Time) error {
+		fail: func(ctx context.Context, historyID uint64, currentStage string, finishedAt time.Time, errorMessage string) error {
 			failCalls++
 			if historyID != 55 {
 				t.Fatalf("unexpected history id: %d", historyID)
@@ -194,6 +200,9 @@ func TestStartUseCase_Start_DispatchFailure(t *testing.T) {
 			}
 			if !finishedAt.Equal(now) {
 				t.Fatalf("unexpected finished at: %s", finishedAt)
+			}
+			if errorMessage != "メール取得ワークフローの起動に失敗しました。" {
+				t.Fatalf("unexpected error message: %q", errorMessage)
 			}
 			return nil
 		},

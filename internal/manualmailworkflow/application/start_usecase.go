@@ -116,7 +116,7 @@ func (uc *startUseCase) Start(ctx context.Context, cmd Command) (StartResult, er
 		ConnectionID: cmd.ConnectionID,
 		Condition:    cmd.Condition,
 	}); err != nil {
-		if failErr := uc.repository.Fail(ctx, historyRef.HistoryID, "", uc.clock.Now().UTC()); failErr != nil {
+		if failErr := uc.repository.Fail(ctx, historyRef.HistoryID, "", uc.clock.Now().UTC(), localizedWorkflowErrorMessage("", err)); failErr != nil {
 			reqLog.Error("manual_mail_workflow_dispatch_failed_to_mark_history",
 				logger.UserID(cmd.UserID),
 				logger.Uint("connection_id", cmd.ConnectionID),

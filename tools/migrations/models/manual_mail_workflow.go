@@ -16,21 +16,22 @@ type ManualMailWorkflowHistory struct {
 	CurrentStage                            *string   `gorm:"size:32"`
 	QueuedAt                                time.Time `gorm:"not null;index:idx_manual_mail_workflow_histories_user_queued_at,priority:2;index:idx_manual_mail_workflow_histories_user_status_queued_at,priority:3"`
 	FinishedAt                              *time.Time
-	FetchSuccessCount                       int `gorm:"not null;default:0"`
-	FetchBusinessFailureCount               int `gorm:"not null;default:0"`
-	FetchTechnicalFailureCount              int `gorm:"not null;default:0"`
-	AnalysisSuccessCount                    int `gorm:"not null;default:0"`
-	AnalysisBusinessFailureCount            int `gorm:"not null;default:0"`
-	AnalysisTechnicalFailureCount           int `gorm:"not null;default:0"`
-	VendorResolutionSuccessCount            int `gorm:"not null;default:0"`
-	VendorResolutionBusinessFailureCount    int `gorm:"not null;default:0"`
-	VendorResolutionTechnicalFailureCount   int `gorm:"not null;default:0"`
-	BillingEligibilitySuccessCount          int `gorm:"not null;default:0"`
-	BillingEligibilityBusinessFailureCount  int `gorm:"not null;default:0"`
-	BillingEligibilityTechnicalFailureCount int `gorm:"not null;default:0"`
-	BillingSuccessCount                     int `gorm:"not null;default:0"`
-	BillingBusinessFailureCount             int `gorm:"not null;default:0"`
-	BillingTechnicalFailureCount            int `gorm:"not null;default:0"`
+	ErrorMessage                            *string `gorm:"type:text"`
+	FetchSuccessCount                       int     `gorm:"not null;default:0"`
+	FetchBusinessFailureCount               int     `gorm:"not null;default:0"`
+	FetchTechnicalFailureCount              int     `gorm:"not null;default:0"`
+	AnalysisSuccessCount                    int     `gorm:"not null;default:0"`
+	AnalysisBusinessFailureCount            int     `gorm:"not null;default:0"`
+	AnalysisTechnicalFailureCount           int     `gorm:"not null;default:0"`
+	VendorResolutionSuccessCount            int     `gorm:"not null;default:0"`
+	VendorResolutionBusinessFailureCount    int     `gorm:"not null;default:0"`
+	VendorResolutionTechnicalFailureCount   int     `gorm:"not null;default:0"`
+	BillingEligibilitySuccessCount          int     `gorm:"not null;default:0"`
+	BillingEligibilityBusinessFailureCount  int     `gorm:"not null;default:0"`
+	BillingEligibilityTechnicalFailureCount int     `gorm:"not null;default:0"`
+	BillingSuccessCount                     int     `gorm:"not null;default:0"`
+	BillingBusinessFailureCount             int     `gorm:"not null;default:0"`
+	BillingTechnicalFailureCount            int     `gorm:"not null;default:0"`
 	CreatedAt                               time.Time
 	UpdatedAt                               time.Time
 }

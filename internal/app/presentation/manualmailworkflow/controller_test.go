@@ -143,6 +143,7 @@ func TestList_200(t *testing.T) {
 				Status:            manualapp.WorkflowStatusPartialSuccess,
 				QueuedAt:          time.Date(2026, 3, 25, 17, 0, 0, 0, time.UTC),
 				FinishedAt:        timePtr(time.Date(2026, 3, 25, 17, 0, 12, 0, time.UTC)),
+				ErrorMessage:      stringPtr("Gmail連携が無効になっています。再連携してください。"),
 				Fetch: manualapp.StageSummaryView{
 					SuccessCount:          14,
 					BusinessFailureCount:  0,
@@ -186,6 +187,7 @@ func TestList_200(t *testing.T) {
 				"current_stage": null,
 				"queued_at": "2026-03-25T17:00:00Z",
 				"finished_at": "2026-03-25T17:00:12Z",
+				"error_message": "Gmail連携が無効になっています。再連携してください。",
 				"fetch": {
 					"success_count": 14,
 					"business_failure_count": 0,

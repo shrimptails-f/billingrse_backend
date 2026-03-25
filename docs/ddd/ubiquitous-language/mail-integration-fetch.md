@@ -72,6 +72,7 @@
 - ユーザーが所有する集約ルート
 - 実行対象のメールアカウント連携と、受付時点の手動メール取得条件を持つ
 - stage ごとの成功件数 / 失敗件数と、子としての failure 記録を持つ
+- stage failure に還元しない workflow top-level error message は親に保持する
 - `Email` / `ParsedEmail` / `Billing` の正本ではなく、workflow の監査と参照のために保持する
 
 ### ルール

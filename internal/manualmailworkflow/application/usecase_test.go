@@ -817,6 +817,80 @@ func TestUseCaseExecute_SavesProgressAndCompletesPartialSuccess(t *testing.T) {
 	}
 }
 
+func TestUseCaseExecute_FetchErrorMarksWorkflowFailedWithErrorMessage(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("failed to create gmail service: invalid_grant")
+	failCalled := 0
+
+	uc := NewUseCase(
+		&stubFetchStage{
+			execute: func(ctx context.Context, cmd FetchCommand) (FetchResult, error) {
+				return FetchResult{}, wantErr
+			},
+		},
+		&stubAnalyzeStage{
+			execute: func(ctx context.Context, cmd AnalyzeCommand) (AnalyzeResult, error) {
+				t.Fatal("analyze stage should not be called")
+				return AnalyzeResult{}, nil
+			},
+		},
+		&stubVendorResolutionStage{
+			execute: func(ctx context.Context, cmd VendorResolutionCommand) (VendorResolutionResult, error) {
+				t.Fatal("vendor resolution stage should not be called")
+				return VendorResolutionResult{}, nil
+			},
+		},
+		&stubBillingEligibilityStage{
+			execute: func(ctx context.Context, cmd BillingEligibilityCommand) (BillingEligibilityResult, error) {
+				t.Fatal("billing eligibility stage should not be called")
+				return BillingEligibilityResult{}, nil
+			},
+		},
+		&stubBillingStage{
+			execute: func(ctx context.Context, cmd BillingCommand) (BillingResult, error) {
+				t.Fatal("billing stage should not be called")
+				return BillingResult{}, nil
+			},
+		},
+		&stubWorkflowStatusRepository{
+			fail: func(ctx context.Context, historyID uint64, currentStage string, finishedAt time.Time, errorMessage string) error {
+				failCalled++
+				if historyID != 1 {
+					t.Fatalf("unexpected history id: %d", historyID)
+				}
+				if currentStage != workflowStageFetch {
+					t.Fatalf("unexpected current stage: %q", currentStage)
+				}
+				if errorMessage != "Gmail連携が無効になっています。再連携してください。" {
+					t.Fatalf("unexpected error message: %q", errorMessage)
+				}
+				return nil
+			},
+		},
+		&fixedClock{now: time.Date(2026, 3, 25, 12, 30, 0, 0, time.UTC)},
+		logger.NewNop(),
+	)
+
+	_, err := uc.Execute(context.Background(), DispatchJob{
+		HistoryID:    1,
+		WorkflowID:   "wf-failed",
+		UserID:       1,
+		ConnectionID: 2,
+		Condition: FetchCondition{
+			LabelName: "billing",
+			Since:     time.Date(2026, 3, 24, 0, 0, 0, 0, time.UTC),
+			Until:     time.Date(2026, 3, 25, 0, 0, 0, 0, time.UTC),
+		},
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected fetch error, got %v", err)
+	}
+	if failCalled != 1 {
+		t.Fatalf("expected fail to be called once, got %d", failCalled)
+	}
+}
+
 func stringPtr(value string) *string {
 	return &value
 }

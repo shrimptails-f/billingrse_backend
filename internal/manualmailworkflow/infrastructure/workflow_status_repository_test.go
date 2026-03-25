@@ -127,6 +127,7 @@ func TestGormWorkflowStatusRepository_CreateSaveProgressAndComplete(t *testing.T
 	require.True(t, history.QueuedAt.Equal(queuedAt))
 	require.NotNil(t, history.FinishedAt)
 	require.True(t, history.FinishedAt.Equal(finishedAt))
+	require.Nil(t, history.ErrorMessage)
 	require.Equal(t, 2, history.FetchSuccessCount)
 	require.Equal(t, 0, history.FetchBusinessFailureCount)
 	require.Equal(t, 1, history.FetchTechnicalFailureCount)
@@ -173,7 +174,7 @@ func TestGormWorkflowStatusRepository_Fail(t *testing.T) {
 	require.NoError(t, env.repo.MarkRunning(ctx, ref.HistoryID, "analysis"))
 
 	finishedAt := time.Date(2026, 3, 25, 15, 20, 0, 0, time.UTC)
-	require.NoError(t, env.repo.Fail(ctx, ref.HistoryID, "analysis", finishedAt))
+	require.NoError(t, env.repo.Fail(ctx, ref.HistoryID, "analysis", finishedAt, "failed to create gmail service: invalid_grant"))
 
 	var history manualMailWorkflowHistoryRecord
 	require.NoError(t, env.db.WithContext(ctx).First(&history, ref.HistoryID).Error)
@@ -182,6 +183,8 @@ func TestGormWorkflowStatusRepository_Fail(t *testing.T) {
 	require.Equal(t, "analysis", *history.CurrentStage)
 	require.NotNil(t, history.FinishedAt)
 	require.True(t, history.FinishedAt.Equal(finishedAt))
+	require.NotNil(t, history.ErrorMessage)
+	require.Equal(t, "failed to create gmail service: invalid_grant", *history.ErrorMessage)
 }
 
 func TestGormWorkflowStatusRepository_List(t *testing.T) {
@@ -195,6 +198,7 @@ func TestGormWorkflowStatusRepository_List(t *testing.T) {
 	firstHistory := workflowHistoryRecordFixture(10, "wf-first", queuedAt, manualapp.WorkflowStatusPartialSuccess)
 	firstHistory.Provider = "gmail"
 	firstHistory.AccountIdentifier = "first@example.com"
+	firstHistory.ErrorMessage = stringPtr("Gmail連携が無効になっています。再連携してください。")
 	firstHistory.FetchSuccessCount = 2
 	firstHistory.FetchTechnicalFailureCount = 2
 	firstHistory.VendorResolutionSuccessCount = 1
@@ -275,6 +279,8 @@ func TestGormWorkflowStatusRepository_List(t *testing.T) {
 	firstItem := result.Items[1]
 	require.Equal(t, "gmail", firstItem.Provider)
 	require.Equal(t, "first@example.com", firstItem.AccountIdentifier)
+	require.NotNil(t, firstItem.ErrorMessage)
+	require.Equal(t, "Gmail連携が無効になっています。再連携してください。", *firstItem.ErrorMessage)
 	require.Equal(t, 2, firstItem.Fetch.SuccessCount)
 	require.Equal(t, 0, firstItem.Fetch.BusinessFailureCount)
 	require.Equal(t, 2, firstItem.Fetch.TechnicalFailureCount)

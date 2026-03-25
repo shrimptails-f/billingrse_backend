@@ -571,7 +571,7 @@ func (uc *useCase) failWorkflow(
 	reqLog logger.Interface,
 ) error {
 	finishedAt := uc.clock.Now().UTC()
-	if err := uc.repository.Fail(ctx, historyID, currentStage, finishedAt); err != nil {
+	if err := uc.repository.Fail(ctx, historyID, currentStage, finishedAt, localizedWorkflowErrorMessage(currentStage, runErr)); err != nil {
 		reqLog.Error("manual_mail_workflow_fail_persist_failed",
 			logger.String("current_stage", currentStage),
 			logger.Uint("history_id", uint(historyID)),
