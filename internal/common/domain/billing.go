@@ -18,15 +18,16 @@ var (
 
 // Billing represents the aggregate root for billing.
 type Billing struct {
-	ID            uint
-	UserID        uint
-	VendorID      uint
-	EmailID       uint
-	BillingNumber BillingNumber // Vendor-provided invoice/billing identifier.
-	InvoiceNumber InvoiceNumber // Invoice number (qualified invoice issuer number, optional).
-	Money         Money
-	BillingDate   *time.Time // BillingDate is optional when the source mail does not include it.
-	PaymentCycle  PaymentCycle
+	ID                 uint
+	UserID             uint
+	VendorID           uint
+	EmailID            uint
+	ProductNameDisplay *string
+	BillingNumber      BillingNumber // Vendor-provided invoice/billing identifier.
+	InvoiceNumber      InvoiceNumber // Invoice number (qualified invoice issuer number, optional).
+	Money              Money
+	BillingDate        *time.Time // BillingDate is optional when the source mail does not include it.
+	PaymentCycle       PaymentCycle
 }
 
 // NewBilling constructs a Billing with normalized values.
@@ -40,6 +41,7 @@ func NewBilling(
 	currency string,
 	billingDate *time.Time,
 	cycle string,
+	productNameDisplay *string,
 ) (Billing, error) {
 	normalizedBillingNumber, err := NewBillingNumber(billingNumber)
 	if err != nil {
@@ -62,14 +64,15 @@ func NewBilling(
 	}
 
 	billing := Billing{
-		UserID:        userID,
-		VendorID:      vendorID,
-		EmailID:       emailID,
-		BillingNumber: normalizedBillingNumber,
-		InvoiceNumber: normalizedInvoice,
-		Money:         money,
-		BillingDate:   cloneBillingDate(billingDate),
-		PaymentCycle:  normalizedCycle,
+		UserID:             userID,
+		VendorID:           vendorID,
+		EmailID:            emailID,
+		ProductNameDisplay: normalizeOptionalString(productNameDisplay),
+		BillingNumber:      normalizedBillingNumber,
+		InvoiceNumber:      normalizedInvoice,
+		Money:              money,
+		BillingDate:        cloneBillingDate(billingDate),
+		PaymentCycle:       normalizedCycle,
 	}
 
 	if err := billing.Validate(); err != nil {

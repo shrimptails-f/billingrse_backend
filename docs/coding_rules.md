@@ -68,7 +68,8 @@
 
     <context_handling>
       - application / workflow の公開メソッドは先頭に `context.Context` を受け取る。
-      - 現行 workflow は同期実行であり、HTTP リクエストより長生きする処理を新設しない限り `context.WithoutCancel` は導入しない。
+      - `manualmailworkflow` は background 実行を持つため、HTTP リクエスト `context.Context` を長寿命 goroutine にそのまま引き回さず、新しい context を作って `request_id` / `user_id` / `job_id` など必要最小限の相関情報だけを引き継ぐ。
+      - `context.WithoutCancel` は明確な要件がない限り導入せず、background workflow は専用 context で管理する。
     </context_handling>
 
     <transactions>

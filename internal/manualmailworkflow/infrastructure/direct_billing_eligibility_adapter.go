@@ -48,18 +48,19 @@ func (a *DirectBillingEligibilityAdapter) Execute(ctx context.Context, cmd manua
 	eligibleItems := make([]manualapp.EligibleItem, 0, len(result.EligibleItems))
 	for _, item := range result.EligibleItems {
 		eligibleItems = append(eligibleItems, manualapp.EligibleItem{
-			ParsedEmailID:     item.ParsedEmailID,
-			EmailID:           item.EmailID,
-			ExternalMessageID: item.ExternalMessageID,
-			VendorID:          item.VendorID,
-			VendorName:        item.VendorName,
-			MatchedBy:         item.MatchedBy,
-			BillingNumber:     item.BillingNumber,
-			InvoiceNumber:     cloneString(item.InvoiceNumber),
-			Amount:            item.Amount,
-			Currency:          item.Currency,
-			BillingDate:       cloneTime(item.BillingDate),
-			PaymentCycle:      item.PaymentCycle,
+			ParsedEmailID:      item.ParsedEmailID,
+			EmailID:            item.EmailID,
+			ExternalMessageID:  item.ExternalMessageID,
+			VendorID:           item.VendorID,
+			VendorName:         item.VendorName,
+			MatchedBy:          item.MatchedBy,
+			ProductNameDisplay: cloneString(item.ProductNameDisplay),
+			BillingNumber:      item.BillingNumber,
+			InvoiceNumber:      cloneString(item.InvoiceNumber),
+			Amount:             item.Amount,
+			Currency:           item.Currency,
+			BillingDate:        cloneTime(item.BillingDate),
+			PaymentCycle:       item.PaymentCycle,
 		})
 	}
 

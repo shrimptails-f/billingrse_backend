@@ -165,8 +165,8 @@ func parsedEmailResponseSchema() map[string]any {
 						"billingDate":        nullableStringSchema("RFC3339 billing date string, or null when unknown."),
 						"paymentCycle": map[string]any{
 							"type":        []string{"string", "null"},
-							"description": "Billing cycle. Use one_time, recurring, or null when unknown.",
-							"enum":        []any{"one_time", "recurring", nil},
+							"description": "Billing cycle. Use one_time, recurring.",
+							"enum":        []any{"one_time", "recurring"},
 						},
 					},
 					"required": []string{

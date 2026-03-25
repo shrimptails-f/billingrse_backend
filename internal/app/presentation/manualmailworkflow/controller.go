@@ -3,7 +3,6 @@ package manualmailworkflow
 import (
 	"business/internal/app/httpresponse"
 	"business/internal/library/logger"
-	mfdomain "business/internal/mailfetch/domain"
 	manualapp "business/internal/manualmailworkflow/application"
 	"errors"
 	"net/http"
@@ -14,12 +13,12 @@ import (
 
 // Controller handles manual mail workflow HTTP requests.
 type Controller struct {
-	usecase manualapp.UseCase
+	usecase manualapp.StartUseCase
 	log     logger.Interface
 }
 
 // NewController creates a new Controller.
-func NewController(usecase manualapp.UseCase, log logger.Interface) *Controller {
+func NewController(usecase manualapp.StartUseCase, log logger.Interface) *Controller {
 	if log == nil {
 		log = logger.NewNop()
 	}
@@ -37,12 +36,19 @@ type executeRequest struct {
 	Until        time.Time `json:"until" binding:"required"`
 }
 
+type executeAcceptedResponse struct {
+	Message    string `json:"message"`
+	WorkflowID string `json:"workflow_id"`
+	Status     string `json:"status"`
+}
+
 type executeResponse struct {
 	Message            string                            `json:"message"`
 	Fetch              fetchSummaryResponse              `json:"fetch"`
 	Analysis           analysisSummaryResponse           `json:"analysis"`
 	VendorResolution   vendorResolutionSummaryResponse   `json:"vendor_resolution"`
 	BillingEligibility billingEligibilitySummaryResponse `json:"billing_eligibility"`
+	Billing            billingSummaryResponse            `json:"billing"`
 }
 
 type fetchSummaryResponse struct {
@@ -146,6 +152,43 @@ type billingEligibilityFailureResponse struct {
 	Code              string `json:"code"`
 }
 
+type billingSummaryResponse struct {
+	CreatedCount   int                      `json:"created_count"`
+	CreatedItems   []billingCreatedItem     `json:"created_items"`
+	DuplicateCount int                      `json:"duplicate_count"`
+	DuplicateItems []billingDuplicateItem   `json:"duplicate_items"`
+	FailureCount   int                      `json:"failure_count"`
+	Failures       []billingFailureResponse `json:"failures"`
+}
+
+type billingCreatedItem struct {
+	BillingID         uint   `json:"billing_id"`
+	ParsedEmailID     uint   `json:"parsed_email_id"`
+	EmailID           uint   `json:"email_id"`
+	ExternalMessageID string `json:"external_message_id"`
+	VendorID          uint   `json:"vendor_id"`
+	VendorName        string `json:"vendor_name"`
+	BillingNumber     string `json:"billing_number"`
+}
+
+type billingDuplicateItem struct {
+	ExistingBillingID uint   `json:"existing_billing_id"`
+	ParsedEmailID     uint   `json:"parsed_email_id"`
+	EmailID           uint   `json:"email_id"`
+	ExternalMessageID string `json:"external_message_id"`
+	VendorID          uint   `json:"vendor_id"`
+	VendorName        string `json:"vendor_name"`
+	BillingNumber     string `json:"billing_number"`
+}
+
+type billingFailureResponse struct {
+	ParsedEmailID     uint   `json:"parsed_email_id"`
+	EmailID           uint   `json:"email_id"`
+	ExternalMessageID string `json:"external_message_id"`
+	Stage             string `json:"stage"`
+	Code              string `json:"code"`
+}
+
 // Execute handles POST /api/v1/manual-mail-workflows.
 func (ctrl *Controller) Execute(c *gin.Context) {
 	reqLog := ctrl.log
@@ -164,7 +207,7 @@ func (ctrl *Controller) Execute(c *gin.Context) {
 		return
 	}
 
-	result, err := ctrl.usecase.Execute(c.Request.Context(), manualapp.Command{
+	result, err := ctrl.usecase.Start(c.Request.Context(), manualapp.Command{
 		UserID:       uid,
 		ConnectionID: req.ConnectionID,
 		Condition: manualapp.FetchCondition{
@@ -174,33 +217,23 @@ func (ctrl *Controller) Execute(c *gin.Context) {
 		},
 	})
 	if err != nil {
-		ctrl.writeExecutionError(c, reqLog, uid, req.ConnectionID, err)
+		ctrl.writeStartError(c, reqLog, uid, req.ConnectionID, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, executeResponse{
-		Message:            "メール取得ワークフローが完了しました。",
-		Fetch:              buildFetchSummaryResponse(result.Fetch),
-		Analysis:           buildAnalysisSummaryResponse(result.Analysis),
-		VendorResolution:   buildVendorResolutionSummaryResponse(result.VendorResolution),
-		BillingEligibility: buildBillingEligibilitySummaryResponse(result.BillingEligibility),
+	c.JSON(http.StatusAccepted, executeAcceptedResponse{
+		Message:    "メール取得ワークフローを受け付けました。",
+		WorkflowID: result.WorkflowID,
+		Status:     result.Status,
 	})
 }
 
-func (ctrl *Controller) writeExecutionError(c *gin.Context, reqLog logger.Interface, userID, connectionID uint, err error) {
+func (ctrl *Controller) writeStartError(c *gin.Context, reqLog logger.Interface, userID, connectionID uint, err error) {
 	switch {
-	case errors.Is(err, manualapp.ErrInvalidCommand), errors.Is(err, manualapp.ErrFetchConditionInvalid), errors.Is(err, mfdomain.ErrInvalidCommand), errors.Is(err, mfdomain.ErrFetchConditionInvalid):
+	case errors.Is(err, manualapp.ErrInvalidCommand), errors.Is(err, manualapp.ErrFetchConditionInvalid):
 		httpresponse.WriteInvalidRequest(c)
-	case errors.Is(err, mfdomain.ErrConnectionNotFound):
-		httpresponse.WriteError(c, http.StatusNotFound, "mail_account_connection_not_found", "対象のメール連携は見つかりません。")
-	case errors.Is(err, mfdomain.ErrConnectionUnavailable):
-		httpresponse.WriteError(c, http.StatusForbidden, "mail_account_connection_unavailable", "対象のメール連携は現在利用できません。")
-	case errors.Is(err, mfdomain.ErrProviderLabelNotFound):
-		httpresponse.WriteError(c, http.StatusBadRequest, "mail_label_not_found", "指定したラベルは見つかりません。")
-	case errors.Is(err, mfdomain.ErrProviderSessionBuildFailed), errors.Is(err, mfdomain.ErrProviderListFailed):
-		httpresponse.WriteServiceUnavailable(c, "mail_provider_unavailable", "メールプロバイダへの接続に失敗しました。しばらくしてから再度お試しください。")
 	default:
-		reqLog.Error("manual_mail_workflow_failed",
+		reqLog.Error("manual_mail_workflow_start_failed",
 			logger.UserID(userID),
 			logger.Uint("connection_id", connectionID),
 			logger.Err(err),
@@ -348,6 +381,54 @@ func buildBillingEligibilitySummaryResponse(result manualapp.BillingEligibilityR
 		IneligibleItems: ineligibleItems,
 		FailureCount:    len(result.Failures),
 		Failures:        failures,
+	}
+}
+
+func buildBillingSummaryResponse(result manualapp.BillingResult) billingSummaryResponse {
+	createdItems := make([]billingCreatedItem, 0, len(result.CreatedItems))
+	for _, item := range result.CreatedItems {
+		createdItems = append(createdItems, billingCreatedItem{
+			BillingID:         item.BillingID,
+			ParsedEmailID:     item.ParsedEmailID,
+			EmailID:           item.EmailID,
+			ExternalMessageID: item.ExternalMessageID,
+			VendorID:          item.VendorID,
+			VendorName:        item.VendorName,
+			BillingNumber:     item.BillingNumber,
+		})
+	}
+
+	duplicateItems := make([]billingDuplicateItem, 0, len(result.DuplicateItems))
+	for _, item := range result.DuplicateItems {
+		duplicateItems = append(duplicateItems, billingDuplicateItem{
+			ExistingBillingID: item.ExistingBillingID,
+			ParsedEmailID:     item.ParsedEmailID,
+			EmailID:           item.EmailID,
+			ExternalMessageID: item.ExternalMessageID,
+			VendorID:          item.VendorID,
+			VendorName:        item.VendorName,
+			BillingNumber:     item.BillingNumber,
+		})
+	}
+
+	failures := make([]billingFailureResponse, 0, len(result.Failures))
+	for _, failure := range result.Failures {
+		failures = append(failures, billingFailureResponse{
+			ParsedEmailID:     failure.ParsedEmailID,
+			EmailID:           failure.EmailID,
+			ExternalMessageID: failure.ExternalMessageID,
+			Stage:             failure.Stage,
+			Code:              failure.Code,
+		})
+	}
+
+	return billingSummaryResponse{
+		CreatedCount:   result.CreatedCount,
+		CreatedItems:   createdItems,
+		DuplicateCount: result.DuplicateCount,
+		DuplicateItems: duplicateItems,
+		FailureCount:   len(result.Failures),
+		Failures:       failures,
 	}
 }
 

@@ -24,6 +24,7 @@ func TestDirectBillingEligibilityAdapter_Execute_ConvertsCommandAndResult(t *tes
 	billingNumber := "INV-001"
 	invoiceNumber := "T1234567890123"
 	billingDate := time.Date(2026, 3, 24, 0, 0, 0, 0, time.UTC)
+	productNameDisplay := "Example Product"
 	adapter := NewDirectBillingEligibilityAdapter(&stubBillingEligibilityUseCase{
 		execute: func(ctx context.Context, cmd beapp.Command) (beapp.Result, error) {
 			if len(cmd.ResolvedItems) != 1 {
@@ -35,18 +36,19 @@ func TestDirectBillingEligibilityAdapter_Execute_ConvertsCommandAndResult(t *tes
 			return beapp.Result{
 				EligibleItems: []bedomain.EligibleItem{
 					{
-						ParsedEmailID:     9001,
-						EmailID:           101,
-						ExternalMessageID: "msg-1",
-						VendorID:          3001,
-						VendorName:        "Acme",
-						MatchedBy:         "name_exact",
-						BillingNumber:     billingNumber,
-						InvoiceNumber:     &invoiceNumber,
-						Amount:            1200,
-						Currency:          "JPY",
-						BillingDate:       &billingDate,
-						PaymentCycle:      "one_time",
+						ParsedEmailID:      9001,
+						EmailID:            101,
+						ExternalMessageID:  "msg-1",
+						VendorID:           3001,
+						VendorName:         "Acme",
+						MatchedBy:          "name_exact",
+						ProductNameDisplay: &productNameDisplay,
+						BillingNumber:      billingNumber,
+						InvoiceNumber:      &invoiceNumber,
+						Amount:             1200,
+						Currency:           "JPY",
+						BillingDate:        &billingDate,
+						PaymentCycle:       "one_time",
 					},
 				},
 				EligibleCount: 1,
@@ -97,6 +99,9 @@ func TestDirectBillingEligibilityAdapter_Execute_ConvertsCommandAndResult(t *tes
 
 	if result.EligibleCount != 1 || len(result.EligibleItems) != 1 {
 		t.Fatalf("unexpected eligible result: %+v", result)
+	}
+	if result.EligibleItems[0].ProductNameDisplay == nil || *result.EligibleItems[0].ProductNameDisplay != productNameDisplay {
+		t.Fatalf("expected product name display to be mapped, got %+v", result.EligibleItems[0])
 	}
 	if result.EligibleItems[0].InvoiceNumber == nil || *result.EligibleItems[0].InvoiceNumber != invoiceNumber {
 		t.Fatalf("expected invoice number to be mapped, got %+v", result.EligibleItems[0])

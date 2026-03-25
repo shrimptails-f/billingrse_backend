@@ -1,4 +1,4 @@
-package v1_test
+package router
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	authpresentation "business/internal/app/presentation/auth"
 	macpresentation "business/internal/app/presentation/mailaccountconnection"
 	manualpresentation "business/internal/app/presentation/manualmailworkflow"
-	v1 "business/internal/app/router"
 	"business/internal/auth/domain"
 	"business/internal/library/logger"
 	macapp "business/internal/mailaccountconnection/application"
@@ -97,8 +96,11 @@ func (s *stubEmailCredentialUsecase) Disconnect(ctx context.Context, userID uint
 
 type stubManualMailWorkflowUseCase struct{}
 
-func (s *stubManualMailWorkflowUseCase) Execute(ctx context.Context, cmd manualapp.Command) (manualapp.Result, error) {
-	return manualapp.Result{}, nil
+func (s *stubManualMailWorkflowUseCase) Start(ctx context.Context, cmd manualapp.Command) (manualapp.StartResult, error) {
+	return manualapp.StartResult{
+		WorkflowID: "wf-test",
+		Status:     manualapp.WorkflowStatusQueued,
+	}, nil
 }
 
 func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
@@ -131,7 +133,7 @@ func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 	assert.NoError(t, err)
 
 	domain, _ := osw.GetEnv("DOMAIN")
-	_, err = v1.Router(g, container, log, domain)
+	_, err = Router(g, container, log, domain)
 	assert.NoError(t, err)
 
 	routes := map[string]struct{}{}

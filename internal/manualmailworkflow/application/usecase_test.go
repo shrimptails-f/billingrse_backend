@@ -41,6 +41,14 @@ func (s *stubBillingEligibilityStage) Execute(ctx context.Context, cmd BillingEl
 	return s.execute(ctx, cmd)
 }
 
+type stubBillingStage struct {
+	execute func(ctx context.Context, cmd BillingCommand) (BillingResult, error)
+}
+
+func (s *stubBillingStage) Execute(ctx context.Context, cmd BillingCommand) (BillingResult, error) {
+	return s.execute(ctx, cmd)
+}
+
 func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 	t.Parallel()
 
@@ -49,6 +57,7 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 	analyzeCalls := 0
 	vendorResolutionCalls := 0
 	billingEligibilityCalls := 0
+	billingCalls := 0
 	amount := 1200.0
 	currency := "JPY"
 	billingNumber := "INV-001"
@@ -209,6 +218,31 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 				}, nil
 			},
 		},
+		&stubBillingStage{
+			execute: func(ctx context.Context, cmd BillingCommand) (BillingResult, error) {
+				billingCalls++
+				if cmd.UserID != 3 {
+					t.Fatalf("unexpected billing user id: %d", cmd.UserID)
+				}
+				if len(cmd.EligibleItems) != 1 || cmd.EligibleItems[0].ParsedEmailID != 9001 {
+					t.Fatalf("unexpected billing inputs: %+v", cmd.EligibleItems)
+				}
+				return BillingResult{
+					CreatedItems: []BillingCreatedItem{
+						{
+							BillingID:         7001,
+							ParsedEmailID:     9001,
+							EmailID:           101,
+							ExternalMessageID: "msg-1",
+							VendorID:          3001,
+							VendorName:        "Acme",
+							BillingNumber:     billingNumber,
+						},
+					},
+					CreatedCount: 1,
+				}, nil
+			},
+		},
 		logger.NewNop(),
 	)
 
@@ -237,6 +271,9 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 	if billingEligibilityCalls != 1 {
 		t.Fatalf("expected 1 billing eligibility call, got %d", billingEligibilityCalls)
 	}
+	if billingCalls != 1 {
+		t.Fatalf("expected 1 billing call, got %d", billingCalls)
+	}
 	if result.Fetch.Provider != "gmail" {
 		t.Fatalf("unexpected fetch result: %+v", result.Fetch)
 	}
@@ -249,6 +286,9 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 	if result.BillingEligibility.EligibleCount != 1 || len(result.BillingEligibility.EligibleItems) != 1 {
 		t.Fatalf("unexpected billing eligibility result: %+v", result.BillingEligibility)
 	}
+	if result.Billing.CreatedCount != 1 || len(result.Billing.CreatedItems) != 1 {
+		t.Fatalf("unexpected billing result: %+v", result.Billing)
+	}
 }
 
 func TestUseCaseExecute_SkipsAnalyzeWhenNoCreatedEmails(t *testing.T) {
@@ -257,6 +297,7 @@ func TestUseCaseExecute_SkipsAnalyzeWhenNoCreatedEmails(t *testing.T) {
 	analyzeCalled := false
 	vendorResolutionCalled := false
 	billingEligibilityCalled := false
+	billingCalled := false
 	uc := NewUseCase(
 		&stubFetchStage{
 			execute: func(ctx context.Context, cmd FetchCommand) (FetchResult, error) {
@@ -286,6 +327,12 @@ func TestUseCaseExecute_SkipsAnalyzeWhenNoCreatedEmails(t *testing.T) {
 				return BillingEligibilityResult{}, nil
 			},
 		},
+		&stubBillingStage{
+			execute: func(ctx context.Context, cmd BillingCommand) (BillingResult, error) {
+				billingCalled = true
+				return BillingResult{}, nil
+			},
+		},
 		logger.NewNop(),
 	)
 
@@ -311,6 +358,9 @@ func TestUseCaseExecute_SkipsAnalyzeWhenNoCreatedEmails(t *testing.T) {
 	if billingEligibilityCalled {
 		t.Fatal("billing eligibility stage should not be called when there are no created emails")
 	}
+	if billingCalled {
+		t.Fatal("billing stage should not be called when there are no created emails")
+	}
 	if len(result.Analysis.ParsedEmailIDs) != 0 || result.Analysis.ParsedEmailCount != 0 {
 		t.Fatalf("unexpected analysis result: %+v", result.Analysis)
 	}
@@ -321,6 +371,7 @@ func TestUseCaseExecute_SkipsVendorResolutionWhenNoParsedEmails(t *testing.T) {
 
 	vendorResolutionCalled := false
 	billingEligibilityCalled := false
+	billingCalled := false
 	uc := NewUseCase(
 		&stubFetchStage{
 			execute: func(ctx context.Context, cmd FetchCommand) (FetchResult, error) {
@@ -362,6 +413,12 @@ func TestUseCaseExecute_SkipsVendorResolutionWhenNoParsedEmails(t *testing.T) {
 				return BillingEligibilityResult{}, nil
 			},
 		},
+		&stubBillingStage{
+			execute: func(ctx context.Context, cmd BillingCommand) (BillingResult, error) {
+				billingCalled = true
+				return BillingResult{}, nil
+			},
+		},
 		logger.NewNop(),
 	)
 
@@ -384,6 +441,9 @@ func TestUseCaseExecute_SkipsVendorResolutionWhenNoParsedEmails(t *testing.T) {
 	if billingEligibilityCalled {
 		t.Fatal("billing eligibility stage should not be called when there are no parsed emails")
 	}
+	if billingCalled {
+		t.Fatal("billing stage should not be called when there are no parsed emails")
+	}
 	if result.VendorResolution.ResolvedCount != 0 || result.VendorResolution.UnresolvedCount != 0 {
 		t.Fatalf("unexpected vendor resolution result: %+v", result.VendorResolution)
 	}
@@ -393,6 +453,7 @@ func TestUseCaseExecute_SkipsBillingEligibilityWhenNoResolvedItems(t *testing.T)
 	t.Parallel()
 
 	billingEligibilityCalled := false
+	billingCalled := false
 	uc := NewUseCase(
 		&stubFetchStage{
 			execute: func(ctx context.Context, cmd FetchCommand) (FetchResult, error) {
@@ -439,6 +500,12 @@ func TestUseCaseExecute_SkipsBillingEligibilityWhenNoResolvedItems(t *testing.T)
 				return BillingEligibilityResult{}, nil
 			},
 		},
+		&stubBillingStage{
+			execute: func(ctx context.Context, cmd BillingCommand) (BillingResult, error) {
+				billingCalled = true
+				return BillingResult{}, nil
+			},
+		},
 		logger.NewNop(),
 	)
 
@@ -458,8 +525,103 @@ func TestUseCaseExecute_SkipsBillingEligibilityWhenNoResolvedItems(t *testing.T)
 	if billingEligibilityCalled {
 		t.Fatal("billing eligibility stage should not be called when there are no resolved items")
 	}
+	if billingCalled {
+		t.Fatal("billing stage should not be called when there are no resolved items")
+	}
 	if result.BillingEligibility.EligibleCount != 0 || result.BillingEligibility.IneligibleCount != 0 {
 		t.Fatalf("unexpected billing eligibility result: %+v", result.BillingEligibility)
+	}
+}
+
+func TestUseCaseExecute_SkipsBillingWhenNoEligibleItems(t *testing.T) {
+	t.Parallel()
+
+	billingCalled := false
+	uc := NewUseCase(
+		&stubFetchStage{
+			execute: func(ctx context.Context, cmd FetchCommand) (FetchResult, error) {
+				return FetchResult{
+					CreatedEmailIDs: []uint{101},
+					CreatedEmails: []CreatedEmail{
+						{
+							EmailID:           101,
+							ExternalMessageID: "msg-1",
+							Subject:           "Invoice",
+							From:              "billing@example.com",
+							To:                []string{"user@example.com"},
+							ReceivedAt:        time.Date(2026, 3, 24, 12, 0, 0, 0, time.UTC),
+						},
+					},
+				}, nil
+			},
+		},
+		&stubAnalyzeStage{
+			execute: func(ctx context.Context, cmd AnalyzeCommand) (AnalyzeResult, error) {
+				return AnalyzeResult{
+					ParsedEmails: []ParsedEmail{
+						{
+							ParsedEmailID:     9001,
+							EmailID:           101,
+							ExternalMessageID: "msg-1",
+						},
+					},
+					ParsedEmailIDs: []uint{9001},
+				}, nil
+			},
+		},
+		&stubVendorResolutionStage{
+			execute: func(ctx context.Context, cmd VendorResolutionCommand) (VendorResolutionResult, error) {
+				return VendorResolutionResult{
+					ResolvedItems: []ResolvedItem{
+						{
+							ParsedEmailID:     9001,
+							EmailID:           101,
+							ExternalMessageID: "msg-1",
+							VendorID:          301,
+							VendorName:        "Acme",
+						},
+					},
+					ResolvedCount: 1,
+				}, nil
+			},
+		},
+		&stubBillingEligibilityStage{
+			execute: func(ctx context.Context, cmd BillingEligibilityCommand) (BillingEligibilityResult, error) {
+				return BillingEligibilityResult{
+					EligibleItems:   nil,
+					EligibleCount:   0,
+					IneligibleItems: []IneligibleItem{{ParsedEmailID: 9001, ReasonCode: "currency_empty"}},
+					IneligibleCount: 1,
+				}, nil
+			},
+		},
+		&stubBillingStage{
+			execute: func(ctx context.Context, cmd BillingCommand) (BillingResult, error) {
+				billingCalled = true
+				return BillingResult{}, nil
+			},
+		},
+		logger.NewNop(),
+	)
+
+	result, err := uc.Execute(context.Background(), Command{
+		UserID:       1,
+		ConnectionID: 2,
+		Condition: FetchCondition{
+			LabelName: "billing",
+			Since:     time.Date(2026, 3, 24, 0, 0, 0, 0, time.UTC),
+			Until:     time.Date(2026, 3, 25, 0, 0, 0, 0, time.UTC),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	if billingCalled {
+		t.Fatal("billing stage should not be called when there are no eligible items")
+	}
+	if result.Billing.CreatedCount != 0 || result.Billing.DuplicateCount != 0 {
+		t.Fatalf("unexpected billing result: %+v", result.Billing)
 	}
 }
 
@@ -489,6 +651,12 @@ func TestUseCaseExecute_InvalidCommand(t *testing.T) {
 			execute: func(ctx context.Context, cmd BillingEligibilityCommand) (BillingEligibilityResult, error) {
 				t.Fatal("billing eligibility stage should not be called")
 				return BillingEligibilityResult{}, nil
+			},
+		},
+		&stubBillingStage{
+			execute: func(ctx context.Context, cmd BillingCommand) (BillingResult, error) {
+				t.Fatal("billing stage should not be called")
+				return BillingResult{}, nil
 			},
 		},
 		logger.NewNop(),

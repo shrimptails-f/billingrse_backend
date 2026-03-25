@@ -125,18 +125,19 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 		err := uc.policy.Evaluate(target.Data, resolution)
 		if err == nil {
 			result.EligibleItems = append(result.EligibleItems, domain.EligibleItem{
-				ParsedEmailID:     target.ParsedEmailID,
-				EmailID:           target.EmailID,
-				ExternalMessageID: target.ExternalMessageID,
-				VendorID:          target.VendorID,
-				VendorName:        target.VendorName,
-				MatchedBy:         target.MatchedBy,
-				BillingNumber:     stringValue(target.Data.BillingNumber),
-				InvoiceNumber:     cloneString(target.Data.InvoiceNumber),
-				Amount:            float64Value(target.Data.Amount),
-				Currency:          stringValue(target.Data.Currency),
-				BillingDate:       cloneTime(target.Data.BillingDate),
-				PaymentCycle:      stringValue(target.Data.PaymentCycle),
+				ParsedEmailID:      target.ParsedEmailID,
+				EmailID:            target.EmailID,
+				ExternalMessageID:  target.ExternalMessageID,
+				VendorID:           target.VendorID,
+				VendorName:         target.VendorName,
+				MatchedBy:          target.MatchedBy,
+				ProductNameDisplay: uc.policy.ResolvedProductNameDisplay(target.Data),
+				BillingNumber:      stringValue(target.Data.BillingNumber),
+				InvoiceNumber:      cloneString(target.Data.InvoiceNumber),
+				Amount:             float64Value(target.Data.Amount),
+				Currency:           stringValue(target.Data.Currency),
+				BillingDate:        cloneTime(target.Data.BillingDate),
+				PaymentCycle:       stringValue(target.Data.PaymentCycle),
 			})
 			continue
 		}
@@ -186,6 +187,8 @@ func validateCommand(cmd Command) error {
 
 func reasonCodeForError(err error) (string, bool) {
 	switch {
+	case errors.Is(err, commondomain.ErrBillingEligibilityProductNameEmpty):
+		return domain.ReasonCodeProductNameEmpty, true
 	case errors.Is(err, commondomain.ErrBillingEligibilityAmountEmpty):
 		return domain.ReasonCodeAmountEmpty, true
 	case errors.Is(err, commondomain.ErrBillingEligibilityAmountInvalid):
