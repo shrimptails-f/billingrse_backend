@@ -80,6 +80,7 @@ classDiagram
 
   MailFetchBatch "1" --> "1" BatchSetting : 設定
   BatchSetting "1" *-- "1" FetchCondition : 取得条件
+  BatchSetting --> MailAccountConnection : 実行対象
   ManualMailWorkflowHistory --> MailAccountConnection : 実行対象
   ManualMailWorkflowHistory *-- "1" FetchCondition : 実行条件
   ManualMailWorkflowHistory *-- "0..*" ManualMailWorkflowFailure : failure
@@ -122,7 +123,8 @@ classDiagram
   │       └─ メールサービス
   ├─ 所有
   │   └─ バッチ設定
-  │       └─ 取得条件
+  │       ├─ 取得条件
+  │       └─ 実行対象として メールアカウント連携
   ├─ 所有
   │   └─ 手動履歴
   │       └─ 手動履歴失敗

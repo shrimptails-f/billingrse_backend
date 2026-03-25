@@ -103,12 +103,14 @@
 ### 説明
 - 取得条件（期間 / ラベル）と実行スケジュールを持つ
 - 取得条件（FetchCondition）を内包する
+- 実行対象のメールアカウント連携を参照する
 - ユーザー単位で管理される
 
 ### ルール
 - ユーザーが所有する独立した集約として扱う
 - BatchSetting が集約ルートである
 - 1つの BatchSetting は1つの FetchCondition を持つ
+- 1つの BatchSetting は1つのメールアカウント連携を実行対象として持つ
 
 ## 取得条件（FetchCondition）
 
