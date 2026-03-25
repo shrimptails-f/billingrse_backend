@@ -56,7 +56,8 @@ type listResponse struct {
 
 type workflowHistoryItemResponse struct {
 	WorkflowID         string               `json:"workflow_id"`
-	ConnectionID       uint                 `json:"connection_id"`
+	Provider           string               `json:"provider"`
+	AccountIdentifier  string               `json:"account_identifier"`
 	LabelName          string               `json:"label_name"`
 	Since              time.Time            `json:"since"`
 	Until              time.Time            `json:"until"`
@@ -242,7 +243,8 @@ func buildListQuery(c *gin.Context, userID uint) (manualapp.ListQuery, error) {
 func toWorkflowHistoryItemResponse(item manualapp.WorkflowHistoryListItem) workflowHistoryItemResponse {
 	return workflowHistoryItemResponse{
 		WorkflowID:         item.WorkflowID,
-		ConnectionID:       item.ConnectionID,
+		Provider:           item.Provider,
+		AccountIdentifier:  item.AccountIdentifier,
 		LabelName:          item.LabelName,
 		Since:              item.Since,
 		Until:              item.Until,

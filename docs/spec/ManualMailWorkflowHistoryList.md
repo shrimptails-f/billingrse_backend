@@ -56,7 +56,8 @@
   "items": [
     {
       "workflow_id": "01JQ0B7N0M7H3X9C2J5K8V6P4",
-      "connection_id": 12,
+      "provider": "gmail",
+      "account_identifier": "billing@example.com",
       "label_name": "billing",
       "since": "2026-03-24T00:00:00Z",
       "until": "2026-03-25T00:00:00Z",
@@ -135,8 +136,11 @@
   - filter 適用後の総件数
 - `workflow_id`
   - API 参照用の一意な workflow 識別子
-- `connection_id`
-  - 実行対象のメール連携 ID
+- `provider`
+  - 実行時点のメールサービス種別
+- `account_identifier`
+  - 実行時点のメールアカウント識別子
+  - v1 は Gmail 前提のため `gmail_address` snapshot が入る
 - `label_name`
   - 受付時点のラベル条件
 - `since`
@@ -243,7 +247,8 @@ header page 取得:
 SELECT
   id,
   workflow_id,
-  connection_id,
+  provider,
+  account_identifier,
   label_name,
   since_at,
   until_at,
@@ -338,7 +343,8 @@ type StageSummaryView struct {
 
 type WorkflowHistoryListItem struct {
     WorkflowID         string
-    ConnectionID       uint
+    Provider           string
+    AccountIdentifier  string
     LabelName          string
     Since              time.Time
     Until              time.Time

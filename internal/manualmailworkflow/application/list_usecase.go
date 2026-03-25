@@ -39,7 +39,8 @@ type StageSummaryView struct {
 // WorkflowHistoryListItem is one workflow row returned by the list API.
 type WorkflowHistoryListItem struct {
 	WorkflowID         string
-	ConnectionID       uint
+	Provider           string
+	AccountIdentifier  string
 	LabelName          string
 	Since              time.Time
 	Until              time.Time

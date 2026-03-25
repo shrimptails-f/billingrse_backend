@@ -130,7 +130,8 @@ erDiagram
     bigint id
     string workflow_id
     bigint user_id
-    bigint connection_id
+    string provider
+    string account_identifier
     string label_name
     datetime since_at
     datetime until_at

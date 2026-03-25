@@ -31,13 +31,14 @@ func TestListUseCase_List_NormalizesAndDefaultsQuery(t *testing.T) {
 			return ListResult{
 				Items: []WorkflowHistoryListItem{
 					{
-						WorkflowID:   "wf-1",
-						ConnectionID: 12,
-						LabelName:    "billing",
-						Since:        time.Date(2026, 3, 24, 0, 0, 0, 0, time.UTC),
-						Until:        time.Date(2026, 3, 25, 0, 0, 0, 0, time.UTC),
-						Status:       WorkflowStatusPartialSuccess,
-						QueuedAt:     time.Date(2026, 3, 25, 9, 0, 0, 0, time.UTC),
+						WorkflowID:        "wf-1",
+						Provider:          "gmail",
+						AccountIdentifier: "billing@example.com",
+						LabelName:         "billing",
+						Since:             time.Date(2026, 3, 24, 0, 0, 0, 0, time.UTC),
+						Until:             time.Date(2026, 3, 25, 0, 0, 0, 0, time.UTC),
+						Status:            WorkflowStatusPartialSuccess,
+						QueuedAt:          time.Date(2026, 3, 25, 9, 0, 0, 0, time.UTC),
 						Fetch: StageSummaryView{
 							Failures: []StageFailureView{},
 						},

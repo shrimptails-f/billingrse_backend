@@ -42,7 +42,11 @@ func newWorkflowStatusRepoTestEnv(t *testing.T) *workflowStatusRepoTestEnv {
 		skipIfWorkflowStatusRepoDBUnavailable(t, err)
 	}
 	require.NoError(t, err)
-	require.NoError(t, mysqlConn.DB.AutoMigrate(&manualMailWorkflowHistoryRecord{}, &manualMailWorkflowStageFailureRecord{}))
+	require.NoError(t, mysqlConn.DB.AutoMigrate(
+		&emailCredentialSnapshotRecord{},
+		&manualMailWorkflowHistoryRecord{},
+		&manualMailWorkflowStageFailureRecord{},
+	))
 
 	nowUTC := time.Date(2026, 3, 25, 15, 0, 0, 0, time.UTC)
 	return &workflowStatusRepoTestEnv{
@@ -72,6 +76,12 @@ func TestGormWorkflowStatusRepository_CreateSaveProgressAndComplete(t *testing.T
 	ctx := context.Background()
 	queuedAt := time.Date(2026, 3, 25, 14, 55, 0, 0, time.UTC)
 	externalMessageID := "msg-2"
+	mustCreateCredentialSnapshot(t, env.db, emailCredentialSnapshotRecord{
+		ID:           20,
+		UserID:       10,
+		Type:         "gmail",
+		GmailAddress: "billing@example.com",
+	})
 	ref, err := env.repo.CreateQueued(ctx, manualapp.QueuedWorkflowHistory{
 		WorkflowID:   "01JQ0B7N0M7H3X9C2J5K8V6P4",
 		UserID:       10,
@@ -109,7 +119,8 @@ func TestGormWorkflowStatusRepository_CreateSaveProgressAndComplete(t *testing.T
 	require.NoError(t, env.db.WithContext(ctx).First(&history, ref.HistoryID).Error)
 	require.Equal(t, "01JQ0B7N0M7H3X9C2J5K8V6P4", history.WorkflowID)
 	require.Equal(t, uint(10), history.UserID)
-	require.Equal(t, uint(20), history.ConnectionID)
+	require.Equal(t, "gmail", history.Provider)
+	require.Equal(t, "billing@example.com", history.AccountIdentifier)
 	require.Equal(t, "billing", history.LabelName)
 	require.Equal(t, manualapp.WorkflowStatusPartialSuccess, history.Status)
 	require.Nil(t, history.CurrentStage)
@@ -142,6 +153,12 @@ func TestGormWorkflowStatusRepository_Fail(t *testing.T) {
 	defer env.clean()
 
 	ctx := context.Background()
+	mustCreateCredentialSnapshot(t, env.db, emailCredentialSnapshotRecord{
+		ID:           2,
+		UserID:       1,
+		Type:         "gmail",
+		GmailAddress: "failed@example.com",
+	})
 	ref, err := env.repo.CreateQueued(ctx, manualapp.QueuedWorkflowHistory{
 		WorkflowID:   "01JQ0B7N0M7H3X9C2J5K8V6P5",
 		UserID:       1,
@@ -176,16 +193,20 @@ func TestGormWorkflowStatusRepository_List(t *testing.T) {
 	ctx := context.Background()
 	queuedAt := time.Date(2026, 3, 25, 14, 0, 0, 0, time.UTC)
 	firstHistory := workflowHistoryRecordFixture(10, "wf-first", queuedAt, manualapp.WorkflowStatusPartialSuccess)
-	firstHistory.ConnectionID = 12
+	firstHistory.Provider = "gmail"
+	firstHistory.AccountIdentifier = "first@example.com"
 	firstHistory.FetchSuccessCount = 2
 	firstHistory.FetchTechnicalFailureCount = 2
 	firstHistory.VendorResolutionSuccessCount = 1
 	firstHistory.VendorResolutionBusinessFailureCount = 1
 
 	secondHistory := workflowHistoryRecordFixture(10, "wf-second", queuedAt, manualapp.WorkflowStatusSucceeded)
-	secondHistory.ConnectionID = 13
+	secondHistory.Provider = "gmail"
+	secondHistory.AccountIdentifier = "second@example.com"
 
 	otherUserHistory := workflowHistoryRecordFixture(20, "wf-other-user", queuedAt.Add(time.Hour), manualapp.WorkflowStatusFailed)
+	otherUserHistory.Provider = "gmail"
+	otherUserHistory.AccountIdentifier = "hidden@example.com"
 
 	require.NoError(t, env.db.WithContext(ctx).Create(&firstHistory).Error)
 	require.NoError(t, env.db.WithContext(ctx).Create(&secondHistory).Error)
@@ -252,7 +273,8 @@ func TestGormWorkflowStatusRepository_List(t *testing.T) {
 	require.Equal(t, "wf-first", result.Items[1].WorkflowID)
 
 	firstItem := result.Items[1]
-	require.Equal(t, uint(12), firstItem.ConnectionID)
+	require.Equal(t, "gmail", firstItem.Provider)
+	require.Equal(t, "first@example.com", firstItem.AccountIdentifier)
 	require.Equal(t, 2, firstItem.Fetch.SuccessCount)
 	require.Equal(t, 0, firstItem.Fetch.BusinessFailureCount)
 	require.Equal(t, 2, firstItem.Fetch.TechnicalFailureCount)
@@ -316,17 +338,23 @@ func TestGormWorkflowStatusRepository_List_WithStatusFilterAndEmptyPage(t *testi
 
 func workflowHistoryRecordFixture(userID uint, workflowID string, queuedAt time.Time, status string) manualMailWorkflowHistoryRecord {
 	return manualMailWorkflowHistoryRecord{
-		WorkflowID:   workflowID,
-		UserID:       userID,
-		ConnectionID: 1,
-		LabelName:    "billing",
-		SinceAt:      time.Date(2026, 3, 24, 0, 0, 0, 0, time.UTC),
-		UntilAt:      time.Date(2026, 3, 25, 0, 0, 0, 0, time.UTC),
-		Status:       status,
-		QueuedAt:     queuedAt,
-		CreatedAt:    queuedAt,
-		UpdatedAt:    queuedAt,
+		WorkflowID:        workflowID,
+		UserID:            userID,
+		Provider:          "gmail",
+		AccountIdentifier: "billing@example.com",
+		LabelName:         "billing",
+		SinceAt:           time.Date(2026, 3, 24, 0, 0, 0, 0, time.UTC),
+		UntilAt:           time.Date(2026, 3, 25, 0, 0, 0, 0, time.UTC),
+		Status:            status,
+		QueuedAt:          queuedAt,
+		CreatedAt:         queuedAt,
+		UpdatedAt:         queuedAt,
 	}
+}
+
+func mustCreateCredentialSnapshot(t *testing.T, db *gorm.DB, record emailCredentialSnapshotRecord) {
+	t.Helper()
+	require.NoError(t, db.Create(&record).Error)
 }
 
 func stringPtr(value string) *string {

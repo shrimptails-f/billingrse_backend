@@ -16,7 +16,8 @@ type manualMailWorkflowHistoryRecord struct {
 	ID                                      uint64     `gorm:"column:id;primaryKey;autoIncrement"`
 	WorkflowID                              string     `gorm:"column:workflow_id;type:char(26);not null;uniqueIndex:uni_manual_mail_workflow_histories_workflow_id"`
 	UserID                                  uint       `gorm:"column:user_id;not null;index:idx_manual_mail_workflow_histories_user_queued_at,priority:1;index:idx_manual_mail_workflow_histories_user_status_queued_at,priority:1"`
-	ConnectionID                            uint       `gorm:"column:connection_id;not null"`
+	Provider                                string     `gorm:"column:provider;size:50;not null"`
+	AccountIdentifier                       string     `gorm:"column:account_identifier;size:255;not null"`
 	LabelName                               string     `gorm:"column:label_name;size:255;not null"`
 	SinceAt                                 time.Time  `gorm:"column:since_at;not null"`
 	UntilAt                                 time.Time  `gorm:"column:until_at;not null"`
@@ -60,6 +61,18 @@ func (manualMailWorkflowStageFailureRecord) TableName() string {
 	return "manual_mail_workflow_stage_failures"
 }
 
+type emailCredentialSnapshotRecord struct {
+	ID           uint    `gorm:"column:id;primaryKey"`
+	UserID       uint    `gorm:"column:user_id;not null"`
+	Type         string  `gorm:"column:type;size:50;not null"`
+	GmailAddress string  `gorm:"column:gmail_address;size:255;not null"`
+	OAuthState   *string `gorm:"column:o_auth_state"`
+}
+
+func (emailCredentialSnapshotRecord) TableName() string {
+	return "email_credentials"
+}
+
 // GormWorkflowStatusRepository persists workflow history rows into MySQL.
 type GormWorkflowStatusRepository struct {
 	db    *gorm.DB
@@ -96,18 +109,24 @@ func (r *GormWorkflowStatusRepository) CreateQueued(ctx context.Context, cmd man
 		return manualapp.WorkflowHistoryRef{}, fmt.Errorf("gorm db is not configured")
 	}
 
+	provider, accountIdentifier, err := r.resolveConnectionSnapshot(ctx, cmd.UserID, cmd.ConnectionID)
+	if err != nil {
+		return manualapp.WorkflowHistoryRef{}, err
+	}
+
 	now := r.clock.Now().UTC()
 	record := manualMailWorkflowHistoryRecord{
-		WorkflowID:   strings.TrimSpace(cmd.WorkflowID),
-		UserID:       cmd.UserID,
-		ConnectionID: cmd.ConnectionID,
-		LabelName:    strings.TrimSpace(cmd.LabelName),
-		SinceAt:      cmd.SinceAt.UTC(),
-		UntilAt:      cmd.UntilAt.UTC(),
-		Status:       manualapp.WorkflowStatusQueued,
-		QueuedAt:     cmd.QueuedAt.UTC(),
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		WorkflowID:        strings.TrimSpace(cmd.WorkflowID),
+		UserID:            cmd.UserID,
+		Provider:          provider,
+		AccountIdentifier: accountIdentifier,
+		LabelName:         strings.TrimSpace(cmd.LabelName),
+		SinceAt:           cmd.SinceAt.UTC(),
+		UntilAt:           cmd.UntilAt.UTC(),
+		Status:            manualapp.WorkflowStatusQueued,
+		QueuedAt:          cmd.QueuedAt.UTC(),
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}
 
 	if err := r.db.WithContext(ctx).Create(&record).Error; err != nil {
@@ -384,15 +403,16 @@ func buildWorkflowHistoryListItem(
 	failuresByStage map[string][]manualapp.StageFailureView,
 ) manualapp.WorkflowHistoryListItem {
 	return manualapp.WorkflowHistoryListItem{
-		WorkflowID:   record.WorkflowID,
-		ConnectionID: record.ConnectionID,
-		LabelName:    record.LabelName,
-		Since:        record.SinceAt.UTC(),
-		Until:        record.UntilAt.UTC(),
-		Status:       record.Status,
-		CurrentStage: cloneOptionalString(record.CurrentStage),
-		QueuedAt:     record.QueuedAt.UTC(),
-		FinishedAt:   cloneOptionalTime(record.FinishedAt),
+		WorkflowID:        record.WorkflowID,
+		Provider:          record.Provider,
+		AccountIdentifier: record.AccountIdentifier,
+		LabelName:         record.LabelName,
+		Since:             record.SinceAt.UTC(),
+		Until:             record.UntilAt.UTC(),
+		Status:            record.Status,
+		CurrentStage:      cloneOptionalString(record.CurrentStage),
+		QueuedAt:          record.QueuedAt.UTC(),
+		FinishedAt:        cloneOptionalTime(record.FinishedAt),
 		Fetch: manualapp.StageSummaryView{
 			SuccessCount:          record.FetchSuccessCount,
 			BusinessFailureCount:  record.FetchBusinessFailureCount,
@@ -424,6 +444,29 @@ func buildWorkflowHistoryListItem(
 			Failures:              stageFailureViews(failuresByStage, "billing"),
 		},
 	}
+}
+
+func (r *GormWorkflowStatusRepository) resolveConnectionSnapshot(
+	ctx context.Context,
+	userID uint,
+	connectionID uint,
+) (string, string, error) {
+	var credential emailCredentialSnapshotRecord
+	err := r.db.WithContext(ctx).
+		Where("id = ? AND user_id = ? AND o_auth_state IS NULL", connectionID, userID).
+		First(&credential).Error
+	if err != nil {
+		r.logDBError(ctx, "email_credentials", "find_connection_snapshot", err)
+		return "", "", fmt.Errorf("failed to find connection snapshot: %w", err)
+	}
+
+	provider := strings.ToLower(strings.TrimSpace(credential.Type))
+	accountIdentifier := strings.ToLower(strings.TrimSpace(credential.GmailAddress))
+	if provider == "" || accountIdentifier == "" {
+		return "", "", fmt.Errorf("connection snapshot is incomplete: connection_id=%d", connectionID)
+	}
+
+	return provider, accountIdentifier, nil
 }
 
 func groupFailureViewsByHistory(

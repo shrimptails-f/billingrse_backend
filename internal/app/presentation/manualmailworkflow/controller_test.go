@@ -134,14 +134,15 @@ func TestList_200(t *testing.T) {
 	}).Return(manualapp.ListResult{
 		Items: []manualapp.WorkflowHistoryListItem{
 			{
-				WorkflowID:   "wf-123",
-				ConnectionID: 12,
-				LabelName:    "billing",
-				Since:        time.Date(2026, 3, 24, 0, 0, 0, 0, time.UTC),
-				Until:        time.Date(2026, 3, 25, 0, 0, 0, 0, time.UTC),
-				Status:       manualapp.WorkflowStatusPartialSuccess,
-				QueuedAt:     time.Date(2026, 3, 25, 17, 0, 0, 0, time.UTC),
-				FinishedAt:   timePtr(time.Date(2026, 3, 25, 17, 0, 12, 0, time.UTC)),
+				WorkflowID:        "wf-123",
+				Provider:          "gmail",
+				AccountIdentifier: "billing@example.com",
+				LabelName:         "billing",
+				Since:             time.Date(2026, 3, 24, 0, 0, 0, 0, time.UTC),
+				Until:             time.Date(2026, 3, 25, 0, 0, 0, 0, time.UTC),
+				Status:            manualapp.WorkflowStatusPartialSuccess,
+				QueuedAt:          time.Date(2026, 3, 25, 17, 0, 0, 0, time.UTC),
+				FinishedAt:        timePtr(time.Date(2026, 3, 25, 17, 0, 12, 0, time.UTC)),
 				Fetch: manualapp.StageSummaryView{
 					SuccessCount:          14,
 					BusinessFailureCount:  0,
@@ -176,7 +177,8 @@ func TestList_200(t *testing.T) {
 		"items": [
 			{
 				"workflow_id": "wf-123",
-				"connection_id": 12,
+				"provider": "gmail",
+				"account_identifier": "billing@example.com",
 				"label_name": "billing",
 				"since": "2026-03-24T00:00:00Z",
 				"until": "2026-03-25T00:00:00Z",
