@@ -45,7 +45,7 @@
 - package 間依存は既存の Clean Architecture 方針に従い、application port 経由で接続すること。
 
 ## 制約事項
-- 現行 `manualmailworkflow` は `fetch -> analysis -> vendorresolution` まで接続済みであり、`BillingEligibility` 以降は未実装である。
+- 現行 `manualmailworkflow` は `fetch -> analysis -> vendorresolution -> billingeligibility -> billing` まで接続済みである。
 - vendor 永続化は `vendors` / `vendor_aliases` と repository 実装まで存在し、手動補正 UI / API は未実装である。
 - `internal/common/domain` に DDD のモデルを集約する運用である。
 - `emails` テーブルには本文が保存されないため、`VendorResolution` は本文なしでも動作しなければならない。

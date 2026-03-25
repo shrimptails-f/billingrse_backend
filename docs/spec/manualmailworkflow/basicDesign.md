@@ -11,7 +11,7 @@
 - `manualmailworkflow` は非同期 workflow の受付、進行管理、履歴集約を担う。
 - `mailfetch`、`mailanalysis`、`vendorresolution`、`billingeligibility`、`billing` は個別業務ロジックを担当し、`manualmailworkflow` は orchestration に徹する。
 - workflow 履歴は header と failure 明細に分けて保存し、JSON カラムは使わない。
-- failure 明細は `ManualMailWorkflowHistory` 配下の child として扱い、独立した surrogate key は持たない。
+- failure 明細は `ManualMailWorkflowHistory` 配下の child として扱い、独立した surrogate key も dedupe 用の一意制約も持たない。
 - stage 間のデータ受け渡しは workflow payload を優先する。
 - technical failure と業務上の未解決・不成立・重複は区別して扱うが、workflow 履歴上は stage ごとの failure として集約する。
 
@@ -184,5 +184,6 @@ erDiagram
 
 - `manualmailworkflow` は独自の業務ドメインを増やさず、workflow 管理専用 package として扱う。
 - workflow 履歴はユーザー向けの監査情報であり、`emails`、`parsed_emails`、`billings` の正本を置き換えない。
+- stage ごとの `failure_count` と failure 明細件数の整合は各 stage が保証し、workflow 層では明細をそのまま保存する。
 - request context は受付までで閉じ、background 実行では新しい context に `request_id`、`job_id`、`user_id` を引き継ぐ。
 - dispatcher は interface 越しに使い、in-process 実装から queue 実装へ差し替え可能にする。

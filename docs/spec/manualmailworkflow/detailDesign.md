@@ -285,6 +285,8 @@ type WorkflowStatusRepository interface {
 方針:
 
 - `SaveStageProgress` は header table の count 更新と failure row insert を同一 transaction で行う。
+- failure row は stage から返された明細をそのまま insert し、workflow 層では dedupe しない。
+- `FailureCount` と `FailureRecords` の整合は各 stage が保証する。
 - `Fail` は途中までの count / failure rows を残したまま `failed` へ遷移させる。
 - `FindByWorkflowID` は header と failure rows から API 向け DTO を再構築する。
 
@@ -334,21 +336,22 @@ CREATE TABLE `manual_mail_workflow_histories` (
 CREATE TABLE `manual_mail_workflow_stage_failures` (
   `workflow_history_id` bigint unsigned NOT NULL,
   `stage` varchar(32) NOT NULL,
-  `external_message_id` varchar(255) NOT NULL DEFAULT '',
+  `external_message_id` varchar(255) NULL,
   `reason_code` varchar(64) NOT NULL,
   `message` varchar(255) NOT NULL,
   `created_at` datetime(3) NOT NULL,
-  PRIMARY KEY (`workflow_history_id`, `stage`, `external_message_id`, `reason_code`)
+  INDEX `idx_manual_mail_workflow_stage_failures_history_stage_created_at`
+    (`workflow_history_id`, `stage`, `created_at`)
 ) CHARSET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 ```
 
 補足:
 
-- `id` は持たない。`ManualMailWorkflowHistory` 配下の child であり、識別子は `workflow_history_id + stage + external_message_id + reason_code` で十分とする。
+- `id` は持たない。`ManualMailWorkflowHistory` 配下の単純な明細として append-only で保持する。
 - `external_message_id` は message 単位へ落とせる failure で使う。
-- stage 全体 failure のように message 単位へ分解できない場合は空文字を使う。`NULL` は複合主キーに使わない。
-- API DTO へ戻すときは、空文字の `external_message_id` を `null` として返す。
-- `message` にはユーザー表示用の安全な文言を保存する。内部エラー文字列や SQL / 外部 API の生メッセージは保存しない。
+- stage 全体 failure のように message 単位へ分解できない場合は `NULL` を許容する。
+- `message` は各 stage の `Execute` が返す明細文言を保存する。多言語対応は行わない。
+- stage が返した failure 明細をそのまま保存するため、header の `failure_count` と failure rows の件数は一致する前提とする。
 
 ## 4. 件数定義
 
@@ -376,18 +379,18 @@ CREATE TABLE `manual_mail_workflow_stage_failures` (
 ## 5. failure row への写像
 
 - `fetch`
-  - `FetchFailure` を `stage=fetch` として保存し、`reason_code` に対応する表示用 `message` も保存する。
+  - `FetchFailure` を `stage=fetch` として保存し、stage が返した `message` もそのまま保存する。
 - `analysis`
-  - `AnalysisFailure` を `stage=analysis` として保存し、`reason_code` に対応する表示用 `message` も保存する。
+  - `AnalysisFailure` を `stage=analysis` として保存し、stage が返した `message` もそのまま保存する。
 - `vendorresolution`
-  - `UnresolvedExternalMessageIDs` は `reason_code=vendor_unresolved` と対応する `message` を保存する。
-  - technical failure は `VendorResolutionFailure.Code` と対応する `message` を保存する。
+  - unresolved 明細は `reason_code=vendor_unresolved` と `message` を stage が返す。
+  - technical failure も `VendorResolutionFailure.Code` と `message` を stage が返す。
 - `billingeligibility`
-  - `IneligibleItem.ReasonCode` を `stage=billingeligibility` の failure row として保存し、対応する `message` を保存する。
-  - technical failure は `BillingEligibilityFailure.Code` と対応する `message` を保存する。
+  - `IneligibleItem.ReasonCode` と `message` を `stage=billingeligibility` の failure row として保存する。
+  - technical failure も `BillingEligibilityFailure.Code` と `message` を stage が返す。
 - `billing`
-  - `DuplicateItem` は `reason_code=duplicate_billing` と対応する `message` を保存する。
-  - technical failure は `BillingFailure.Code` と対応する `message` を保存する。
+  - `DuplicateItem` は `reason_code=duplicate_billing` と `message` を stage が返す。
+  - technical failure も `BillingFailure.Code` と `message` を stage が返す。
 
 ## 6. runner 制御
 
@@ -490,7 +493,7 @@ type WorkflowDispatcher interface {
 - `WorkflowStatusRepositoryAdapter`
   - `CreateQueued`
   - `SaveStageProgress` の transaction 性
-  - 複合主キーによる dedupe 制約
+  - failure 明細を dedupe せず保存できること
   - `FindByWorkflowID` の DTO 再構築
 - `Controller`
   - `202 Accepted`

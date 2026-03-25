@@ -179,14 +179,14 @@ classDiagram
 
 #### 手動履歴（ManualMailWorkflowHistory）
 - 手動メール取得 workflow 1回分の受付・進行・結果サマリを表す集約ルート
-- 実行対象のメールアカウント連携と受付時点の取得条件を保持する
+- 実行対象のメールアカウント連携と受付時点の手動メール取得条件を保持する
 - stage ごとの成功件数 / 失敗件数と failure を保持する
 - `Email` / `ParsedEmail` / `Billing` の正本を置き換えない
 
 #### 手動履歴失敗（ManualMailWorkflowFailure）
 - 手動履歴にぶら下がる stage 単位の failure 記録
 - `stage`、`reason_code`、ユーザー表示用 `message`、必要に応じて `external_message_id` を持つ
-- 同一手動履歴内では `stage + external_message_id + reason_code` で識別する
+- append-only の明細として保持する
 - 単独の集約にせず、必ず手動履歴配下で扱う
 
 #### メール（Email）

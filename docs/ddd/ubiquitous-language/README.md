@@ -82,7 +82,6 @@ classDiagram
   BatchSetting "1" *-- "1" FetchCondition : 取得条件
   BatchSetting --> MailAccountConnection : 実行対象
   ManualMailWorkflowHistory --> MailAccountConnection : 実行対象
-  ManualMailWorkflowHistory *-- "1" FetchCondition : 実行条件
   ManualMailWorkflowHistory *-- "0..*" ManualMailWorkflowFailure : failure
 
   ManualMailFetch --> Email : 取得
@@ -108,7 +107,7 @@ classDiagram
 | カテゴリ名 | 言語 |
 | --- | --- |
 | [ユーザー系](user.md) | ユーザー（User）,ログイン（Login）,ログアウト（Logout）,ユーザー名（UserName）,メールアドレス（EmailAddress）,パスワード（Password）,パスワードハッシュ（PasswordHash）,メール認証（EmailVerification）,メール認証トークン（EmailVerificationToken） |
-| [メール連携/取得系](mail-integration-fetch.md) | メールサービス（MailService）,メールアカウント連携（MailAccountConnection）,メール取得（MailFetch）,手動メール取得（ManualMailFetch）,手動履歴（ManualMailWorkflowHistory）,手動履歴失敗（ManualMailWorkflowFailure）,メール取得バッチ（MailFetchBatch）,バッチ設定（BatchSetting）,取得条件（FetchCondition） |
+| [メール連携/取得系](mail-integration-fetch.md) | メールサービス（MailService）,メールアカウント連携（MailAccountConnection）,メール取得（MailFetch）,手動メール取得（ManualMailFetch）,手動メール取得条件（ManualMailFetchCondition）,手動履歴（ManualMailWorkflowHistory）,手動履歴失敗（ManualMailWorkflowFailure）,メール取得バッチ（MailFetchBatch）,バッチ設定（BatchSetting）,取得条件（FetchCondition） |
 | [メール/解析系](mail-analysis.md) | メール（Email）,メール解析結果（ParsedEmail）,請求成立判定（BillingEligibility） |
 | [請求/支払先系](billing-vendor.md) | 支払先（Vendor）,支払先解決（VendorResolution）,請求（Billing）,支払周期（PaymentCycle）,金額（Money）,請求番号（BillingNumber）,インボイス番号（InvoiceNumber） |
 
@@ -127,6 +126,7 @@ classDiagram
   │       └─ 実行対象として メールアカウント連携
   ├─ 所有
   │   └─ 手動履歴
+  │       ├─ 手動メール取得条件
   │       └─ 手動履歴失敗
   ├─ 所有
   │   └─ メール
@@ -149,6 +149,7 @@ classDiagram
 
 手動履歴
   ├─ 実行対象として メールアカウント連携 を持つ
+  ├─ 受付時点の手動メール取得条件 を持つ
   └─ failure として 手動履歴失敗 を持つ
 ```
 
