@@ -6,6 +6,7 @@ import (
 	"business/internal/library/logger"
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -127,9 +128,21 @@ func TestUseCaseExecute(t *testing.T) {
 	if result.IneligibleItems[0].ReasonCode != domain.ReasonCodeCurrencyEmpty {
 		t.Fatalf("expected currency_empty reason, got %+v", result.IneligibleItems[0])
 	}
+	if result.IneligibleItems[0].Message == "" || result.IneligibleItems[0].Message == result.IneligibleItems[0].ReasonCode {
+		t.Fatalf("expected human-readable ineligible message, got %+v", result.IneligibleItems[0])
+	}
+	if !strings.Contains(result.IneligibleItems[0].Message, "Acme") || !strings.Contains(result.IneligibleItems[0].Message, "msg-2") {
+		t.Fatalf("expected vendor name and message id in ineligible message, got %+v", result.IneligibleItems[0])
+	}
 
-	if result.Failures[0].Stage != domain.FailureStageNormalizeInput || result.Failures[0].Code != domain.FailureCodeInvalidEligibilityTarget {
+	if result.Failures[0].Code != domain.FailureCodeInvalidEligibilityTarget {
 		t.Fatalf("unexpected failure: %+v", result.Failures[0])
+	}
+	if result.Failures[0].Message == "" {
+		t.Fatalf("expected human-readable failure message, got %+v", result.Failures[0])
+	}
+	if !strings.Contains(result.Failures[0].Message, "Broken") || !strings.Contains(result.Failures[0].Message, "msg-3") {
+		t.Fatalf("expected vendor name and message id in failure message, got %+v", result.Failures[0])
 	}
 }
 
@@ -181,6 +194,12 @@ func TestUseCaseExecute_ProductNameMissingBecomesIneligible(t *testing.T) {
 	}
 	if result.IneligibleItems[0].ReasonCode != domain.ReasonCodeProductNameEmpty {
 		t.Fatalf("expected product_name_empty, got %+v", result.IneligibleItems[0])
+	}
+	if result.IneligibleItems[0].Message == "" {
+		t.Fatalf("expected human-readable ineligible message, got %+v", result.IneligibleItems[0])
+	}
+	if !strings.Contains(result.IneligibleItems[0].Message, "Acme") || !strings.Contains(result.IneligibleItems[0].Message, "msg-1") {
+		t.Fatalf("expected vendor name and message id in ineligible message, got %+v", result.IneligibleItems[0])
 	}
 }
 

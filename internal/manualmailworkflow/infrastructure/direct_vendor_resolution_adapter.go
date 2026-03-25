@@ -56,7 +56,6 @@ func (a *DirectVendorResolutionAdapter) Execute(ctx context.Context, cmd manuala
 			ParsedEmailID:     item.ParsedEmailID,
 			EmailID:           item.EmailID,
 			ExternalMessageID: item.ExternalMessageID,
-			BodyDigest:        item.BodyDigest,
 			VendorID:          item.VendorID,
 			VendorName:        item.VendorName,
 			MatchedBy:         item.MatchedBy,
@@ -64,8 +63,17 @@ func (a *DirectVendorResolutionAdapter) Execute(ctx context.Context, cmd manuala
 		})
 	}
 
-	unresolvedExternalMessageIDs := make([]string, 0, len(result.UnresolvedExternalMessageIDs))
-	unresolvedExternalMessageIDs = append(unresolvedExternalMessageIDs, result.UnresolvedExternalMessageIDs...)
+	unresolvedItems := make([]manualapp.UnresolvedItem, 0, len(result.UnresolvedItems))
+	for _, item := range result.UnresolvedItems {
+		unresolvedItems = append(unresolvedItems, manualapp.UnresolvedItem{
+			ParsedEmailID:       item.ParsedEmailID,
+			EmailID:             item.EmailID,
+			ExternalMessageID:   item.ExternalMessageID,
+			ReasonCode:          item.ReasonCode,
+			Message:             item.Message,
+			CandidateVendorName: item.CandidateVendorName,
+		})
+	}
 
 	failures := make([]manualapp.VendorResolutionFailure, 0, len(result.Failures))
 	for _, failure := range result.Failures {
@@ -75,14 +83,15 @@ func (a *DirectVendorResolutionAdapter) Execute(ctx context.Context, cmd manuala
 			ExternalMessageID: failure.ExternalMessageID,
 			Stage:             failure.Stage,
 			Code:              failure.Code,
+			Message:           failure.Message,
 		})
 	}
 
 	return manualapp.VendorResolutionResult{
-		ResolvedItems:                resolvedItems,
-		ResolvedCount:                result.ResolvedCount,
-		UnresolvedCount:              result.UnresolvedCount,
-		UnresolvedExternalMessageIDs: unresolvedExternalMessageIDs,
-		Failures:                     failures,
+		ResolvedItems:   resolvedItems,
+		ResolvedCount:   result.ResolvedCount,
+		UnresolvedItems: unresolvedItems,
+		UnresolvedCount: result.UnresolvedCount,
+		Failures:        failures,
 	}, nil
 }

@@ -1,10 +1,12 @@
 package application
 
 import (
+	billingdomain "business/internal/billing/domain"
 	commondomain "business/internal/common/domain"
 	"business/internal/library/logger"
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -136,17 +138,40 @@ func TestUseCaseExecute_CreatedDuplicateAndFailures(t *testing.T) {
 	if result.DuplicateItems[0].ExistingBillingID != 8001 {
 		t.Fatalf("unexpected duplicate item: %+v", result.DuplicateItems[0])
 	}
+	if result.DuplicateItems[0].ReasonCode != billingdomain.ReasonCodeDuplicateBilling {
+		t.Fatalf("unexpected duplicate reason code: %+v", result.DuplicateItems[0])
+	}
+	if !strings.Contains(result.DuplicateItems[0].Message, "Beta") ||
+		!strings.Contains(result.DuplicateItems[0].Message, "INV-200") ||
+		!strings.Contains(result.DuplicateItems[0].Message, "msg-2") {
+		t.Fatalf("unexpected duplicate message: %+v", result.DuplicateItems[0])
+	}
 	if len(result.Failures) != 3 {
 		t.Fatalf("expected 3 failures, got %+v", result.Failures)
 	}
 	if result.Failures[0].Stage != "normalize_input" || result.Failures[0].Code != "invalid_creation_target" {
 		t.Fatalf("unexpected normalize failure: %+v", result.Failures[0])
 	}
+	if !strings.Contains(result.Failures[0].Message, "Gamma") ||
+		!strings.Contains(result.Failures[0].Message, "INV-300") ||
+		!strings.Contains(result.Failures[0].Message, "msg-3") {
+		t.Fatalf("unexpected normalize failure message: %+v", result.Failures[0])
+	}
 	if result.Failures[1].Stage != "build_billing" || result.Failures[1].Code != "billing_construct_failed" {
 		t.Fatalf("unexpected build failure: %+v", result.Failures[1])
 	}
+	if !strings.Contains(result.Failures[1].Message, "Delta") ||
+		!strings.Contains(result.Failures[1].Message, "INV-400") ||
+		!strings.Contains(result.Failures[1].Message, "msg-4") {
+		t.Fatalf("unexpected build failure message: %+v", result.Failures[1])
+	}
 	if result.Failures[2].Stage != "save_billing" || result.Failures[2].Code != "billing_persist_failed" {
 		t.Fatalf("unexpected save failure: %+v", result.Failures[2])
+	}
+	if !strings.Contains(result.Failures[2].Message, "Echo") ||
+		!strings.Contains(result.Failures[2].Message, "INV-500") ||
+		!strings.Contains(result.Failures[2].Message, "msg-5") {
+		t.Fatalf("unexpected save failure message: %+v", result.Failures[2])
 	}
 }
 

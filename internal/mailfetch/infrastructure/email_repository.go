@@ -115,12 +115,19 @@ func prepareEmails(userID uint, dtos []cd.FetchedEmailDTO) ([]preparedEmail, []m
 		dto.ID = strings.TrimSpace(dto.ID)
 		if dto.ID == "" {
 			failures = append(failures, mfdomain.MessageFailure{
-				Stage: mfdomain.FailureStageNormalize,
-				Code:  mfdomain.FailureCodeInvalidFetchedEmail,
+				Stage:   mfdomain.FailureStageNormalize,
+				Code:    mfdomain.FailureCodeInvalidFetchedEmail,
+				Message: invalidFetchedEmailMessage("unknown"),
 			})
 			continue
 		}
 		if _, seen := seenMessageIDs[dto.ID]; seen {
+			failures = append(failures, mfdomain.MessageFailure{
+				ExternalMessageID: dto.ID,
+				Stage:             mfdomain.FailureStageNormalize,
+				Code:              mfdomain.FailureCodeDuplicateExternalMessageID,
+				Message:           duplicateExternalMessageMessage(dto.ID),
+			})
 			continue
 		}
 		seenMessageIDs[dto.ID] = struct{}{}
@@ -131,6 +138,7 @@ func prepareEmails(userID uint, dtos []cd.FetchedEmailDTO) ([]preparedEmail, []m
 				ExternalMessageID: dto.ID,
 				Stage:             mfdomain.FailureStageNormalize,
 				Code:              mfdomain.FailureCodeInvalidFetchedEmail,
+				Message:           invalidFetchedEmailMessage(dto.ID),
 			})
 			continue
 		}
@@ -280,9 +288,34 @@ func buildChunkSaveFailures(chunk []preparedEmail) []mfdomain.MessageFailure {
 			ExternalMessageID: item.email.ExternalMessageID,
 			Stage:             mfdomain.FailureStageSave,
 			Code:              mfdomain.FailureCodeEmailSaveFailed,
+			Message:           emailSaveFailureMessage(item.email.ExternalMessageID),
 		})
 	}
 	return failures
+}
+
+func invalidFetchedEmailMessage(externalMessageID string) string {
+	externalMessageID = strings.TrimSpace(externalMessageID)
+	if externalMessageID == "" {
+		externalMessageID = "unknown"
+	}
+	return "取得メール(" + externalMessageID + ")の形式が不正でした。"
+}
+
+func duplicateExternalMessageMessage(externalMessageID string) string {
+	externalMessageID = strings.TrimSpace(externalMessageID)
+	if externalMessageID == "" {
+		externalMessageID = "unknown"
+	}
+	return "取得バッチ内でメールID(" + externalMessageID + ")が重複していたため、後続処理をスキップしました。"
+}
+
+func emailSaveFailureMessage(externalMessageID string) string {
+	externalMessageID = strings.TrimSpace(externalMessageID)
+	if externalMessageID == "" {
+		externalMessageID = "unknown"
+	}
+	return "取得メール(" + externalMessageID + ")の保存に失敗しました。"
 }
 
 func findByExternalIDs(

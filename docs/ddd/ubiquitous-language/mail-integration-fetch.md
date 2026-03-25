@@ -49,6 +49,51 @@
 ### ルール
 - Email の意味解釈は持たない
 
+## 手動メール取得条件（ManualMailFetchCondition）
+
+### 定義
+- 手動メール取得の受付時点で指定された期間とラベルの条件
+
+### 説明
+- 手動履歴が保持する受付時点の条件スナップショット
+- `label_name`、`since`、`until` で表現する
+- `FetchCondition` と似ているが、独立したドメインモデルとしては起こさない
+
+### ルール
+- 手動履歴の中でのみ使う用語として扱う
+- バッチ設定集約の `FetchCondition` とは区別して扱う
+
+## 手動履歴（ManualMailWorkflowHistory）
+
+### 定義
+- 手動メール取得 workflow 1回分の受付条件・進行状態・stage 集計を保持する履歴
+
+### 説明
+- ユーザーが所有する集約ルート
+- 実行対象のメールアカウント連携と、受付時点の手動メール取得条件を持つ
+- stage ごとの成功件数 / 失敗件数と、子としての failure 記録を持つ
+- `Email` / `ParsedEmail` / `Billing` の正本ではなく、workflow の監査と参照のために保持する
+
+### ルール
+- 手動履歴が集約ルートである
+- 手動履歴失敗は必ず手動履歴にぶら下がる
+- 手動履歴は workflow 単位の履歴であり、手動メール取得そのものとは区別する
+- 業務上の未解決・不成立・重複も、履歴上は failure として記録できる
+
+## 手動履歴失敗（ManualMailWorkflowFailure）
+
+### 定義
+- 手動履歴にぶら下がる stage 単位の failure 記録
+
+### 説明
+- `stage`、`reason_code`、ユーザー表示用 `message`、必要に応じて `external_message_id` を持つ
+- technical failure だけでなく、未解決・不成立・重複のような業務結果も履歴表現として保持できる
+
+### ルール
+- 単独の集約にしない
+- 手動履歴の外でライフサイクルを持たない
+- append-only の明細として扱う
+
 ## メール取得バッチ（MailFetchBatch）
 
 ### 定義
@@ -71,12 +116,14 @@
 ### 説明
 - 取得条件（期間 / ラベル）と実行スケジュールを持つ
 - 取得条件（FetchCondition）を内包する
+- 実行対象のメールアカウント連携を参照する
 - ユーザー単位で管理される
 
 ### ルール
 - ユーザーが所有する独立した集約として扱う
 - BatchSetting が集約ルートである
 - 1つの BatchSetting は1つの FetchCondition を持つ
+- 1つの BatchSetting は1つのメールアカウント連携を実行対象として持つ
 
 ## 取得条件（FetchCondition）
 

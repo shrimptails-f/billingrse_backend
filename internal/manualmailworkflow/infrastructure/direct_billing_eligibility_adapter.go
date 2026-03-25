@@ -74,6 +74,7 @@ func (a *DirectBillingEligibilityAdapter) Execute(ctx context.Context, cmd manua
 			VendorName:        item.VendorName,
 			MatchedBy:         item.MatchedBy,
 			ReasonCode:        item.ReasonCode,
+			Message:           item.Message,
 		})
 	}
 
@@ -83,8 +84,8 @@ func (a *DirectBillingEligibilityAdapter) Execute(ctx context.Context, cmd manua
 			ParsedEmailID:     failure.ParsedEmailID,
 			EmailID:           failure.EmailID,
 			ExternalMessageID: failure.ExternalMessageID,
-			Stage:             failure.Stage,
 			Code:              failure.Code,
+			Message:           failure.Message,
 		})
 	}
 

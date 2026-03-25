@@ -242,6 +242,57 @@ func TestGormEmailRepositoryAdapter_SaveAllIfAbsent_MixedBatch(t *testing.T) {
 	require.NotZero(t, results[1].EmailID)
 }
 
+func TestGormEmailRepositoryAdapter_SaveAllIfAbsent_DuplicateMessageIDsReturnFailure(t *testing.T) {
+	t.Parallel()
+
+	env := newEmailRepoTestEnv(t)
+	defer env.clean()
+
+	ctx := context.Background()
+	source := mfdomain.EmailSource{Provider: "gmail", AccountIdentifier: "user@gmail.com"}
+	baseDate := time.Date(2026, 3, 23, 10, 0, 0, 0, time.UTC)
+
+	results, failures, err := env.repo.SaveAllIfAbsent(ctx, 1, source, []cd.FetchedEmailDTO{
+		{
+			ID:         "msg-1",
+			Subject:    "first",
+			From:       "from@example.com",
+			To:         []string{"to@example.com"},
+			Date:       baseDate,
+			BodyDigest: "digest-1",
+		},
+		{
+			ID:         "msg-1",
+			Subject:    "duplicate",
+			From:       "from@example.com",
+			To:         []string{"to@example.com"},
+			Date:       baseDate.Add(time.Minute),
+			BodyDigest: "digest-dup",
+		},
+		{
+			ID:         "msg-2",
+			Subject:    "second",
+			From:       "from@example.com",
+			To:         []string{"to@example.com"},
+			Date:       baseDate.Add(2 * time.Minute),
+			BodyDigest: "digest-2",
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	require.Len(t, failures, 1)
+	require.Equal(t, "msg-1", failures[0].ExternalMessageID)
+	require.Equal(t, mfdomain.FailureStageNormalize, failures[0].Stage)
+	require.Equal(t, mfdomain.FailureCodeDuplicateExternalMessageID, failures[0].Code)
+	require.Equal(t, "取得バッチ内でメールID(msg-1)が重複していたため、後続処理をスキップしました。", failures[0].Message)
+
+	var stored []emailRecord
+	require.NoError(t, env.db.Order("id ASC").Find(&stored).Error)
+	require.Len(t, stored, 2)
+	require.Equal(t, "msg-1", stored[0].ExternalMessageID)
+	require.Equal(t, "msg-2", stored[1].ExternalMessageID)
+}
+
 func TestGormEmailRepositoryAdapter_SaveAllIfAbsent_ContinuesAfterChunkFailure(t *testing.T) {
 	t.Parallel()
 
@@ -284,6 +335,7 @@ func TestGormEmailRepositoryAdapter_SaveAllIfAbsent_ContinuesAfterChunkFailure(t
 		require.Equal(t, expectedID, failure.ExternalMessageID)
 		require.Equal(t, mfdomain.FailureStageSave, failure.Stage)
 		require.Equal(t, mfdomain.FailureCodeEmailSaveFailed, failure.Code)
+		require.Equal(t, "取得メール("+expectedID+")の保存に失敗しました。", failure.Message)
 	}
 
 	var stored []emailRecord

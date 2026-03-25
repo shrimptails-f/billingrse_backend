@@ -59,6 +59,8 @@ func TestDirectBillingAdapter_Execute_ConvertsCommandAndResult(t *testing.T) {
 						VendorID:          3001,
 						VendorName:        "Acme",
 						BillingNumber:     "INV-002",
+						ReasonCode:        billingdomain.ReasonCodeDuplicateBilling,
+						Message:           "msg-2 の請求は既存請求と重複しています。",
 					},
 				},
 				DuplicateCount: 1,
@@ -69,6 +71,7 @@ func TestDirectBillingAdapter_Execute_ConvertsCommandAndResult(t *testing.T) {
 						ExternalMessageID: "msg-3",
 						Stage:             billingdomain.FailureStageSaveBilling,
 						Code:              billingdomain.FailureCodeBillingPersistFailed,
+						Message:           "msg-3 の請求保存に失敗しました。",
 					},
 				},
 			}, nil
@@ -111,7 +114,16 @@ func TestDirectBillingAdapter_Execute_ConvertsCommandAndResult(t *testing.T) {
 	if result.DuplicateItems[0].ExistingBillingID != 7000 {
 		t.Fatalf("unexpected duplicate item: %+v", result.DuplicateItems[0])
 	}
+	if result.DuplicateItems[0].ReasonCode != billingdomain.ReasonCodeDuplicateBilling {
+		t.Fatalf("unexpected duplicate reason code: %+v", result.DuplicateItems[0])
+	}
+	if result.DuplicateItems[0].Message != "msg-2 の請求は既存請求と重複しています。" {
+		t.Fatalf("expected duplicate message to be mapped, got %+v", result.DuplicateItems[0])
+	}
 	if len(result.Failures) != 1 || result.Failures[0].Code != billingdomain.FailureCodeBillingPersistFailed {
 		t.Fatalf("unexpected failures: %+v", result.Failures)
+	}
+	if result.Failures[0].Message != "msg-3 の請求保存に失敗しました。" {
+		t.Fatalf("expected failure message to be mapped, got %+v", result.Failures[0])
 	}
 }

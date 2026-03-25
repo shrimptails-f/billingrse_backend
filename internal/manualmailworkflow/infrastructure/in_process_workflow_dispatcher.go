@@ -69,15 +69,13 @@ func (d *InProcessWorkflowDispatcher) run(requestCtx context.Context, job manual
 	}()
 
 	reqLog.Info("manual_mail_workflow_started",
+		logger.String("workflow_id", job.WorkflowID),
 		logger.Uint("connection_id", job.ConnectionID),
 	)
 
-	if _, err := d.runner.Execute(bgCtx, manualapp.Command{
-		UserID:       job.UserID,
-		ConnectionID: job.ConnectionID,
-		Condition:    job.Condition,
-	}); err != nil {
+	if _, err := d.runner.Execute(bgCtx, job); err != nil {
 		reqLog.Error("manual_mail_workflow_failed",
+			logger.String("workflow_id", job.WorkflowID),
 			logger.Uint("connection_id", job.ConnectionID),
 			logger.Err(err),
 		)

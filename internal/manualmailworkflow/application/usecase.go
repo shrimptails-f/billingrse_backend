@@ -3,6 +3,7 @@ package application
 import (
 	commondomain "business/internal/common/domain"
 	"business/internal/library/logger"
+	"business/internal/library/timewrapper"
 	"context"
 	"errors"
 	"fmt"
@@ -72,6 +73,7 @@ type FetchFailure struct {
 	ExternalMessageID string
 	Stage             string
 	Code              string
+	Message           string
 }
 
 // AnalysisFailure は analysis stage から返る部分失敗。
@@ -80,26 +82,23 @@ type AnalysisFailure struct {
 	ExternalMessageID string
 	Stage             string
 	Code              string
+	Message           string
 }
 
 // FetchResult は fetch stage の正規化済み出力。
 type FetchResult struct {
-	Provider            string
-	AccountIdentifier   string
-	MatchedMessageCount int
-	CreatedEmailIDs     []uint
-	CreatedEmails       []CreatedEmail
-	ExistingEmailIDs    []uint
-	Failures            []FetchFailure
+	CreatedEmailIDs  []uint
+	CreatedEmails    []CreatedEmail
+	ExistingEmailIDs []uint
+	Failures         []FetchFailure
 }
 
 // AnalyzeResult は analysis stage の正規化済み出力。
 type AnalyzeResult struct {
-	ParsedEmailIDs     []uint
-	ParsedEmails       []ParsedEmail
-	AnalyzedEmailCount int
-	ParsedEmailCount   int
-	Failures           []AnalysisFailure
+	ParsedEmailIDs   []uint
+	ParsedEmails     []ParsedEmail
+	ParsedEmailCount int
+	Failures         []AnalysisFailure
 }
 
 // ParsedEmail は保存済み ParsedEmail と下流で使う source email 情報を束ねた workflow 所有の型。
@@ -119,7 +118,6 @@ type ResolvedItem struct {
 	ParsedEmailID     uint
 	EmailID           uint
 	ExternalMessageID string
-	BodyDigest        string
 	VendorID          uint
 	VendorName        string
 	MatchedBy         string
@@ -133,15 +131,26 @@ type VendorResolutionFailure struct {
 	ExternalMessageID string
 	Stage             string
 	Code              string
+	Message           string
 }
 
 // VendorResolutionResult は vendorresolution stage の正規化済み出力。
 type VendorResolutionResult struct {
-	ResolvedItems                []ResolvedItem
-	ResolvedCount                int
-	UnresolvedCount              int
-	UnresolvedExternalMessageIDs []string
-	Failures                     []VendorResolutionFailure
+	ResolvedItems   []ResolvedItem
+	ResolvedCount   int
+	UnresolvedItems []UnresolvedItem
+	UnresolvedCount int
+	Failures        []VendorResolutionFailure
+}
+
+// UnresolvedItem is a vendorresolution business failure returned by the stage.
+type UnresolvedItem struct {
+	ParsedEmailID       uint
+	EmailID             uint
+	ExternalMessageID   string
+	ReasonCode          string
+	Message             string
+	CandidateVendorName string
 }
 
 // EligibleItem は billingeligibility stage で請求成立と判定された 1 件分の結果。
@@ -170,6 +179,7 @@ type IneligibleItem struct {
 	VendorName        string
 	MatchedBy         string
 	ReasonCode        string
+	Message           string
 }
 
 // BillingEligibilityFailure は billingeligibility stage の部分失敗。
@@ -177,8 +187,8 @@ type BillingEligibilityFailure struct {
 	ParsedEmailID     uint
 	EmailID           uint
 	ExternalMessageID string
-	Stage             string
 	Code              string
+	Message           string
 }
 
 // BillingEligibilityResult は billingeligibility stage の正規化済み出力。
@@ -210,6 +220,8 @@ type BillingDuplicateItem struct {
 	VendorID          uint
 	VendorName        string
 	BillingNumber     string
+	ReasonCode        string
+	Message           string
 }
 
 // BillingFailure is a billing stage failure for a single target.
@@ -219,6 +231,7 @@ type BillingFailure struct {
 	ExternalMessageID string
 	Stage             string
 	Code              string
+	Message           string
 }
 
 // BillingResult is the billing stage output.
@@ -297,7 +310,7 @@ type BillingStage interface {
 
 // UseCase は manual mail workflow を実行する。
 type UseCase interface {
-	Execute(ctx context.Context, cmd Command) (Result, error)
+	Execute(ctx context.Context, job DispatchJob) (Result, error)
 }
 
 type useCase struct {
@@ -306,6 +319,8 @@ type useCase struct {
 	vendorResolutionStage   VendorResolutionStage
 	billingEligibilityStage BillingEligibilityStage
 	billingStage            BillingStage
+	repository              WorkflowStatusRepository
+	clock                   timewrapper.ClockInterface
 	log                     logger.Interface
 }
 
@@ -316,8 +331,13 @@ func NewUseCase(
 	vendorResolutionStage VendorResolutionStage,
 	billingEligibilityStage BillingEligibilityStage,
 	billingStage BillingStage,
+	repository WorkflowStatusRepository,
+	clock timewrapper.ClockInterface,
 	log logger.Interface,
 ) UseCase {
+	if clock == nil {
+		clock = timewrapper.NewClock()
+	}
 	if log == nil {
 		log = logger.NewNop()
 	}
@@ -328,16 +348,18 @@ func NewUseCase(
 		vendorResolutionStage:   vendorResolutionStage,
 		billingEligibilityStage: billingEligibilityStage,
 		billingStage:            billingStage,
+		repository:              repository,
+		clock:                   clock,
 		log:                     log.With(logger.Component("manual_mail_workflow_usecase")),
 	}
 }
 
 // Execute は fetch -> analysis -> vendorresolution -> billingeligibility -> billing の順で workflow を進める。
-func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
+func (uc *useCase) Execute(ctx context.Context, job DispatchJob) (result Result, err error) {
 	if ctx == nil {
 		return Result{}, logger.ErrNilContext
 	}
-	if err := validateCommand(cmd); err != nil {
+	if err := validateDispatchJob(job); err != nil {
 		return Result{}, err
 	}
 	if err := uc.validateDependencies(); err != nil {
@@ -349,22 +371,49 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 		reqLog = withContext
 	}
 
-	cmd.Condition = cmd.Condition.Normalize()
+	currentStage := ""
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			reqLog.Error("manual_mail_workflow_panicked",
+				logger.String("workflow_id", job.WorkflowID),
+				logger.Recovered(recovered),
+				logger.StackTrace(),
+				logger.Uint("connection_id", job.ConnectionID),
+			)
+			err = uc.failWorkflow(ctx, job.HistoryID, currentStage, fmt.Errorf("manual mail workflow panicked: %v", recovered), reqLog)
+		}
+	}()
 
-	fetchResult, err := uc.fetchStage.Execute(ctx, FetchCommand{
-		UserID:       cmd.UserID,
-		ConnectionID: cmd.ConnectionID,
-		Condition:    cmd.Condition,
-	})
-	if err != nil {
-		return Result{}, err
+	job.Condition = job.Condition.Normalize()
+
+	currentStage = workflowStageFetch
+	if err := uc.repository.MarkRunning(ctx, job.HistoryID, currentStage); err != nil {
+		return Result{}, uc.failWorkflow(ctx, job.HistoryID, currentStage, err, reqLog)
 	}
 
-	result := Result{Fetch: fetchResult}
+	fetchResult, err := uc.fetchStage.Execute(ctx, FetchCommand{
+		UserID:       job.UserID,
+		ConnectionID: job.ConnectionID,
+		Condition:    job.Condition,
+	})
+	if err != nil {
+		return Result{}, uc.failWorkflow(ctx, job.HistoryID, currentStage, err, reqLog)
+	}
+
+	result = Result{Fetch: fetchResult}
+	if err := uc.repository.SaveStageProgress(ctx, buildFetchStageProgress(job.HistoryID, fetchResult)); err != nil {
+		return result, uc.failWorkflow(ctx, job.HistoryID, currentStage, err, reqLog)
+	}
 	if len(fetchResult.CreatedEmails) == 0 {
-		reqLog.Info("manual_mail_workflow_succeeded",
-			logger.UserID(cmd.UserID),
-			logger.Uint("connection_id", cmd.ConnectionID),
+		finalStatus := workflowStatusForResult(result)
+		if err := uc.repository.Complete(ctx, job.HistoryID, finalStatus, uc.clock.Now().UTC()); err != nil {
+			return result, uc.failWorkflow(ctx, job.HistoryID, currentStage, err, reqLog)
+		}
+		reqLog.Info("manual_mail_workflow_completed",
+			logger.UserID(job.UserID),
+			logger.Uint("connection_id", job.ConnectionID),
+			logger.String("workflow_id", job.WorkflowID),
+			logger.String("status", finalStatus),
 			logger.Int("created_email_count", len(fetchResult.CreatedEmailIDs)),
 			logger.Int("parsed_email_count", 0),
 			logger.Int("resolved_vendor_count", 0),
@@ -373,11 +422,16 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 			logger.Int("ineligible_billing_count", 0),
 			logger.Int("created_billing_count", 0),
 			logger.Int("duplicate_billing_count", 0),
-			logger.Int("fetch_failure_count", len(fetchResult.Failures)),
-			logger.Int("analysis_failure_count", 0),
-			logger.Int("vendor_resolution_failure_count", 0),
-			logger.Int("billing_eligibility_failure_count", 0),
-			logger.Int("billing_failure_count", 0),
+			logger.Int("fetch_business_failure_count", 0),
+			logger.Int("fetch_technical_failure_count", len(fetchResult.Failures)),
+			logger.Int("analysis_business_failure_count", 0),
+			logger.Int("analysis_technical_failure_count", 0),
+			logger.Int("vendor_resolution_business_failure_count", 0),
+			logger.Int("vendor_resolution_technical_failure_count", 0),
+			logger.Int("billing_eligibility_business_failure_count", 0),
+			logger.Int("billing_eligibility_technical_failure_count", 0),
+			logger.Int("billing_business_failure_count", 0),
+			logger.Int("billing_technical_failure_count", 0),
 		)
 		return result, nil
 	}
@@ -385,49 +439,85 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 	emails := make([]CreatedEmail, len(fetchResult.CreatedEmails))
 	copy(emails, fetchResult.CreatedEmails)
 
+	currentStage = workflowStageAnalysis
+	if err := uc.repository.MarkRunning(ctx, job.HistoryID, currentStage); err != nil {
+		return result, uc.failWorkflow(ctx, job.HistoryID, currentStage, err, reqLog)
+	}
+
 	analysisResult, err := uc.analyzeStage.Execute(ctx, AnalyzeCommand{
-		UserID: cmd.UserID,
+		UserID: job.UserID,
 		Emails: emails,
 	})
 	if err != nil {
-		return Result{}, err
+		return result, uc.failWorkflow(ctx, job.HistoryID, currentStage, err, reqLog)
 	}
 
 	result.Analysis = analysisResult
+	if err := uc.repository.SaveStageProgress(ctx, buildAnalysisStageProgress(job.HistoryID, analysisResult)); err != nil {
+		return result, uc.failWorkflow(ctx, job.HistoryID, currentStage, err, reqLog)
+	}
 	if len(analysisResult.ParsedEmails) > 0 {
+		currentStage = workflowStageVendorResolution
+		if err := uc.repository.MarkRunning(ctx, job.HistoryID, currentStage); err != nil {
+			return result, uc.failWorkflow(ctx, job.HistoryID, currentStage, err, reqLog)
+		}
 		vendorResolutionResult, err := uc.vendorResolutionStage.Execute(ctx, VendorResolutionCommand{
-			UserID:       cmd.UserID,
+			UserID:       job.UserID,
 			ParsedEmails: append([]ParsedEmail(nil), analysisResult.ParsedEmails...),
 		})
 		if err != nil {
-			return Result{}, err
+			return result, uc.failWorkflow(ctx, job.HistoryID, currentStage, err, reqLog)
 		}
 		result.VendorResolution = vendorResolutionResult
+		if err := uc.repository.SaveStageProgress(ctx, buildVendorResolutionStageProgress(job.HistoryID, analysisResult.ParsedEmails, vendorResolutionResult)); err != nil {
+			return result, uc.failWorkflow(ctx, job.HistoryID, currentStage, err, reqLog)
+		}
 		if len(vendorResolutionResult.ResolvedItems) > 0 {
+			currentStage = workflowStageBillingEligibility
+			if err := uc.repository.MarkRunning(ctx, job.HistoryID, currentStage); err != nil {
+				return result, uc.failWorkflow(ctx, job.HistoryID, currentStage, err, reqLog)
+			}
 			billingEligibilityResult, err := uc.billingEligibilityStage.Execute(ctx, BillingEligibilityCommand{
-				UserID:        cmd.UserID,
+				UserID:        job.UserID,
 				ResolvedItems: append([]ResolvedItem(nil), vendorResolutionResult.ResolvedItems...),
 			})
 			if err != nil {
-				return Result{}, err
+				return result, uc.failWorkflow(ctx, job.HistoryID, currentStage, err, reqLog)
 			}
 			result.BillingEligibility = billingEligibilityResult
+			if err := uc.repository.SaveStageProgress(ctx, buildBillingEligibilityStageProgress(job.HistoryID, billingEligibilityResult)); err != nil {
+				return result, uc.failWorkflow(ctx, job.HistoryID, currentStage, err, reqLog)
+			}
 			if len(billingEligibilityResult.EligibleItems) > 0 {
+				currentStage = workflowStageBilling
+				if err := uc.repository.MarkRunning(ctx, job.HistoryID, currentStage); err != nil {
+					return result, uc.failWorkflow(ctx, job.HistoryID, currentStage, err, reqLog)
+				}
 				billingResult, err := uc.billingStage.Execute(ctx, BillingCommand{
-					UserID:        cmd.UserID,
+					UserID:        job.UserID,
 					EligibleItems: append([]EligibleItem(nil), billingEligibilityResult.EligibleItems...),
 				})
 				if err != nil {
-					return Result{}, err
+					return result, uc.failWorkflow(ctx, job.HistoryID, currentStage, err, reqLog)
 				}
 				result.Billing = billingResult
+				if err := uc.repository.SaveStageProgress(ctx, buildBillingStageProgress(job.HistoryID, billingResult)); err != nil {
+					return result, uc.failWorkflow(ctx, job.HistoryID, currentStage, err, reqLog)
+				}
 			}
 		}
 	}
 
-	reqLog.Info("manual_mail_workflow_succeeded",
-		logger.UserID(cmd.UserID),
-		logger.Uint("connection_id", cmd.ConnectionID),
+	finalStatus := workflowStatusForResult(result)
+	if err := uc.repository.Complete(ctx, job.HistoryID, finalStatus, uc.clock.Now().UTC()); err != nil {
+		return result, uc.failWorkflow(ctx, job.HistoryID, currentStage, err, reqLog)
+	}
+
+	reqLog.Info("manual_mail_workflow_completed",
+		logger.UserID(job.UserID),
+		logger.Uint("connection_id", job.ConnectionID),
+		logger.String("workflow_id", job.WorkflowID),
+		logger.String("status", finalStatus),
 		logger.Int("created_email_count", len(fetchResult.CreatedEmailIDs)),
 		logger.Int("parsed_email_count", len(analysisResult.ParsedEmailIDs)),
 		logger.Int("resolved_vendor_count", result.VendorResolution.ResolvedCount),
@@ -436,11 +526,16 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 		logger.Int("ineligible_billing_count", result.BillingEligibility.IneligibleCount),
 		logger.Int("created_billing_count", result.Billing.CreatedCount),
 		logger.Int("duplicate_billing_count", result.Billing.DuplicateCount),
-		logger.Int("fetch_failure_count", len(fetchResult.Failures)),
-		logger.Int("analysis_failure_count", len(analysisResult.Failures)),
-		logger.Int("vendor_resolution_failure_count", len(result.VendorResolution.Failures)),
-		logger.Int("billing_eligibility_failure_count", len(result.BillingEligibility.Failures)),
-		logger.Int("billing_failure_count", len(result.Billing.Failures)),
+		logger.Int("fetch_business_failure_count", 0),
+		logger.Int("fetch_technical_failure_count", len(fetchResult.Failures)),
+		logger.Int("analysis_business_failure_count", 0),
+		logger.Int("analysis_technical_failure_count", len(analysisResult.Failures)),
+		logger.Int("vendor_resolution_business_failure_count", result.VendorResolution.UnresolvedCount),
+		logger.Int("vendor_resolution_technical_failure_count", len(result.VendorResolution.Failures)),
+		logger.Int("billing_eligibility_business_failure_count", result.BillingEligibility.IneligibleCount),
+		logger.Int("billing_eligibility_technical_failure_count", len(result.BillingEligibility.Failures)),
+		logger.Int("billing_business_failure_count", result.Billing.DuplicateCount),
+		logger.Int("billing_technical_failure_count", len(result.Billing.Failures)),
 	)
 
 	return result, nil
@@ -462,7 +557,42 @@ func (uc *useCase) validateDependencies() error {
 	if uc.billingStage == nil {
 		return errors.New("billing_stage is not configured")
 	}
+	if uc.repository == nil {
+		return errors.New("workflow_status_repository is not configured")
+	}
 	return nil
+}
+
+func (uc *useCase) failWorkflow(
+	ctx context.Context,
+	historyID uint64,
+	currentStage string,
+	runErr error,
+	reqLog logger.Interface,
+) error {
+	finishedAt := uc.clock.Now().UTC()
+	if err := uc.repository.Fail(ctx, historyID, currentStage, finishedAt); err != nil {
+		reqLog.Error("manual_mail_workflow_fail_persist_failed",
+			logger.String("current_stage", currentStage),
+			logger.Uint("history_id", uint(historyID)),
+			logger.Err(err),
+		)
+	}
+	return runErr
+}
+
+func validateDispatchJob(job DispatchJob) error {
+	if job.HistoryID == 0 {
+		return fmt.Errorf("%w: history_id is required", ErrInvalidCommand)
+	}
+	if strings.TrimSpace(job.WorkflowID) == "" {
+		return fmt.Errorf("%w: workflow_id is required", ErrInvalidCommand)
+	}
+	return validateCommand(Command{
+		UserID:       job.UserID,
+		ConnectionID: job.ConnectionID,
+		Condition:    job.Condition,
+	})
 }
 
 func validateCommand(cmd Command) error {

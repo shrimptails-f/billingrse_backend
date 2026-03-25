@@ -88,6 +88,7 @@ func TestUseCaseExecute_MixedOutcome(t *testing.T) {
 				ExternalMessageID: "msg-3",
 				Subject:           "Invalid",
 				From:              "notice@example.test",
+				ParsedEmail:       commondomain.ParsedEmail{VendorName: stringPtr("Broken")},
 			},
 			{
 				ParsedEmailID:     4,
@@ -95,6 +96,7 @@ func TestUseCaseExecute_MixedOutcome(t *testing.T) {
 				ExternalMessageID: "msg-4",
 				Subject:           "ResolverFail",
 				From:              "ops@example.test",
+				ParsedEmail:       commondomain.ParsedEmail{VendorName: stringPtr("ResolverFail")},
 			},
 		},
 	})
@@ -108,22 +110,44 @@ func TestUseCaseExecute_MixedOutcome(t *testing.T) {
 	if result.UnresolvedCount != 1 {
 		t.Fatalf("expected 1 unresolved item, got %d", result.UnresolvedCount)
 	}
+	if len(result.UnresolvedItems) != 1 {
+		t.Fatalf("expected 1 unresolved item detail, got %+v", result.UnresolvedItems)
+	}
 	if len(result.ResolvedItems) != 1 {
 		t.Fatalf("expected 1 resolved item detail, got %+v", result.ResolvedItems)
 	}
 	if result.ResolvedItems[0].VendorName != "Acme" || result.ResolvedItems[0].MatchedBy != domain.MatchedByNameExact {
 		t.Fatalf("unexpected resolved item: %+v", result.ResolvedItems[0])
 	}
-	if len(result.UnresolvedExternalMessageIDs) != 1 || result.UnresolvedExternalMessageIDs[0] != "msg-2" {
-		t.Fatalf("unexpected unresolved external message ids: %+v", result.UnresolvedExternalMessageIDs)
+	if result.UnresolvedItems[0].ReasonCode != domain.ReasonCodeVendorUnresolved {
+		t.Fatalf("unexpected unresolved item: %+v", result.UnresolvedItems[0])
+	}
+	if result.UnresolvedItems[0].ExternalMessageID != "msg-2" || result.UnresolvedItems[0].CandidateVendorName != "Unknown" {
+		t.Fatalf("unexpected unresolved item: %+v", result.UnresolvedItems[0])
+	}
+	if result.UnresolvedItems[0].Message != "msg-2 の候補「Unknown」を支払先として特定できませんでした。" {
+		t.Fatalf("unexpected unresolved message: %+v", result.UnresolvedItems[0])
 	}
 	if len(result.Failures) != 2 {
 		t.Fatalf("expected 2 failures, got %+v", result.Failures)
 	}
 
 	expectedFailures := []domain.Failure{
-		{EmailID: 33, ExternalMessageID: "msg-3", Stage: domain.FailureStageNormalizeInput, Code: domain.FailureCodeInvalidResolutionTarget},
-		{ParsedEmailID: 4, EmailID: 44, ExternalMessageID: "msg-4", Stage: domain.FailureStageResolveVendor, Code: domain.FailureCodeVendorResolveFail},
+		{
+			EmailID:           33,
+			ExternalMessageID: "msg-3",
+			Stage:             domain.FailureStageNormalizeInput,
+			Code:              domain.FailureCodeInvalidResolutionTarget,
+			Message:           "msg-3 の候補「Broken」を使った支払先解決入力が不正でした。",
+		},
+		{
+			ParsedEmailID:     4,
+			EmailID:           44,
+			ExternalMessageID: "msg-4",
+			Stage:             domain.FailureStageResolveVendor,
+			Code:              domain.FailureCodeVendorResolveFail,
+			Message:           "msg-4 の候補「ResolverFail」の支払先解決に失敗しました。",
+		},
 	}
 	for idx, failure := range expectedFailures {
 		if result.Failures[idx] != failure {
@@ -265,11 +289,17 @@ func TestUseCaseExecute_AutoRegisterFailureBecomesFailure(t *testing.T) {
 	if result.ResolvedCount != 0 || result.UnresolvedCount != 0 {
 		t.Fatalf("unexpected result counters: %+v", result)
 	}
+	if len(result.UnresolvedItems) != 0 {
+		t.Fatalf("unexpected unresolved details: %+v", result)
+	}
 	if len(result.Failures) != 1 {
 		t.Fatalf("unexpected failures: %+v", result.Failures)
 	}
 	if result.Failures[0].Stage != domain.FailureStageRegisterVendor || result.Failures[0].Code != domain.FailureCodeVendorRegisterFail {
 		t.Fatalf("unexpected failure: %+v", result.Failures[0])
+	}
+	if result.Failures[0].Message != "msg-1 の候補「Acme」の支払先登録に失敗しました。" {
+		t.Fatalf("unexpected failure message: %+v", result.Failures[0])
 	}
 }
 

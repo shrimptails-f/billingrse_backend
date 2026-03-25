@@ -36,6 +36,10 @@ classDiagram
     class BatchSetting["バッチ設定（BatchSetting）"]
     class FetchCondition["取得条件（FetchCondition）"]
   }
+  namespace 集約_手動履歴 {
+    class ManualMailWorkflowHistory["手動履歴（ManualMailWorkflowHistory）"]
+    class ManualMailWorkflowFailure["手動履歴失敗（ManualMailWorkflowFailure）"]
+  }
   namespace 集約_メール {
     class Email["メール（Email）"]
     class ParsedEmail["メール解析結果（ParsedEmail）"]
@@ -72,11 +76,15 @@ classDiagram
   User "1" --> "0..*" MailAccountConnection : 連携
   User "1" --> "0..*" EmailVerificationToken : 認証
   User "1" --> "0..*" BatchSetting : 所有
+  User "1" --> "0..*" ManualMailWorkflowHistory : 所有
   User "1" --> "0..*" Email : 所有
   User "1" --> "0..*" Billing : 所有
 
   MailAccountConnection "0..*" --> "1" MailService : サービス
   BatchSetting *-- FetchCondition : 取得条件
+  BatchSetting --> MailAccountConnection : 実行対象
+  ManualMailWorkflowHistory --> MailAccountConnection : 実行対象
+  ManualMailWorkflowHistory *-- "0..*" ManualMailWorkflowFailure : failure
 
   Email "1" *-- "0..*" ParsedEmail : 解析結果
   ParsedEmail --> VendorResolution : 支払先候補
@@ -116,7 +124,15 @@ classDiagram
 - ルート: バッチ設定（BatchSetting）
 - 含む: 取得条件（FetchCondition）
 - 所有: ユーザー（User）
+- 参照: メールアカウント連携（MailAccountConnection）
 - 説明: ユーザーが所有するメール取得設定の集約
+
+### 手動履歴集約
+- ルート: 手動履歴（ManualMailWorkflowHistory）
+- 含む: 手動履歴失敗（ManualMailWorkflowFailure）
+- 所有: ユーザー（User）
+- 参照: メールアカウント連携（MailAccountConnection）
+- 説明: 1回の手動メール取得 workflow の受付条件、進行状態、stage 集計、failure を保持する監査用集約
 
 ### メール集約
 - ルート: メール（Email）
@@ -159,6 +175,19 @@ classDiagram
 #### バッチ設定（BatchSetting）
 - ユーザーが所有するメール取得設定の集約ルート
 - 取得条件（FetchCondition）と実行スケジュールを持つ
+- 実行対象のメールアカウント連携を参照する
+
+#### 手動履歴（ManualMailWorkflowHistory）
+- 手動メール取得 workflow 1回分の受付・進行・結果サマリを表す集約ルート
+- 実行対象のメールアカウント連携と受付時点の手動メール取得条件を保持する
+- stage ごとの成功件数 / 失敗件数と failure を保持する
+- `Email` / `ParsedEmail` / `Billing` の正本を置き換えない
+
+#### 手動履歴失敗（ManualMailWorkflowFailure）
+- 手動履歴にぶら下がる stage 単位の failure 記録
+- `stage`、`reason_code`、ユーザー表示用 `message`、必要に応じて `external_message_id` を持つ
+- append-only の明細として保持する
+- 単独の集約にせず、必ず手動履歴配下で扱う
 
 #### メール（Email）
 - 取得したメールを表す
@@ -222,8 +251,12 @@ classDiagram
 - ユーザーは複数のメールアカウント連携を持つ
 - ユーザーは複数のメール認証トークンを持つ
 - ユーザーは複数のバッチ設定を持つ
+- ユーザーは複数の手動履歴を持つ
 - メールアカウント連携は1つのメールサービスに紐づく
 - BatchSetting は FetchCondition を持つ
+- BatchSetting は実行対象のメールアカウント連携を参照する
+- 手動履歴は実行対象のメールアカウント連携を参照し、受付時点の取得条件を持つ
+- 手動履歴は複数の手動履歴失敗を内包する
 - Email は ParsedEmail を保持する
 - ParsedEmail は支払先解決の入力になる
 - BillingEligibility は ParsedEmail と支払先解決の結果を用いて成立判定する
@@ -233,7 +266,8 @@ classDiagram
 
 - User / MailService / Vendor / PaymentCycle / FetchCondition / Money / BillingNumber / InvoiceNumber は他に依存しない
 - MailAccountConnection -> User, MailService
-- BatchSetting -> User, FetchCondition
+- BatchSetting -> User, MailAccountConnection, FetchCondition
+- ManualMailWorkflowHistory -> User, MailAccountConnection, ManualMailWorkflowFailure
 - Email -> User
 - ParsedEmail -> Email
 - VendorResolution（ポリシー） -> ParsedEmail, Vendor

@@ -63,16 +63,14 @@ func (a *DirectManualMailFetchAdapter) Execute(ctx context.Context, cmd manualap
 			ExternalMessageID: failure.ExternalMessageID,
 			Stage:             failure.Stage,
 			Code:              failure.Code,
+			Message:           failure.Message,
 		})
 	}
 
 	return manualapp.FetchResult{
-		Provider:            result.Provider,
-		AccountIdentifier:   result.AccountIdentifier,
-		MatchedMessageCount: result.MatchedMessageCount,
-		CreatedEmailIDs:     createdEmailIDs,
-		CreatedEmails:       createdEmails,
-		ExistingEmailIDs:    existingEmailIDs,
-		Failures:            failures,
+		CreatedEmailIDs:  createdEmailIDs,
+		CreatedEmails:    createdEmails,
+		ExistingEmailIDs: existingEmailIDs,
+		Failures:         failures,
 	}, nil
 }

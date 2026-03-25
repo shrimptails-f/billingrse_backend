@@ -1,0 +1,45 @@
+CREATE TABLE `manual_mail_workflow_histories` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `workflow_id` char(26) NOT NULL,
+  `user_id` bigint unsigned NOT NULL,
+  `connection_id` bigint unsigned NOT NULL,
+  `label_name` varchar(255) NOT NULL,
+  `since_at` datetime(3) NOT NULL,
+  `until_at` datetime(3) NOT NULL,
+  `status` varchar(32) NOT NULL,
+  `current_stage` varchar(32) NULL,
+  `queued_at` datetime(3) NOT NULL,
+  `finished_at` datetime(3) NULL,
+  `fetch_success_count` int NOT NULL DEFAULT 0,
+  `fetch_business_failure_count` int NOT NULL DEFAULT 0,
+  `fetch_technical_failure_count` int NOT NULL DEFAULT 0,
+  `analysis_success_count` int NOT NULL DEFAULT 0,
+  `analysis_business_failure_count` int NOT NULL DEFAULT 0,
+  `analysis_technical_failure_count` int NOT NULL DEFAULT 0,
+  `vendor_resolution_success_count` int NOT NULL DEFAULT 0,
+  `vendor_resolution_business_failure_count` int NOT NULL DEFAULT 0,
+  `vendor_resolution_technical_failure_count` int NOT NULL DEFAULT 0,
+  `billing_eligibility_success_count` int NOT NULL DEFAULT 0,
+  `billing_eligibility_business_failure_count` int NOT NULL DEFAULT 0,
+  `billing_eligibility_technical_failure_count` int NOT NULL DEFAULT 0,
+  `billing_success_count` int NOT NULL DEFAULT 0,
+  `billing_business_failure_count` int NOT NULL DEFAULT 0,
+  `billing_technical_failure_count` int NOT NULL DEFAULT 0,
+  `created_at` datetime(3) NOT NULL,
+  `updated_at` datetime(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `uni_manual_mail_workflow_histories_workflow_id` (`workflow_id`),
+  INDEX `idx_manual_mail_workflow_histories_user_queued_at` (`user_id`, `queued_at`),
+  INDEX `idx_manual_mail_workflow_histories_user_status_queued_at` (`user_id`, `status`, `queued_at`)
+) CHARSET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
+CREATE TABLE `manual_mail_workflow_stage_failures` (
+  `workflow_history_id` bigint unsigned NOT NULL,
+  `stage` varchar(32) NOT NULL,
+  `external_message_id` varchar(255) NULL,
+  `reason_code` varchar(64) NOT NULL,
+  `message` varchar(255) NOT NULL,
+  `created_at` datetime(3) NOT NULL,
+  INDEX `idx_manual_mail_workflow_stage_failures_history_stage_created_at`
+    (`workflow_history_id`, `stage`, `created_at`)
+) CHARSET utf8mb4 COLLATE utf8mb4_0900_ai_ci;

@@ -182,8 +182,14 @@ func TestUseCaseExecute_CreatesAndReturnsExistingIDs(t *testing.T) {
 	if len(result.ExistingEmailIDs) != 1 || result.ExistingEmailIDs[0] != 202 {
 		t.Fatalf("unexpected existing ids: %+v", result.ExistingEmailIDs)
 	}
-	if len(result.Failures) != 0 {
+	if len(result.Failures) != 1 {
 		t.Fatalf("unexpected failures: %+v", result.Failures)
+	}
+	if result.Failures[0].ExternalMessageID != "msg-2" || result.Failures[0].Stage != mfdomain.FailureStageNormalize || result.Failures[0].Code != mfdomain.FailureCodeDuplicateExternalMessageID {
+		t.Fatalf("unexpected duplicate failure: %+v", result.Failures[0])
+	}
+	if result.Failures[0].Message != "取得結果に重複したメールID(msg-2)が含まれていました。" {
+		t.Fatalf("unexpected duplicate failure message: %+v", result.Failures[0])
 	}
 }
 
@@ -251,7 +257,7 @@ func TestUseCaseExecute_PartialFailuresContinue(t *testing.T) {
 								{ID: "msg-1", Subject: "ok", From: "from1", To: []string{"to1"}, Date: now, Body: "body-1"},
 								{ID: "msg-2", Subject: "ng", From: "from2", To: []string{"to2"}, Date: now, Body: "body-2"},
 							}, []mfdomain.MessageFailure{
-								{ExternalMessageID: "msg-0", Stage: mfdomain.FailureStageFetchDetail, Code: mfdomain.FailureCodeFetchDetailFailed},
+								{ExternalMessageID: "msg-0", Stage: mfdomain.FailureStageFetchDetail, Code: mfdomain.FailureCodeFetchDetailFailed, Message: "Gmail本文の取得に失敗しました。メールID=msg-0"},
 							}, nil
 					},
 				}, nil
@@ -262,7 +268,7 @@ func TestUseCaseExecute_PartialFailuresContinue(t *testing.T) {
 				return []mfdomain.SaveResult{
 						{EmailID: 55, ExternalMessageID: "msg-1", Status: mfdomain.SaveStatusCreated},
 					}, []mfdomain.MessageFailure{
-						{ExternalMessageID: "msg-2", Stage: mfdomain.FailureStageSave, Code: mfdomain.FailureCodeEmailSaveFailed},
+						{ExternalMessageID: "msg-2", Stage: mfdomain.FailureStageSave, Code: mfdomain.FailureCodeEmailSaveFailed, Message: "取得メール(msg-2)の保存に失敗しました。"},
 					}, nil
 			},
 		},
@@ -296,6 +302,9 @@ func TestUseCaseExecute_PartialFailuresContinue(t *testing.T) {
 	}
 	if result.Failures[1].ExternalMessageID != "msg-2" || result.Failures[1].Stage != mfdomain.FailureStageSave {
 		t.Fatalf("unexpected second failure: %+v", result.Failures[1])
+	}
+	if result.Failures[0].Message != "Gmail本文の取得に失敗しました。メールID=msg-0" || result.Failures[1].Message != "取得メール(msg-2)の保存に失敗しました。" {
+		t.Fatalf("unexpected failure messages: %+v", result.Failures)
 	}
 }
 
@@ -365,6 +374,9 @@ func TestUseCaseExecute_ZeroReceivedAtBecomesNormalizeFailure(t *testing.T) {
 	}
 	if result.Failures[0].ExternalMessageID != "msg-2" || result.Failures[0].Stage != mfdomain.FailureStageNormalize {
 		t.Fatalf("unexpected normalize failure: %+v", result.Failures[0])
+	}
+	if result.Failures[0].Message != "取得メール(msg-2)の受信日時が不正でした。" {
+		t.Fatalf("unexpected normalize failure message: %+v", result.Failures[0])
 	}
 }
 

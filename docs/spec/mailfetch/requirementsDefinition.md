@@ -3,7 +3,7 @@
 ## 背景
 
 - `docs/ddd/ubiquitous-language/mail-integration-fetch.md` では、`ManualMailFetch` は「手動トリガーで即時実行される Email 取得」であり、Email の意味解釈を持たない。
-- `docs/spec/manualmailworkflow/設計.md` では、手動メール取得全体を `manualmailworkflow -> mailfetch -> mailanalysis -> billing` の stage に分割する方針が定義されている。
+- `docs/spec/manualmailworkflow/basicDesign.md` では、手動メール取得全体を `manualmailworkflow -> mailfetch -> mailanalysis -> vendorresolution -> billingeligibility -> billing` の stage に分割する方針が定義されている。
 - 現在のリポジトリでは `internal/mailaccountconnection` と Gmail クライアント群に加え、raw Email の取得・保存を担う `internal/mailfetch` が実装済みである。
 - `internal/common/domain.FetchedEmailDTO` は既に存在し、Gmail クライアントもこの DTO を返す。
 - `Email` は metadata 保存に責務を限定し、本文は永続化しない方針とする。

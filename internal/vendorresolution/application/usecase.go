@@ -62,11 +62,11 @@ type Command struct {
 
 // Result は vendorresolution stage の出力。
 type Result struct {
-	ResolvedItems                []domain.ResolvedItem
-	ResolvedCount                int
-	UnresolvedCount              int
-	UnresolvedExternalMessageIDs []string
-	Failures                     []domain.Failure
+	ResolvedItems   []domain.ResolvedItem
+	ResolvedCount   int
+	UnresolvedItems []domain.UnresolvedItem
+	UnresolvedCount int
+	Failures        []domain.Failure
 }
 
 // UseCase は workflow から渡されたデータで vendor 正規化を実行する。
@@ -116,8 +116,6 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 	}
 
 	result := Result{}
-	unresolvedSeen := make(map[string]struct{}, len(cmd.ParsedEmails))
-
 	for _, target := range cmd.ParsedEmails {
 		// workflow から渡された値をここで最終整形し、policy と repository に揺れの少ない入力だけを渡す。
 		target = target.Normalize()
@@ -128,6 +126,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 				ExternalMessageID: target.ExternalMessageID,
 				Stage:             domain.FailureStageNormalizeInput,
 				Code:              domain.FailureCodeInvalidResolutionTarget,
+				Message:           messageForResolutionFailure(target, domain.FailureCodeInvalidResolutionTarget),
 			})
 			continue
 		}
@@ -140,14 +139,15 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 		}
 
 		if !decision.Resolution.IsResolved() {
-			result.UnresolvedCount++
-			if target.ExternalMessageID != "" {
-				// 同じメールが複数の ParsedEmail を持っていても、未解決メッセージIDは重複させない。
-				if _, seen := unresolvedSeen[target.ExternalMessageID]; !seen {
-					unresolvedSeen[target.ExternalMessageID] = struct{}{}
-					result.UnresolvedExternalMessageIDs = append(result.UnresolvedExternalMessageIDs, target.ExternalMessageID)
-				}
-			}
+			result.UnresolvedItems = append(result.UnresolvedItems, domain.UnresolvedItem{
+				ParsedEmailID:       target.ParsedEmailID,
+				EmailID:             target.EmailID,
+				ExternalMessageID:   target.ExternalMessageID,
+				ReasonCode:          domain.ReasonCodeVendorUnresolved,
+				Message:             messageForUnresolvedItem(target),
+				CandidateVendorName: stringValue(target.ParsedEmail.VendorName),
+			})
+			result.UnresolvedCount = len(result.UnresolvedItems)
 			reqLog.Warn("vendor_resolution_unresolved",
 				logger.UserID(cmd.UserID),
 				logger.Uint("parsed_email_id", target.ParsedEmailID),
@@ -166,6 +166,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 				ExternalMessageID: target.ExternalMessageID,
 				Stage:             domain.FailureStageResolveVendor,
 				Code:              domain.FailureCodeVendorResolveFail,
+				Message:           messageForResolutionFailure(target, domain.FailureCodeVendorResolveFail),
 			})
 			continue
 		}
@@ -174,7 +175,6 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 			ParsedEmailID:     target.ParsedEmailID,
 			EmailID:           target.EmailID,
 			ExternalMessageID: target.ExternalMessageID,
-			BodyDigest:        target.BodyDigest,
 			VendorID:          decision.Resolution.ResolvedVendor.ID,
 			VendorName:        decision.Resolution.ResolvedVendor.Name,
 			MatchedBy:         decision.MatchedBy,

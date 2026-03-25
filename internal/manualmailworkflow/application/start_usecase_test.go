@@ -8,6 +8,63 @@ import (
 	"time"
 )
 
+type stubWorkflowStatusRepository struct {
+	createQueued func(ctx context.Context, cmd QueuedWorkflowHistory) (WorkflowHistoryRef, error)
+	markRunning  func(ctx context.Context, historyID uint64, currentStage string) error
+	saveStage    func(ctx context.Context, progress StageProgress) error
+	complete     func(ctx context.Context, historyID uint64, status string, finishedAt time.Time) error
+	fail         func(ctx context.Context, historyID uint64, currentStage string, finishedAt time.Time) error
+}
+
+func (s *stubWorkflowStatusRepository) CreateQueued(ctx context.Context, cmd QueuedWorkflowHistory) (WorkflowHistoryRef, error) {
+	if s.createQueued == nil {
+		return WorkflowHistoryRef{HistoryID: 1, WorkflowID: cmd.WorkflowID}, nil
+	}
+	return s.createQueued(ctx, cmd)
+}
+
+func (s *stubWorkflowStatusRepository) MarkRunning(ctx context.Context, historyID uint64, currentStage string) error {
+	if s.markRunning == nil {
+		return nil
+	}
+	return s.markRunning(ctx, historyID, currentStage)
+}
+
+func (s *stubWorkflowStatusRepository) SaveStageProgress(ctx context.Context, progress StageProgress) error {
+	if s.saveStage == nil {
+		return nil
+	}
+	return s.saveStage(ctx, progress)
+}
+
+func (s *stubWorkflowStatusRepository) Complete(ctx context.Context, historyID uint64, status string, finishedAt time.Time) error {
+	if s.complete == nil {
+		return nil
+	}
+	return s.complete(ctx, historyID, status, finishedAt)
+}
+
+func (s *stubWorkflowStatusRepository) Fail(ctx context.Context, historyID uint64, currentStage string, finishedAt time.Time) error {
+	if s.fail == nil {
+		return nil
+	}
+	return s.fail(ctx, historyID, currentStage, finishedAt)
+}
+
+type fixedClock struct {
+	now time.Time
+}
+
+func (c *fixedClock) Now() time.Time {
+	return c.now
+}
+
+func (c *fixedClock) After(d time.Duration) <-chan time.Time {
+	ch := make(chan time.Time, 1)
+	ch <- c.now.Add(d)
+	return ch
+}
+
 type stubWorkflowDispatcher struct {
 	dispatch func(ctx context.Context, job DispatchJob) error
 }
@@ -20,9 +77,14 @@ func TestStartUseCase_Start_DispatchesValidatedCommand(t *testing.T) {
 	t.Parallel()
 
 	dispatchCalls := 0
+	queuedCalls := 0
+	now := time.Date(2026, 3, 25, 10, 0, 0, 0, time.UTC)
 	uc := NewStartUseCase(&stubWorkflowDispatcher{
 		dispatch: func(ctx context.Context, job DispatchJob) error {
 			dispatchCalls++
+			if job.HistoryID != 99 {
+				t.Fatalf("unexpected history id: %d", job.HistoryID)
+			}
 			if job.UserID != 7 || job.ConnectionID != 12 {
 				t.Fatalf("unexpected dispatch job: %+v", job)
 			}
@@ -34,7 +96,21 @@ func TestStartUseCase_Start_DispatchesValidatedCommand(t *testing.T) {
 			}
 			return nil
 		},
-	}, logger.NewNop())
+	}, &stubWorkflowStatusRepository{
+		createQueued: func(ctx context.Context, cmd QueuedWorkflowHistory) (WorkflowHistoryRef, error) {
+			queuedCalls++
+			if cmd.UserID != 7 || cmd.ConnectionID != 12 {
+				t.Fatalf("unexpected queued history command: %+v", cmd)
+			}
+			if cmd.LabelName != "billing" {
+				t.Fatalf("unexpected normalized label name: %+v", cmd)
+			}
+			if !cmd.QueuedAt.Equal(now) {
+				t.Fatalf("unexpected queued at: %s", cmd.QueuedAt)
+			}
+			return WorkflowHistoryRef{HistoryID: 99, WorkflowID: cmd.WorkflowID}, nil
+		},
+	}, &fixedClock{now: now}, logger.NewNop())
 
 	result, err := uc.Start(context.Background(), Command{
 		UserID:       7,
@@ -50,6 +126,9 @@ func TestStartUseCase_Start_DispatchesValidatedCommand(t *testing.T) {
 	}
 	if dispatchCalls != 1 {
 		t.Fatalf("expected 1 dispatch call, got %d", dispatchCalls)
+	}
+	if queuedCalls != 1 {
+		t.Fatalf("expected 1 queued history call, got %d", queuedCalls)
 	}
 	if result.WorkflowID == "" {
 		t.Fatal("expected non-empty workflow id")
@@ -67,7 +146,7 @@ func TestStartUseCase_Start_InvalidCommand(t *testing.T) {
 			t.Fatal("dispatch should not be called for invalid command")
 			return nil
 		},
-	}, logger.NewNop())
+	}, &stubWorkflowStatusRepository{}, &fixedClock{now: time.Date(2026, 3, 25, 10, 0, 0, 0, time.UTC)}, logger.NewNop())
 
 	_, err := uc.Start(context.Background(), Command{
 		UserID:       7,
@@ -87,11 +166,30 @@ func TestStartUseCase_Start_DispatchFailure(t *testing.T) {
 	t.Parallel()
 
 	wantErr := errors.New("dispatch failed")
+	failCalls := 0
+	now := time.Date(2026, 3, 25, 10, 0, 0, 0, time.UTC)
 	uc := NewStartUseCase(&stubWorkflowDispatcher{
 		dispatch: func(ctx context.Context, job DispatchJob) error {
 			return wantErr
 		},
-	}, logger.NewNop())
+	}, &stubWorkflowStatusRepository{
+		createQueued: func(ctx context.Context, cmd QueuedWorkflowHistory) (WorkflowHistoryRef, error) {
+			return WorkflowHistoryRef{HistoryID: 55, WorkflowID: cmd.WorkflowID}, nil
+		},
+		fail: func(ctx context.Context, historyID uint64, currentStage string, finishedAt time.Time) error {
+			failCalls++
+			if historyID != 55 {
+				t.Fatalf("unexpected history id: %d", historyID)
+			}
+			if currentStage != "" {
+				t.Fatalf("unexpected current stage: %q", currentStage)
+			}
+			if !finishedAt.Equal(now) {
+				t.Fatalf("unexpected finished at: %s", finishedAt)
+			}
+			return nil
+		},
+	}, &fixedClock{now: now}, logger.NewNop())
 
 	_, err := uc.Start(context.Background(), Command{
 		UserID:       7,
@@ -104,5 +202,8 @@ func TestStartUseCase_Start_DispatchFailure(t *testing.T) {
 	})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected dispatch error, got %v", err)
+	}
+	if failCalls != 1 {
+		t.Fatalf("expected 1 fail call, got %d", failCalls)
 	}
 }

@@ -30,4 +30,5 @@ type MessageFailure struct {
 	ExternalMessageID string `json:"external_message_id"`
 	Stage             string `json:"stage"`
 	Code              string `json:"code"`
+	Message           string `json:"message"`
 }

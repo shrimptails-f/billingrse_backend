@@ -80,6 +80,9 @@ func TestGmailMailFetcherAdapter_Fetch_FiltersUntilAndNormalizeFailures(t *testi
 	if len(failures) != 1 || failures[0].ExternalMessageID != "msg-4" || failures[0].Stage != mfdomain.FailureStageNormalize {
 		t.Fatalf("unexpected failures: %+v", failures)
 	}
+	if failures[0].Message != "取得メール(msg-4)の受信日時が不正でした。" {
+		t.Fatalf("unexpected normalize failure message: %+v", failures[0])
+	}
 }
 
 func TestGmailMailFetcherAdapter_Fetch_DetailFailureContinues(t *testing.T) {
@@ -120,6 +123,9 @@ func TestGmailMailFetcherAdapter_Fetch_DetailFailureContinues(t *testing.T) {
 	}
 	if len(failures) != 1 || failures[0].ExternalMessageID != "msg-1" || failures[0].Stage != mfdomain.FailureStageFetchDetail {
 		t.Fatalf("unexpected failures: %+v", failures)
+	}
+	if failures[0].Message != "Gmail本文の取得に失敗しました。メールID=msg-1" {
+		t.Fatalf("unexpected fetch detail failure message: %+v", failures[0])
 	}
 }
 

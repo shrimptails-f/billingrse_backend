@@ -39,11 +39,13 @@ sequenceDiagram
 
 ## 背景
 - ユーザーが Gmail OAuth を通じて `MailAccountConnection` を作成できるようにしたい。
-- 現行コードには以下の断片が存在する。
+- 現行コードには以下の主要実装が存在する。
 - `internal/common/domain/mail_account_connection.go`
+- `internal/mailaccountconnection`
+- `internal/app/presentation/mailaccountconnection`
 - `internal/library/gmailService/oauth_config_loader.go`
 - `tools/migrations/models/email_credential.go`
-- ただし `internal/mailaccountconnection` 相当の application / infrastructure / presentation 実装は未作成で、HTTP API も未実装。
+- 認証済みユーザー向けの `authorize` / `callback` / `list` / `disconnect` HTTP API も実装済みである。
 
 ## 現状把握
 - HTTP API は Gin + Clean Architecture + dig DI 構成。

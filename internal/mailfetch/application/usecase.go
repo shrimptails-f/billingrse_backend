@@ -143,10 +143,17 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 				ExternalMessageID: externalMessageID,
 				Stage:             mfdomain.FailureStageNormalize,
 				Code:              mfdomain.FailureCodeInvalidFetchedEmail,
+				Message:           normalizeFailureMessage(externalMessageID, dto.Date.IsZero()),
 			})
 			continue
 		}
 		if _, seen := seenMessageIDs[externalMessageID]; seen {
+			result.Failures = append(result.Failures, mfdomain.MessageFailure{
+				ExternalMessageID: externalMessageID,
+				Stage:             mfdomain.FailureStageNormalize,
+				Code:              mfdomain.FailureCodeDuplicateExternalMessageID,
+				Message:           duplicateFailureMessage(externalMessageID),
+			})
 			continue
 		}
 		seenMessageIDs[externalMessageID] = struct{}{}
@@ -202,6 +209,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 				ExternalMessageID: saveResult.ExternalMessageID,
 				Stage:             mfdomain.FailureStageSave,
 				Code:              mfdomain.FailureCodeEmailSaveFailed,
+				Message:           saveStatusFailureMessage(saveResult.ExternalMessageID, string(saveResult.Status)),
 			})
 		}
 	}
@@ -235,4 +243,28 @@ func validateCommand(cmd Command) error {
 func computeBodyDigest(body string) string {
 	sum := sha256.Sum256([]byte(body))
 	return hex.EncodeToString(sum[:])
+}
+
+func normalizeFailureMessage(externalMessageID string, missingDate bool) string {
+	id := externalMessageIDOrFallback(externalMessageID)
+	if missingDate {
+		return "取得メール(" + id + ")の受信日時が不正でした。"
+	}
+	return "取得メール(" + id + ")のIDまたは必須項目が不正でした。"
+}
+
+func duplicateFailureMessage(externalMessageID string) string {
+	return "取得結果に重複したメールID(" + externalMessageIDOrFallback(externalMessageID) + ")が含まれていました。"
+}
+
+func saveStatusFailureMessage(externalMessageID, saveStatus string) string {
+	return "取得メール(" + externalMessageIDOrFallback(externalMessageID) + ")の保存結果が不正でした。status=" + strings.TrimSpace(saveStatus)
+}
+
+func externalMessageIDOrFallback(externalMessageID string) string {
+	externalMessageID = strings.TrimSpace(externalMessageID)
+	if externalMessageID == "" {
+		return "unknown"
+	}
+	return externalMessageID
 }

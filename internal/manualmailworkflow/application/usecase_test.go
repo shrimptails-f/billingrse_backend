@@ -74,10 +74,7 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 					t.Fatalf("unexpected label: %q", cmd.Condition.LabelName)
 				}
 				return FetchResult{
-					Provider:            "gmail",
-					AccountIdentifier:   "user@example.com",
-					MatchedMessageCount: 2,
-					CreatedEmailIDs:     []uint{101},
+					CreatedEmailIDs: []uint{101},
 					CreatedEmails: []CreatedEmail{
 						{
 							EmailID:           101,
@@ -139,8 +136,7 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 							Data:              commondomain.ParsedEmail{VendorName: stringPtr("Unknown")},
 						},
 					},
-					AnalyzedEmailCount: 1,
-					ParsedEmailCount:   2,
+					ParsedEmailCount: 2,
 					Failures: []AnalysisFailure{
 						{EmailID: 101, ExternalMessageID: "msg-1", Stage: "save", Code: "parsed_email_save_failed"},
 					},
@@ -165,7 +161,6 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 							ParsedEmailID:     9001,
 							EmailID:           101,
 							ExternalMessageID: "msg-1",
-							BodyDigest:        "digest-msg-1",
 							VendorID:          3001,
 							VendorName:        "Acme",
 							MatchedBy:         "name_exact",
@@ -178,12 +173,11 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 							},
 						},
 					},
-					ResolvedCount:                1,
-					UnresolvedCount:              1,
-					UnresolvedExternalMessageIDs: []string{"msg-1"},
-					Failures: []VendorResolutionFailure{
-						{ParsedEmailID: 9002, EmailID: 101, ExternalMessageID: "msg-1", Stage: "resolve_vendor", Code: "vendor_resolution_failed"},
+					ResolvedCount: 1,
+					UnresolvedItems: []UnresolvedItem{
+						{ParsedEmailID: 9002, EmailID: 101, ExternalMessageID: "msg-1", ReasonCode: reasonCodeVendorUnresolved},
 					},
+					UnresolvedCount: 1,
 				}, nil
 			},
 		},
@@ -243,10 +237,14 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 				}, nil
 			},
 		},
+		&stubWorkflowStatusRepository{},
+		&fixedClock{now: time.Date(2026, 3, 25, 12, 30, 0, 0, time.UTC)},
 		logger.NewNop(),
 	)
 
-	result, err := uc.Execute(context.Background(), Command{
+	result, err := uc.Execute(context.Background(), DispatchJob{
+		HistoryID:    1,
+		WorkflowID:   "wf-1",
 		UserID:       3,
 		ConnectionID: 8,
 		Condition: FetchCondition{
@@ -274,7 +272,7 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 	if billingCalls != 1 {
 		t.Fatalf("expected 1 billing call, got %d", billingCalls)
 	}
-	if result.Fetch.Provider != "gmail" {
+	if len(result.Fetch.CreatedEmailIDs) != 1 {
 		t.Fatalf("unexpected fetch result: %+v", result.Fetch)
 	}
 	if len(result.Analysis.ParsedEmailIDs) != 2 {
@@ -302,10 +300,7 @@ func TestUseCaseExecute_SkipsAnalyzeWhenNoCreatedEmails(t *testing.T) {
 		&stubFetchStage{
 			execute: func(ctx context.Context, cmd FetchCommand) (FetchResult, error) {
 				return FetchResult{
-					Provider:            "gmail",
-					AccountIdentifier:   "user@example.com",
-					MatchedMessageCount: 1,
-					ExistingEmailIDs:    []uint{10},
+					ExistingEmailIDs: []uint{10},
 				}, nil
 			},
 		},
@@ -333,10 +328,14 @@ func TestUseCaseExecute_SkipsAnalyzeWhenNoCreatedEmails(t *testing.T) {
 				return BillingResult{}, nil
 			},
 		},
+		&stubWorkflowStatusRepository{},
+		&fixedClock{now: time.Date(2026, 3, 25, 12, 30, 0, 0, time.UTC)},
 		logger.NewNop(),
 	)
 
-	result, err := uc.Execute(context.Background(), Command{
+	result, err := uc.Execute(context.Background(), DispatchJob{
+		HistoryID:    1,
+		WorkflowID:   "wf-1",
 		UserID:       1,
 		ConnectionID: 2,
 		Condition: FetchCondition{
@@ -376,9 +375,7 @@ func TestUseCaseExecute_SkipsVendorResolutionWhenNoParsedEmails(t *testing.T) {
 		&stubFetchStage{
 			execute: func(ctx context.Context, cmd FetchCommand) (FetchResult, error) {
 				return FetchResult{
-					Provider:          "gmail",
-					AccountIdentifier: "user@example.com",
-					CreatedEmailIDs:   []uint{101},
+					CreatedEmailIDs: []uint{101},
 					CreatedEmails: []CreatedEmail{
 						{
 							EmailID:           101,
@@ -396,8 +393,7 @@ func TestUseCaseExecute_SkipsVendorResolutionWhenNoParsedEmails(t *testing.T) {
 		&stubAnalyzeStage{
 			execute: func(ctx context.Context, cmd AnalyzeCommand) (AnalyzeResult, error) {
 				return AnalyzeResult{
-					ParsedEmails:       nil,
-					AnalyzedEmailCount: 1,
+					ParsedEmails: nil,
 				}, nil
 			},
 		},
@@ -419,10 +415,14 @@ func TestUseCaseExecute_SkipsVendorResolutionWhenNoParsedEmails(t *testing.T) {
 				return BillingResult{}, nil
 			},
 		},
+		&stubWorkflowStatusRepository{},
+		&fixedClock{now: time.Date(2026, 3, 25, 12, 30, 0, 0, time.UTC)},
 		logger.NewNop(),
 	)
 
-	result, err := uc.Execute(context.Background(), Command{
+	result, err := uc.Execute(context.Background(), DispatchJob{
+		HistoryID:    1,
+		WorkflowID:   "wf-1",
 		UserID:       1,
 		ConnectionID: 2,
 		Condition: FetchCondition{
@@ -506,10 +506,14 @@ func TestUseCaseExecute_SkipsBillingEligibilityWhenNoResolvedItems(t *testing.T)
 				return BillingResult{}, nil
 			},
 		},
+		&stubWorkflowStatusRepository{},
+		&fixedClock{now: time.Date(2026, 3, 25, 12, 30, 0, 0, time.UTC)},
 		logger.NewNop(),
 	)
 
-	result, err := uc.Execute(context.Background(), Command{
+	result, err := uc.Execute(context.Background(), DispatchJob{
+		HistoryID:    1,
+		WorkflowID:   "wf-1",
 		UserID:       1,
 		ConnectionID: 2,
 		Condition: FetchCondition{
@@ -601,10 +605,14 @@ func TestUseCaseExecute_SkipsBillingWhenNoEligibleItems(t *testing.T) {
 				return BillingResult{}, nil
 			},
 		},
+		&stubWorkflowStatusRepository{},
+		&fixedClock{now: time.Date(2026, 3, 25, 12, 30, 0, 0, time.UTC)},
 		logger.NewNop(),
 	)
 
-	result, err := uc.Execute(context.Background(), Command{
+	result, err := uc.Execute(context.Background(), DispatchJob{
+		HistoryID:    1,
+		WorkflowID:   "wf-1",
 		UserID:       1,
 		ConnectionID: 2,
 		Condition: FetchCondition{
@@ -659,10 +667,14 @@ func TestUseCaseExecute_InvalidCommand(t *testing.T) {
 				return BillingResult{}, nil
 			},
 		},
+		&stubWorkflowStatusRepository{},
+		&fixedClock{now: time.Date(2026, 3, 25, 12, 30, 0, 0, time.UTC)},
 		logger.NewNop(),
 	)
 
-	_, err := uc.Execute(context.Background(), Command{
+	_, err := uc.Execute(context.Background(), DispatchJob{
+		HistoryID:    1,
+		WorkflowID:   "wf-1",
 		UserID:       1,
 		ConnectionID: 2,
 		Condition: FetchCondition{
@@ -673,6 +685,135 @@ func TestUseCaseExecute_InvalidCommand(t *testing.T) {
 	})
 	if !errors.Is(err, ErrFetchConditionInvalid) {
 		t.Fatalf("expected ErrFetchConditionInvalid, got %v", err)
+	}
+}
+
+func TestUseCaseExecute_SavesProgressAndCompletesPartialSuccess(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)
+	stageOrder := make([]string, 0, 4)
+	savedProgress := make(map[string]StageProgress)
+	completedStatus := ""
+
+	uc := NewUseCase(
+		&stubFetchStage{
+			execute: func(ctx context.Context, cmd FetchCommand) (FetchResult, error) {
+				return FetchResult{
+					CreatedEmailIDs: []uint{101},
+					CreatedEmails: []CreatedEmail{
+						{
+							EmailID:           101,
+							ExternalMessageID: "msg-1",
+							Subject:           "Invoice",
+							From:              "billing@example.com",
+							To:                []string{"user@example.com"},
+							ReceivedAt:        now,
+							Body:              "invoice body",
+							BodyDigest:        "digest-msg-1",
+						},
+					},
+					ExistingEmailIDs: []uint{202},
+					Failures: []FetchFailure{
+						{ExternalMessageID: "msg-2", Stage: "save", Code: "email_save_failed"},
+					},
+				}, nil
+			},
+		},
+		&stubAnalyzeStage{
+			execute: func(ctx context.Context, cmd AnalyzeCommand) (AnalyzeResult, error) {
+				return AnalyzeResult{
+					ParsedEmailIDs:   []uint{9001},
+					ParsedEmails:     []ParsedEmail{{ParsedEmailID: 9001, EmailID: 101, ExternalMessageID: "msg-1"}},
+					ParsedEmailCount: 1,
+				}, nil
+			},
+		},
+		&stubVendorResolutionStage{
+			execute: func(ctx context.Context, cmd VendorResolutionCommand) (VendorResolutionResult, error) {
+				return VendorResolutionResult{
+					ResolvedItems:   nil,
+					ResolvedCount:   0,
+					UnresolvedCount: 1,
+				}, nil
+			},
+		},
+		&stubBillingEligibilityStage{
+			execute: func(ctx context.Context, cmd BillingEligibilityCommand) (BillingEligibilityResult, error) {
+				t.Fatal("billing eligibility should be skipped when nothing is resolved")
+				return BillingEligibilityResult{}, nil
+			},
+		},
+		&stubBillingStage{
+			execute: func(ctx context.Context, cmd BillingCommand) (BillingResult, error) {
+				t.Fatal("billing should be skipped when nothing is resolved")
+				return BillingResult{}, nil
+			},
+		},
+		&stubWorkflowStatusRepository{
+			markRunning: func(ctx context.Context, historyID uint64, currentStage string) error {
+				stageOrder = append(stageOrder, currentStage)
+				return nil
+			},
+			saveStage: func(ctx context.Context, progress StageProgress) error {
+				savedProgress[progress.Stage] = progress
+				return nil
+			},
+			complete: func(ctx context.Context, historyID uint64, status string, finishedAt time.Time) error {
+				completedStatus = status
+				return nil
+			},
+		},
+		&fixedClock{now: now},
+		logger.NewNop(),
+	)
+
+	_, err := uc.Execute(context.Background(), DispatchJob{
+		HistoryID:    77,
+		WorkflowID:   "wf-progress",
+		UserID:       1,
+		ConnectionID: 2,
+		Condition: FetchCondition{
+			LabelName: "billing",
+			Since:     now.Add(-time.Hour),
+			Until:     now.Add(time.Hour),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	if len(stageOrder) != 3 {
+		t.Fatalf("unexpected stage order count: %+v", stageOrder)
+	}
+	expectedOrder := []string{workflowStageFetch, workflowStageAnalysis, workflowStageVendorResolution}
+	for idx, stage := range expectedOrder {
+		if stageOrder[idx] != stage {
+			t.Fatalf("unexpected stage order: %+v", stageOrder)
+		}
+	}
+
+	fetchProgress, ok := savedProgress[workflowStageFetch]
+	if !ok {
+		t.Fatal("fetch progress was not saved")
+	}
+	if fetchProgress.SuccessCount != 2 || fetchProgress.BusinessFailureCount != 0 || fetchProgress.TechnicalFailureCount != 1 {
+		t.Fatalf("unexpected fetch progress: %+v", fetchProgress)
+	}
+
+	vendorProgress, ok := savedProgress[workflowStageVendorResolution]
+	if !ok {
+		t.Fatal("vendorresolution progress was not saved")
+	}
+	if vendorProgress.SuccessCount != 0 || vendorProgress.BusinessFailureCount != 1 || vendorProgress.TechnicalFailureCount != 0 {
+		t.Fatalf("unexpected vendor progress: %+v", vendorProgress)
+	}
+	if len(vendorProgress.FailureRecords) != 1 || vendorProgress.FailureRecords[0].ReasonCode != reasonCodeVendorUnresolved {
+		t.Fatalf("unexpected vendor failure records: %+v", vendorProgress.FailureRecords)
+	}
+
+	if completedStatus != WorkflowStatusPartialSuccess {
+		t.Fatalf("unexpected completed status: %s", completedStatus)
 	}
 }
 

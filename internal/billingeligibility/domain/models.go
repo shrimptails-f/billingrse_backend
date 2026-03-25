@@ -3,11 +3,6 @@ package domain
 import "time"
 
 const (
-	// FailureStageNormalizeInput indicates target normalization or validation failed.
-	FailureStageNormalizeInput = "normalize_input"
-	// FailureStageEvaluateEligibility indicates eligibility evaluation failed unexpectedly.
-	FailureStageEvaluateEligibility = "evaluate_eligibility"
-
 	// FailureCodeInvalidEligibilityTarget indicates the workflow passed an invalid target.
 	FailureCodeInvalidEligibilityTarget = "invalid_eligibility_target"
 	// FailureCodeBillingEligibilityFail indicates the policy returned an unexpected failure.
@@ -57,6 +52,7 @@ type IneligibleItem struct {
 	VendorName        string
 	MatchedBy         string
 	ReasonCode        string
+	Message           string
 }
 
 // Failure is a technical or contract failure for a single target.
@@ -64,6 +60,6 @@ type Failure struct {
 	ParsedEmailID     uint
 	EmailID           uint
 	ExternalMessageID string
-	Stage             string
 	Code              string
+	Message           string
 }

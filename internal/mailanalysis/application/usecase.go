@@ -101,11 +101,10 @@ type ParsedEmailResultItem struct {
 
 // Result は mailanalysis stage の出力。
 type Result struct {
-	ParsedEmailIDs     []uint
-	ParsedEmails       []ParsedEmailResultItem
-	AnalyzedEmailCount int
-	ParsedEmailCount   int
-	Failures           []domain.MessageFailure
+	ParsedEmailIDs   []uint
+	ParsedEmails     []ParsedEmailResultItem
+	ParsedEmailCount int
+	Failures         []domain.MessageFailure
 }
 
 // UseCase は mailanalysis stage を実行する。
@@ -176,6 +175,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 				ExternalMessageID: email.ExternalMessageID,
 				Stage:             domain.FailureStageNormalizeInput,
 				Code:              domain.FailureCodeInvalidEmailInput,
+				Message:           messageForInvalidEmailInput(email),
 			})
 			continue
 		}
@@ -194,7 +194,6 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 
 		output = output.Normalize()
 		output.ParsedEmails = applyFallbackBillingNumbers(output.ParsedEmails, email.BodyDigest)
-		result.AnalyzedEmailCount++
 
 		if len(output.ParsedEmails) == 0 {
 			result.Failures = append(result.Failures, domain.MessageFailure{
@@ -202,6 +201,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 				ExternalMessageID: email.ExternalMessageID,
 				Stage:             domain.FailureStageResponseParse,
 				Code:              domain.FailureCodeAnalysisResponseEmpty,
+				Message:           messageForAnalysisResponseEmpty(email),
 			})
 			continue
 		}
@@ -227,6 +227,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 				ExternalMessageID: email.ExternalMessageID,
 				Stage:             domain.FailureStageSave,
 				Code:              domain.FailureCodeParsedEmailSaveFailed,
+				Message:           messageForParsedEmailSaveFailed(email),
 			})
 			continue
 		}
@@ -262,7 +263,6 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 	reqLog.Info("email_analysis_succeeded",
 		logger.UserID(cmd.UserID),
 		logger.Int("input_email_count", len(cmd.Emails)),
-		logger.Int("analyzed_email_count", result.AnalyzedEmailCount),
 		logger.Int("parsed_email_count", result.ParsedEmailCount),
 		logger.Int("failure_count", len(result.Failures)),
 	)
@@ -317,6 +317,7 @@ func failureForAnalyzeError(email EmailForAnalysisTarget, err error) domain.Mess
 			ExternalMessageID: email.ExternalMessageID,
 			Stage:             domain.FailureStageResponseParse,
 			Code:              domain.FailureCodeAnalysisResponseInvalid,
+			Message:           messageForAnalysisResponseInvalid(email),
 		}
 	}
 
@@ -325,5 +326,39 @@ func failureForAnalyzeError(email EmailForAnalysisTarget, err error) domain.Mess
 		ExternalMessageID: email.ExternalMessageID,
 		Stage:             domain.FailureStageAnalyze,
 		Code:              domain.FailureCodeAnalysisFailed,
+		Message:           messageForAnalysisFailed(email),
+	}
+}
+
+func messageForInvalidEmailInput(email EmailForAnalysisTarget) string {
+	return describeEmailReference(email) + " の入力が不正です。件名、本文、外部メッセージIDを確認してください。"
+}
+
+func messageForAnalysisFailed(email EmailForAnalysisTarget) string {
+	return describeEmailReference(email) + " の解析に失敗しました。しばらく時間をおいて再実行してください。"
+}
+
+func messageForAnalysisResponseInvalid(email EmailForAnalysisTarget) string {
+	return describeEmailReference(email) + " の解析結果の形式が不正でした。"
+}
+
+func messageForAnalysisResponseEmpty(email EmailForAnalysisTarget) string {
+	return describeEmailReference(email) + " の解析結果を取得できませんでした。"
+}
+
+func messageForParsedEmailSaveFailed(email EmailForAnalysisTarget) string {
+	return describeEmailReference(email) + " の解析結果の保存に失敗しました。"
+}
+
+func describeEmailReference(email EmailForAnalysisTarget) string {
+	switch {
+	case email.ExternalMessageID != "" && email.EmailID != 0:
+		return "メールID " + fmt.Sprint(email.EmailID) + " (" + email.ExternalMessageID + ")"
+	case email.ExternalMessageID != "":
+		return "メール " + email.ExternalMessageID
+	case email.EmailID != 0:
+		return "メールID " + fmt.Sprint(email.EmailID)
+	default:
+		return "メール"
 	}
 }
