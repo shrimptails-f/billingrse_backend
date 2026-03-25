@@ -116,8 +116,8 @@ stateDiagram-v2
   [*] --> queued
   queued --> running: dispatch 成功
   queued --> failed: dispatch 失敗
-  running --> succeeded: 完走かつ failure_count=0
-  running --> partial_success: 完走かついずれかの stage で failure_count>0
+  running --> succeeded: 完走かつ全 stage の business/technical failure count が 0
+  running --> partial_success: 完走かついずれかの stage で business/technical failure count > 0
   running --> failed: top-level error / panic
   succeeded --> [*]
   partial_success --> [*]

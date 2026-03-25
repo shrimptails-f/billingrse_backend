@@ -5,6 +5,7 @@ import (
 	billingapp "business/internal/billing/application"
 	beapp "business/internal/billingeligibility/application"
 	"business/internal/library/logger"
+	"business/internal/library/timewrapper"
 	maapp "business/internal/mailanalysis/application"
 	mfapp "business/internal/mailfetch/application"
 	manualapp "business/internal/manualmailworkflow/application"
@@ -12,6 +13,7 @@ import (
 	vrapp "business/internal/vendorresolution/application"
 
 	"go.uber.org/dig"
+	"gorm.io/gorm"
 )
 
 // ProvideManualMailWorkflowDependencies registers manual mail workflow dependencies.
@@ -37,14 +39,24 @@ func ProvideManualMailWorkflowDependencies(container *dig.Container) {
 	})
 
 	_ = container.Provide(func(
+		db *gorm.DB,
+		clock *timewrapper.Clock,
+		log *logger.Logger,
+	) *manualinfra.GormWorkflowStatusRepository {
+		return manualinfra.NewGormWorkflowStatusRepository(db, clock, log)
+	})
+
+	_ = container.Provide(func(
 		fetchStage *manualinfra.DirectManualMailFetchAdapter,
 		analyzeStage *manualinfra.DirectMailAnalysisAdapter,
 		vendorResolutionStage *manualinfra.DirectVendorResolutionAdapter,
 		billingEligibilityStage *manualinfra.DirectBillingEligibilityAdapter,
 		billingStage *manualinfra.DirectBillingAdapter,
+		repository *manualinfra.GormWorkflowStatusRepository,
+		clock *timewrapper.Clock,
 		log *logger.Logger,
 	) manualapp.UseCase {
-		return manualapp.NewUseCase(fetchStage, analyzeStage, vendorResolutionStage, billingEligibilityStage, billingStage, log)
+		return manualapp.NewUseCase(fetchStage, analyzeStage, vendorResolutionStage, billingEligibilityStage, billingStage, repository, clock, log)
 	})
 
 	_ = container.Provide(func(
@@ -56,9 +68,11 @@ func ProvideManualMailWorkflowDependencies(container *dig.Container) {
 
 	_ = container.Provide(func(
 		dispatcher *manualinfra.InProcessWorkflowDispatcher,
+		repository *manualinfra.GormWorkflowStatusRepository,
+		clock *timewrapper.Clock,
 		log *logger.Logger,
 	) manualapp.StartUseCase {
-		return manualapp.NewStartUseCase(dispatcher, log)
+		return manualapp.NewStartUseCase(dispatcher, repository, clock, log)
 	})
 
 	_ = container.Provide(func(

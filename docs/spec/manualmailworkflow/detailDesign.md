@@ -60,7 +60,8 @@ response:
   "finished_at": "2026-03-25T17:00:12Z",
   "fetch": {
     "success_count": 14,
-    "failure_count": 1,
+    "business_failure_count": 0,
+    "technical_failure_count": 1,
     "failures": [
       {
         "external_message_id": "18c1f3...",
@@ -71,12 +72,14 @@ response:
   },
   "analysis": {
     "success_count": 14,
-    "failure_count": 0,
+    "business_failure_count": 0,
+    "technical_failure_count": 0,
     "failures": []
   },
   "vendor_resolution": {
     "success_count": 12,
-    "failure_count": 2,
+    "business_failure_count": 2,
+    "technical_failure_count": 0,
     "failures": [
       {
         "external_message_id": "18c1fa...",
@@ -87,7 +90,8 @@ response:
   },
   "billing_eligibility": {
     "success_count": 10,
-    "failure_count": 2,
+    "business_failure_count": 2,
+    "technical_failure_count": 0,
     "failures": [
       {
         "external_message_id": "18c1fb...",
@@ -98,7 +102,8 @@ response:
   },
   "billing": {
     "success_count": 8,
-    "failure_count": 2,
+    "business_failure_count": 2,
+    "technical_failure_count": 0,
     "failures": [
       {
         "external_message_id": "18c1fc...",
@@ -306,15 +311,20 @@ CREATE TABLE `manual_mail_workflow_histories` (
   `queued_at` datetime(3) NOT NULL,
   `finished_at` datetime(3) NULL,
   `fetch_success_count` int NOT NULL DEFAULT 0,
-  `fetch_failure_count` int NOT NULL DEFAULT 0,
+  `fetch_business_failure_count` int NOT NULL DEFAULT 0,
+  `fetch_technical_failure_count` int NOT NULL DEFAULT 0,
   `analysis_success_count` int NOT NULL DEFAULT 0,
-  `analysis_failure_count` int NOT NULL DEFAULT 0,
+  `analysis_business_failure_count` int NOT NULL DEFAULT 0,
+  `analysis_technical_failure_count` int NOT NULL DEFAULT 0,
   `vendor_resolution_success_count` int NOT NULL DEFAULT 0,
-  `vendor_resolution_failure_count` int NOT NULL DEFAULT 0,
+  `vendor_resolution_business_failure_count` int NOT NULL DEFAULT 0,
+  `vendor_resolution_technical_failure_count` int NOT NULL DEFAULT 0,
   `billing_eligibility_success_count` int NOT NULL DEFAULT 0,
-  `billing_eligibility_failure_count` int NOT NULL DEFAULT 0,
+  `billing_eligibility_business_failure_count` int NOT NULL DEFAULT 0,
+  `billing_eligibility_technical_failure_count` int NOT NULL DEFAULT 0,
   `billing_success_count` int NOT NULL DEFAULT 0,
-  `billing_failure_count` int NOT NULL DEFAULT 0,
+  `billing_business_failure_count` int NOT NULL DEFAULT 0,
+  `billing_technical_failure_count` int NOT NULL DEFAULT 0,
   `created_at` datetime(3) NOT NULL,
   `updated_at` datetime(3) NOT NULL,
   PRIMARY KEY (`id`),
@@ -351,30 +361,40 @@ CREATE TABLE `manual_mail_workflow_stage_failures` (
 - `external_message_id` は message 単位へ落とせる failure で使う。
 - stage 全体 failure のように message 単位へ分解できない場合は `NULL` を許容する。
 - `message` は各 stage の `Execute` が返す明細文言を保存する。多言語対応は行わない。
-- stage が返した failure 明細をそのまま保存するため、header の `failure_count` と failure rows の件数は一致する前提とする。
+- stage が返した failure 明細をそのまま保存するため、header の `business_failure_count + technical_failure_count` と failure rows の件数は一致する前提とする。
 
 ## 4. 件数定義
 
 - `fetch_success_count`
   - `created_email_count + existing_email_count`
-- `fetch_failure_count`
+- `fetch_business_failure_count`
+  - `0`
+- `fetch_technical_failure_count`
   - `len(fetch.Failures)`
 - `analysis_success_count`
   - `parsed_email_count`
-- `analysis_failure_count`
+- `analysis_business_failure_count`
+  - `0`
+- `analysis_technical_failure_count`
   - `len(analysis.Failures)`
 - `vendor_resolution_success_count`
   - `resolved_count`
-- `vendor_resolution_failure_count`
-  - `unresolved_count + len(vendorresolution.Failures)`
+- `vendor_resolution_business_failure_count`
+  - `unresolved_count`
+- `vendor_resolution_technical_failure_count`
+  - `len(vendorresolution.Failures)`
 - `billing_eligibility_success_count`
   - `eligible_count`
-- `billing_eligibility_failure_count`
-  - `ineligible_count + len(billingeligibility.Failures)`
+- `billing_eligibility_business_failure_count`
+  - `ineligible_count`
+- `billing_eligibility_technical_failure_count`
+  - `len(billingeligibility.Failures)`
 - `billing_success_count`
   - `created_count`
-- `billing_failure_count`
-  - `duplicate_count + len(billing.Failures)`
+- `billing_business_failure_count`
+  - `duplicate_count`
+- `billing_technical_failure_count`
+  - `len(billing.Failures)`
 
 ## 5. failure row への写像
 
@@ -424,7 +444,7 @@ CREATE TABLE `manual_mail_workflow_stage_failures` (
 - `failed`
   - dispatch 失敗、stage top-level error、panic などで workflow が完走しなかった場合
 - `partial_success`
-  - workflow は完走したが、いずれかの stage の `*_failure_count` が 1 件以上ある場合
+  - workflow は完走したが、いずれかの stage の `*_business_failure_count` または `*_technical_failure_count` が 1 件以上ある場合
 - `succeeded`
   - workflow が完走し、かつどの stage にも failure が残っていない場合
 

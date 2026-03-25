@@ -1,0 +1,348 @@
+package application
+
+import (
+	"context"
+	"time"
+)
+
+const (
+	// WorkflowStatusQueued indicates the workflow has been accepted for background execution.
+	WorkflowStatusQueued = "queued"
+	// WorkflowStatusRunning indicates the workflow is currently executing in background.
+	WorkflowStatusRunning = "running"
+	// WorkflowStatusSucceeded indicates the workflow finished without any stage failures.
+	WorkflowStatusSucceeded = "succeeded"
+	// WorkflowStatusPartialSuccess indicates the workflow finished with business/technical failures.
+	WorkflowStatusPartialSuccess = "partial_success"
+	// WorkflowStatusFailed indicates the workflow could not complete because of a top-level failure.
+	WorkflowStatusFailed = "failed"
+)
+
+const (
+	workflowStageFetch              = "fetch"
+	workflowStageAnalysis           = "analysis"
+	workflowStageVendorResolution   = "vendorresolution"
+	workflowStageBillingEligibility = "billingeligibility"
+	workflowStageBilling            = "billing"
+
+	reasonCodeVendorUnresolved = "vendor_unresolved"
+	reasonCodeDuplicateBilling = "duplicate_billing"
+)
+
+// WorkflowHistoryRef identifies a persisted workflow header row.
+type WorkflowHistoryRef struct {
+	HistoryID  uint64
+	WorkflowID string
+}
+
+// QueuedWorkflowHistory is the header snapshot persisted when the workflow is accepted.
+type QueuedWorkflowHistory struct {
+	WorkflowID   string
+	UserID       uint
+	ConnectionID uint
+	LabelName    string
+	SinceAt      time.Time
+	UntilAt      time.Time
+	QueuedAt     time.Time
+}
+
+// StageFailureRecord is the append-only failure row persisted for one workflow stage.
+type StageFailureRecord struct {
+	Stage             string
+	ExternalMessageID *string
+	ReasonCode        string
+	Message           string
+}
+
+// StageProgress is the per-stage summary persisted in the workflow header row.
+type StageProgress struct {
+	HistoryID             uint64
+	Stage                 string
+	SuccessCount          int
+	BusinessFailureCount  int
+	TechnicalFailureCount int
+	FailureRecords        []StageFailureRecord
+}
+
+// WorkflowStatusRepository persists workflow header/failure rows.
+type WorkflowStatusRepository interface {
+	CreateQueued(ctx context.Context, cmd QueuedWorkflowHistory) (WorkflowHistoryRef, error)
+	MarkRunning(ctx context.Context, historyID uint64, currentStage string) error
+	SaveStageProgress(ctx context.Context, progress StageProgress) error
+	Complete(ctx context.Context, historyID uint64, status string, finishedAt time.Time) error
+	Fail(ctx context.Context, historyID uint64, currentStage string, finishedAt time.Time) error
+}
+
+func buildFetchStageProgress(historyID uint64, result FetchResult) StageProgress {
+	failureRecords := make([]StageFailureRecord, 0, len(result.Failures))
+	for _, failure := range result.Failures {
+		failureRecords = append(failureRecords, stageFailureRecord(
+			workflowStageFetch,
+			failure.ExternalMessageID,
+			failure.Code,
+			messageForFetchFailure(failure.Code),
+		))
+	}
+
+	return StageProgress{
+		HistoryID:             historyID,
+		Stage:                 workflowStageFetch,
+		SuccessCount:          len(result.CreatedEmailIDs) + len(result.ExistingEmailIDs),
+		BusinessFailureCount:  0,
+		TechnicalFailureCount: len(failureRecords),
+		FailureRecords:        failureRecords,
+	}
+}
+
+func buildAnalysisStageProgress(historyID uint64, result AnalyzeResult) StageProgress {
+	failureRecords := make([]StageFailureRecord, 0, len(result.Failures))
+	for _, failure := range result.Failures {
+		failureRecords = append(failureRecords, stageFailureRecord(
+			workflowStageAnalysis,
+			failure.ExternalMessageID,
+			failure.Code,
+			messageForAnalysisFailure(failure.Code),
+		))
+	}
+
+	return StageProgress{
+		HistoryID:             historyID,
+		Stage:                 workflowStageAnalysis,
+		SuccessCount:          result.ParsedEmailCount,
+		BusinessFailureCount:  0,
+		TechnicalFailureCount: len(failureRecords),
+		FailureRecords:        failureRecords,
+	}
+}
+
+func buildVendorResolutionStageProgress(historyID uint64, inputs []ParsedEmail, result VendorResolutionResult) StageProgress {
+	failureRecords := make([]StageFailureRecord, 0, result.UnresolvedCount+len(result.Failures))
+
+	resolvedByParsedEmailID := make(map[uint]struct{}, len(result.ResolvedItems))
+	for _, item := range result.ResolvedItems {
+		resolvedByParsedEmailID[item.ParsedEmailID] = struct{}{}
+	}
+
+	failedByParsedEmailID := make(map[uint]struct{}, len(result.Failures))
+	for _, failure := range result.Failures {
+		if failure.ParsedEmailID != 0 {
+			failedByParsedEmailID[failure.ParsedEmailID] = struct{}{}
+		}
+	}
+
+	for _, input := range inputs {
+		if _, resolved := resolvedByParsedEmailID[input.ParsedEmailID]; resolved {
+			continue
+		}
+		if _, failed := failedByParsedEmailID[input.ParsedEmailID]; failed {
+			continue
+		}
+		failureRecords = append(failureRecords, stageFailureRecord(
+			workflowStageVendorResolution,
+			input.ExternalMessageID,
+			reasonCodeVendorUnresolved,
+			messageForVendorResolutionFailure(reasonCodeVendorUnresolved),
+		))
+	}
+
+	for _, failure := range result.Failures {
+		failureRecords = append(failureRecords, stageFailureRecord(
+			workflowStageVendorResolution,
+			failure.ExternalMessageID,
+			failure.Code,
+			messageForVendorResolutionFailure(failure.Code),
+		))
+	}
+
+	return StageProgress{
+		HistoryID:             historyID,
+		Stage:                 workflowStageVendorResolution,
+		SuccessCount:          result.ResolvedCount,
+		BusinessFailureCount:  result.UnresolvedCount,
+		TechnicalFailureCount: len(result.Failures),
+		FailureRecords:        failureRecords,
+	}
+}
+
+func buildBillingEligibilityStageProgress(historyID uint64, result BillingEligibilityResult) StageProgress {
+	failureRecords := make([]StageFailureRecord, 0, len(result.IneligibleItems)+len(result.Failures))
+	for _, item := range result.IneligibleItems {
+		failureRecords = append(failureRecords, stageFailureRecord(
+			workflowStageBillingEligibility,
+			item.ExternalMessageID,
+			item.ReasonCode,
+			messageForBillingEligibilityReason(item.ReasonCode),
+		))
+	}
+	for _, failure := range result.Failures {
+		failureRecords = append(failureRecords, stageFailureRecord(
+			workflowStageBillingEligibility,
+			failure.ExternalMessageID,
+			failure.Code,
+			messageForBillingEligibilityFailure(failure.Code),
+		))
+	}
+
+	return StageProgress{
+		HistoryID:             historyID,
+		Stage:                 workflowStageBillingEligibility,
+		SuccessCount:          result.EligibleCount,
+		BusinessFailureCount:  result.IneligibleCount,
+		TechnicalFailureCount: len(result.Failures),
+		FailureRecords:        failureRecords,
+	}
+}
+
+func buildBillingStageProgress(historyID uint64, result BillingResult) StageProgress {
+	failureRecords := make([]StageFailureRecord, 0, len(result.DuplicateItems)+len(result.Failures))
+	for _, item := range result.DuplicateItems {
+		failureRecords = append(failureRecords, stageFailureRecord(
+			workflowStageBilling,
+			item.ExternalMessageID,
+			reasonCodeDuplicateBilling,
+			messageForBillingFailure(reasonCodeDuplicateBilling),
+		))
+	}
+	for _, failure := range result.Failures {
+		failureRecords = append(failureRecords, stageFailureRecord(
+			workflowStageBilling,
+			failure.ExternalMessageID,
+			failure.Code,
+			messageForBillingFailure(failure.Code),
+		))
+	}
+
+	return StageProgress{
+		HistoryID:             historyID,
+		Stage:                 workflowStageBilling,
+		SuccessCount:          result.CreatedCount,
+		BusinessFailureCount:  result.DuplicateCount,
+		TechnicalFailureCount: len(result.Failures),
+		FailureRecords:        failureRecords,
+	}
+}
+
+func workflowStatusForResult(result Result) string {
+	if hasWorkflowFailures(result) {
+		return WorkflowStatusPartialSuccess
+	}
+	return WorkflowStatusSucceeded
+}
+
+func hasWorkflowFailures(result Result) bool {
+	return len(result.Fetch.Failures) > 0 ||
+		len(result.Analysis.Failures) > 0 ||
+		result.VendorResolution.UnresolvedCount+len(result.VendorResolution.Failures) > 0 ||
+		result.BillingEligibility.IneligibleCount+len(result.BillingEligibility.Failures) > 0 ||
+		result.Billing.DuplicateCount+len(result.Billing.Failures) > 0
+}
+
+func stageFailureRecord(stage string, externalMessageID string, reasonCode string, message string) StageFailureRecord {
+	record := StageFailureRecord{
+		Stage:      stage,
+		ReasonCode: reasonCode,
+		Message:    message,
+	}
+	if externalMessageID != "" {
+		record.ExternalMessageID = workflowStringPtr(externalMessageID)
+	}
+	return record
+}
+
+func workflowStringPtr(value string) *string {
+	return &value
+}
+
+func messageForFetchFailure(code string) string {
+	switch code {
+	case "fetch_detail_failed":
+		return "メールの取得に失敗しました。"
+	case "invalid_fetched_email":
+		return "取得したメールの形式が不正でした。"
+	case "email_save_failed":
+		return "取得したメールの保存に失敗しました。"
+	default:
+		return "メール取得中にエラーが発生しました。"
+	}
+}
+
+func messageForAnalysisFailure(code string) string {
+	switch code {
+	case "invalid_email_input":
+		return "解析対象メールの入力が不正でした。"
+	case "analysis_failed":
+		return "メール解析に失敗しました。"
+	case "analysis_response_invalid":
+		return "解析結果の形式が不正でした。"
+	case "analysis_response_empty":
+		return "解析結果を抽出できませんでした。"
+	case "parsed_email_save_failed":
+		return "解析結果の保存に失敗しました。"
+	default:
+		return "メール解析中にエラーが発生しました。"
+	}
+}
+
+func messageForVendorResolutionFailure(code string) string {
+	switch code {
+	case reasonCodeVendorUnresolved:
+		return "支払先を特定できませんでした。"
+	case "invalid_resolution_target":
+		return "支払先解決の入力が不正でした。"
+	case "vendor_resolution_failed":
+		return "支払先の解決に失敗しました。"
+	case "vendor_registration_failed":
+		return "支払先の登録に失敗しました。"
+	default:
+		return "支払先解決中にエラーが発生しました。"
+	}
+}
+
+func messageForBillingEligibilityReason(reasonCode string) string {
+	switch reasonCode {
+	case "product_name_empty":
+		return "商品名が不足しているため請求を作成できませんでした。"
+	case "amount_empty":
+		return "金額が不足しているため請求を作成できませんでした。"
+	case "amount_invalid":
+		return "金額が不正なため請求を作成できませんでした。"
+	case "currency_empty":
+		return "通貨が不足しているため請求を作成できませんでした。"
+	case "currency_invalid":
+		return "通貨が不正なため請求を作成できませんでした。"
+	case "billing_number_empty":
+		return "請求番号が不足しているため請求を作成できませんでした。"
+	case "payment_cycle_empty":
+		return "支払周期が不足しているため請求を作成できませんでした。"
+	case "payment_cycle_invalid":
+		return "支払周期が不正なため請求を作成できませんでした。"
+	default:
+		return "請求成立条件を満たさないため請求を作成できませんでした。"
+	}
+}
+
+func messageForBillingEligibilityFailure(code string) string {
+	switch code {
+	case "invalid_eligibility_target":
+		return "請求成立判定の入力が不正でした。"
+	case "billing_eligibility_failed":
+		return "請求成立判定に失敗しました。"
+	default:
+		return "請求成立判定中にエラーが発生しました。"
+	}
+}
+
+func messageForBillingFailure(code string) string {
+	switch code {
+	case reasonCodeDuplicateBilling:
+		return "同じ請求番号の請求が既に存在します。"
+	case "invalid_creation_target":
+		return "請求作成の入力が不正でした。"
+	case "billing_construct_failed":
+		return "請求データの生成に失敗しました。"
+	case "billing_persist_failed":
+		return "請求の保存に失敗しました。"
+	default:
+		return "請求作成中にエラーが発生しました。"
+	}
+}

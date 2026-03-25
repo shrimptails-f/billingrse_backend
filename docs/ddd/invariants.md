@@ -27,7 +27,7 @@
 - 手動履歴失敗は必ず1つの手動履歴にぶら下がる
 - 手動履歴失敗は単独では存在しない
 - 手動履歴失敗は必ず `reason_code` とユーザー表示用 `message` を持つ
-- 各 stage の `failure_count` は保存された手動履歴失敗の件数と一致する
+- 各 stage の `business_failure_count + technical_failure_count` は保存された手動履歴失敗の件数と一致する
 - 手動履歴は Email / ParsedEmail / Billing の正本を置き換えない
 - 連携が失効した場合、メール取得は失敗し、エラー記録を行う
 - メール取得は概念のみ（実装上の実体は持たない）

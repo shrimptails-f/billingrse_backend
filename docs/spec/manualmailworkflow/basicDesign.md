@@ -162,13 +162,13 @@ erDiagram
 
 ## 件数集約の基本ルール
 
-| stage | success に数えるもの | failure に数えるもの |
-| --- | --- | --- |
-| `fetch` | 新規保存と既存再検出 | 取得・保存失敗 |
-| `analysis` | `ParsedEmail` として保存できた件数 | 解析・保存失敗 |
-| `vendorresolution` | canonical Vendor を解決できた件数 | 未解決と technical failure |
-| `billingeligibility` | 請求成立と判定できた件数 | 不成立と technical failure |
-| `billing` | 新規 Billing を作成できた件数 | duplicate と technical failure |
+| stage | success に数えるもの | business failure に数えるもの | technical failure に数えるもの |
+| --- | --- | --- | --- |
+| `fetch` | 新規保存と既存再検出 | なし | 取得・保存失敗 |
+| `analysis` | `ParsedEmail` として保存できた件数 | なし | 解析・保存失敗 |
+| `vendorresolution` | canonical Vendor を解決できた件数 | 未解決 | technical failure |
+| `billingeligibility` | 請求成立と判定できた件数 | 不成立 | technical failure |
+| `billing` | 新規 Billing を作成できた件数 | duplicate | technical failure |
 
 ## failure 集約の基本ルール
 
@@ -184,6 +184,6 @@ erDiagram
 
 - `manualmailworkflow` は独自の業務ドメインを増やさず、workflow 管理専用 package として扱う。
 - workflow 履歴はユーザー向けの監査情報であり、`emails`、`parsed_emails`、`billings` の正本を置き換えない。
-- stage ごとの `failure_count` と failure 明細件数の整合は各 stage が保証し、workflow 層では明細をそのまま保存する。
+- stage ごとの `business_failure_count + technical_failure_count` と failure 明細件数の整合は各 stage が保証し、workflow 層では明細をそのまま保存する。
 - request context は受付までで閉じ、background 実行では新しい context に `request_id`、`job_id`、`user_id` を引き継ぐ。
 - dispatcher は interface 越しに使い、in-process 実装から queue 実装へ差し替え可能にする。

@@ -10,11 +10,11 @@ import (
 )
 
 type stubWorkflowRunner struct {
-	execute func(ctx context.Context, cmd manualapp.Command) (manualapp.Result, error)
+	execute func(ctx context.Context, job manualapp.DispatchJob) (manualapp.Result, error)
 }
 
-func (s *stubWorkflowRunner) Execute(ctx context.Context, cmd manualapp.Command) (manualapp.Result, error) {
-	return s.execute(ctx, cmd)
+func (s *stubWorkflowRunner) Execute(ctx context.Context, job manualapp.DispatchJob) (manualapp.Result, error) {
+	return s.execute(ctx, job)
 }
 
 func TestInProcessWorkflowDispatcher_Dispatch_RunsInBackgroundWithContextFields(t *testing.T) {
@@ -28,9 +28,12 @@ func TestInProcessWorkflowDispatcher_Dispatch_RunsInBackgroundWithContextFields(
 	}
 
 	dispatcher := NewInProcessWorkflowDispatcher(&stubWorkflowRunner{
-		execute: func(ctx context.Context, cmd manualapp.Command) (manualapp.Result, error) {
-			if cmd.UserID != 9 || cmd.ConnectionID != 21 {
-				t.Fatalf("unexpected command: %+v", cmd)
+		execute: func(ctx context.Context, job manualapp.DispatchJob) (manualapp.Result, error) {
+			if job.HistoryID != 44 || job.WorkflowID != "wf-123" {
+				t.Fatalf("unexpected dispatch job: %+v", job)
+			}
+			if job.UserID != 9 || job.ConnectionID != 21 {
+				t.Fatalf("unexpected command: %+v", job)
 			}
 
 			requestID, ok := logger.RequestIDFromContext(ctx)
@@ -54,6 +57,7 @@ func TestInProcessWorkflowDispatcher_Dispatch_RunsInBackgroundWithContextFields(
 	}, logger.NewNop())
 
 	if err := dispatcher.Dispatch(requestCtx, manualapp.DispatchJob{
+		HistoryID:    44,
 		WorkflowID:   "wf-123",
 		UserID:       9,
 		ConnectionID: 21,
@@ -77,7 +81,7 @@ func TestInProcessWorkflowDispatcher_Dispatch_RejectsNilContext(t *testing.T) {
 	t.Parallel()
 
 	dispatcher := NewInProcessWorkflowDispatcher(&stubWorkflowRunner{
-		execute: func(ctx context.Context, cmd manualapp.Command) (manualapp.Result, error) {
+		execute: func(ctx context.Context, job manualapp.DispatchJob) (manualapp.Result, error) {
 			return manualapp.Result{}, nil
 		},
 	}, logger.NewNop())
