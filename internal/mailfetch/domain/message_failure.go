@@ -14,6 +14,8 @@ const (
 	FailureCodeFetchDetailFailed = "fetch_detail_failed"
 	// FailureCodeInvalidFetchedEmail identifies invalid normalized email metadata.
 	FailureCodeInvalidFetchedEmail = "invalid_fetched_email"
+	// FailureCodeDuplicateExternalMessageID identifies a duplicate external message ID in one fetch batch.
+	FailureCodeDuplicateExternalMessageID = "duplicate_external_message_id"
 	// FailureCodeEmailSaveFailed identifies a persistence failure for one email.
 	FailureCodeEmailSaveFailed = "email_save_failed"
 )
@@ -23,4 +25,5 @@ type MessageFailure struct {
 	ExternalMessageID string `json:"external_message_id"`
 	Stage             string `json:"stage"`
 	Code              string `json:"code"`
+	Message           string `json:"message"`
 }

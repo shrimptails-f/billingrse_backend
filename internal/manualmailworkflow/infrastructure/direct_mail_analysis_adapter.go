@@ -69,14 +69,14 @@ func (a *DirectMailAnalysisAdapter) Execute(ctx context.Context, cmd manualapp.A
 			ExternalMessageID: failure.ExternalMessageID,
 			Stage:             failure.Stage,
 			Code:              failure.Code,
+			Message:           failure.Message,
 		})
 	}
 
 	return manualapp.AnalyzeResult{
-		ParsedEmailIDs:     parsedEmailIDs,
-		ParsedEmails:       parsedEmails,
-		AnalyzedEmailCount: result.AnalyzedEmailCount,
-		ParsedEmailCount:   result.ParsedEmailCount,
-		Failures:           failures,
+		ParsedEmailIDs:   parsedEmailIDs,
+		ParsedEmails:     parsedEmails,
+		ParsedEmailCount: result.ParsedEmailCount,
+		Failures:         failures,
 	}, nil
 }

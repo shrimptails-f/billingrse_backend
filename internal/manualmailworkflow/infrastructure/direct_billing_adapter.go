@@ -73,6 +73,8 @@ func (a *DirectBillingAdapter) Execute(ctx context.Context, cmd manualapp.Billin
 			VendorID:          item.VendorID,
 			VendorName:        item.VendorName,
 			BillingNumber:     item.BillingNumber,
+			ReasonCode:        item.ReasonCode,
+			Message:           item.Message,
 		})
 	}
 
@@ -84,6 +86,7 @@ func (a *DirectBillingAdapter) Execute(ctx context.Context, cmd manualapp.Billin
 			ExternalMessageID: failure.ExternalMessageID,
 			Stage:             failure.Stage,
 			Code:              failure.Code,
+			Message:           failure.Message,
 		})
 	}
 

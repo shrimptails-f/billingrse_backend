@@ -61,6 +61,7 @@ func TestDirectBillingEligibilityAdapter_Execute_ConvertsCommandAndResult(t *tes
 						VendorName:        "Acme",
 						MatchedBy:         "name_exact",
 						ReasonCode:        bedomain.ReasonCodeCurrencyEmpty,
+						Message:           "Acme / msg-2 は通貨が不足しているため請求対象外です。",
 					},
 				},
 				IneligibleCount: 1,
@@ -69,8 +70,8 @@ func TestDirectBillingEligibilityAdapter_Execute_ConvertsCommandAndResult(t *tes
 						ParsedEmailID:     9003,
 						EmailID:           103,
 						ExternalMessageID: "msg-3",
-						Stage:             bedomain.FailureStageNormalizeInput,
 						Code:              bedomain.FailureCodeInvalidEligibilityTarget,
+						Message:           "msg-3 の請求成立判定入力が不正でした。",
 					},
 				},
 			}, nil
@@ -109,7 +110,13 @@ func TestDirectBillingEligibilityAdapter_Execute_ConvertsCommandAndResult(t *tes
 	if result.IneligibleCount != 1 || result.IneligibleItems[0].ReasonCode != bedomain.ReasonCodeCurrencyEmpty {
 		t.Fatalf("unexpected ineligible result: %+v", result)
 	}
+	if result.IneligibleItems[0].Message != "Acme / msg-2 は通貨が不足しているため請求対象外です。" {
+		t.Fatalf("expected ineligible message to be mapped, got %+v", result.IneligibleItems[0])
+	}
 	if len(result.Failures) != 1 || result.Failures[0].Code != bedomain.FailureCodeInvalidEligibilityTarget {
 		t.Fatalf("unexpected failures: %+v", result)
+	}
+	if result.Failures[0].Message != "msg-3 の請求成立判定入力が不正でした。" {
+		t.Fatalf("expected failure message to be mapped, got %+v", result.Failures[0])
 	}
 }

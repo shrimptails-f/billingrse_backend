@@ -63,6 +63,7 @@ func (f *GmailMailFetcherAdapter) Fetch(ctx context.Context, cond mfdomain.Fetch
 				ExternalMessageID: messageID,
 				Stage:             mfdomain.FailureStageFetchDetail,
 				Code:              mfdomain.FailureCodeFetchDetailFailed,
+				Message:           fetchDetailFailureMessage(messageID),
 			})
 			continue
 		}
@@ -73,6 +74,7 @@ func (f *GmailMailFetcherAdapter) Fetch(ctx context.Context, cond mfdomain.Fetch
 				ExternalMessageID: fallbackExternalMessageID(dto.ID, messageID),
 				Stage:             mfdomain.FailureStageNormalize,
 				Code:              mfdomain.FailureCodeInvalidFetchedEmail,
+				Message:           normalizeFetchedEmailFailureMessage(fallbackExternalMessageID(dto.ID, messageID), dto.Date.IsZero()),
 			})
 			continue
 		}
@@ -92,4 +94,23 @@ func fallbackExternalMessageID(preferred string, fallback string) string {
 		return strings.TrimSpace(preferred)
 	}
 	return strings.TrimSpace(fallback)
+}
+
+func fetchDetailFailureMessage(externalMessageID string) string {
+	externalMessageID = strings.TrimSpace(externalMessageID)
+	if externalMessageID == "" {
+		externalMessageID = "unknown"
+	}
+	return "Gmail本文の取得に失敗しました。メールID=" + externalMessageID
+}
+
+func normalizeFetchedEmailFailureMessage(externalMessageID string, missingDate bool) string {
+	externalMessageID = strings.TrimSpace(externalMessageID)
+	if externalMessageID == "" {
+		externalMessageID = "unknown"
+	}
+	if missingDate {
+		return "取得メール(" + externalMessageID + ")の受信日時が不正でした。"
+	}
+	return "取得メール(" + externalMessageID + ")のIDが不正でした。"
 }

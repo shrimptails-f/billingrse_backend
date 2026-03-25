@@ -80,7 +80,7 @@ func buildFetchStageProgress(historyID uint64, result FetchResult) StageProgress
 			workflowStageFetch,
 			failure.ExternalMessageID,
 			failure.Code,
-			messageForFetchFailure(failure.Code),
+			stageMessageOrFallback(failure.Message, messageForFetchFailure(failure.Code)),
 		))
 	}
 
@@ -101,7 +101,7 @@ func buildAnalysisStageProgress(historyID uint64, result AnalyzeResult) StagePro
 			workflowStageAnalysis,
 			failure.ExternalMessageID,
 			failure.Code,
-			messageForAnalysisFailure(failure.Code),
+			stageMessageOrFallback(failure.Message, messageForAnalysisFailure(failure.Code)),
 		))
 	}
 
@@ -118,31 +118,42 @@ func buildAnalysisStageProgress(historyID uint64, result AnalyzeResult) StagePro
 func buildVendorResolutionStageProgress(historyID uint64, inputs []ParsedEmail, result VendorResolutionResult) StageProgress {
 	failureRecords := make([]StageFailureRecord, 0, result.UnresolvedCount+len(result.Failures))
 
-	resolvedByParsedEmailID := make(map[uint]struct{}, len(result.ResolvedItems))
-	for _, item := range result.ResolvedItems {
-		resolvedByParsedEmailID[item.ParsedEmailID] = struct{}{}
-	}
+	if len(result.UnresolvedItems) > 0 {
+		for _, item := range result.UnresolvedItems {
+			failureRecords = append(failureRecords, stageFailureRecord(
+				workflowStageVendorResolution,
+				item.ExternalMessageID,
+				item.ReasonCode,
+				stageMessageOrFallback(item.Message, messageForVendorResolutionFailure(item.ReasonCode)),
+			))
+		}
+	} else {
+		resolvedByParsedEmailID := make(map[uint]struct{}, len(result.ResolvedItems))
+		for _, item := range result.ResolvedItems {
+			resolvedByParsedEmailID[item.ParsedEmailID] = struct{}{}
+		}
 
-	failedByParsedEmailID := make(map[uint]struct{}, len(result.Failures))
-	for _, failure := range result.Failures {
-		if failure.ParsedEmailID != 0 {
-			failedByParsedEmailID[failure.ParsedEmailID] = struct{}{}
+		failedByParsedEmailID := make(map[uint]struct{}, len(result.Failures))
+		for _, failure := range result.Failures {
+			if failure.ParsedEmailID != 0 {
+				failedByParsedEmailID[failure.ParsedEmailID] = struct{}{}
+			}
 		}
-	}
 
-	for _, input := range inputs {
-		if _, resolved := resolvedByParsedEmailID[input.ParsedEmailID]; resolved {
-			continue
+		for _, input := range inputs {
+			if _, resolved := resolvedByParsedEmailID[input.ParsedEmailID]; resolved {
+				continue
+			}
+			if _, failed := failedByParsedEmailID[input.ParsedEmailID]; failed {
+				continue
+			}
+			failureRecords = append(failureRecords, stageFailureRecord(
+				workflowStageVendorResolution,
+				input.ExternalMessageID,
+				reasonCodeVendorUnresolved,
+				inferredVendorUnresolvedMessage(input),
+			))
 		}
-		if _, failed := failedByParsedEmailID[input.ParsedEmailID]; failed {
-			continue
-		}
-		failureRecords = append(failureRecords, stageFailureRecord(
-			workflowStageVendorResolution,
-			input.ExternalMessageID,
-			reasonCodeVendorUnresolved,
-			messageForVendorResolutionFailure(reasonCodeVendorUnresolved),
-		))
 	}
 
 	for _, failure := range result.Failures {
@@ -150,7 +161,7 @@ func buildVendorResolutionStageProgress(historyID uint64, inputs []ParsedEmail, 
 			workflowStageVendorResolution,
 			failure.ExternalMessageID,
 			failure.Code,
-			messageForVendorResolutionFailure(failure.Code),
+			stageMessageOrFallback(failure.Message, messageForVendorResolutionFailure(failure.Code)),
 		))
 	}
 
@@ -158,7 +169,7 @@ func buildVendorResolutionStageProgress(historyID uint64, inputs []ParsedEmail, 
 		HistoryID:             historyID,
 		Stage:                 workflowStageVendorResolution,
 		SuccessCount:          result.ResolvedCount,
-		BusinessFailureCount:  result.UnresolvedCount,
+		BusinessFailureCount:  len(failureRecords) - len(result.Failures),
 		TechnicalFailureCount: len(result.Failures),
 		FailureRecords:        failureRecords,
 	}
@@ -171,7 +182,7 @@ func buildBillingEligibilityStageProgress(historyID uint64, result BillingEligib
 			workflowStageBillingEligibility,
 			item.ExternalMessageID,
 			item.ReasonCode,
-			messageForBillingEligibilityReason(item.ReasonCode),
+			stageMessageOrFallback(item.Message, messageForBillingEligibilityReason(item.ReasonCode)),
 		))
 	}
 	for _, failure := range result.Failures {
@@ -179,7 +190,7 @@ func buildBillingEligibilityStageProgress(historyID uint64, result BillingEligib
 			workflowStageBillingEligibility,
 			failure.ExternalMessageID,
 			failure.Code,
-			messageForBillingEligibilityFailure(failure.Code),
+			stageMessageOrFallback(failure.Message, messageForBillingEligibilityFailure(failure.Code)),
 		))
 	}
 
@@ -196,11 +207,15 @@ func buildBillingEligibilityStageProgress(historyID uint64, result BillingEligib
 func buildBillingStageProgress(historyID uint64, result BillingResult) StageProgress {
 	failureRecords := make([]StageFailureRecord, 0, len(result.DuplicateItems)+len(result.Failures))
 	for _, item := range result.DuplicateItems {
+		reasonCode := item.ReasonCode
+		if reasonCode == "" {
+			reasonCode = reasonCodeDuplicateBilling
+		}
 		failureRecords = append(failureRecords, stageFailureRecord(
 			workflowStageBilling,
 			item.ExternalMessageID,
-			reasonCodeDuplicateBilling,
-			messageForBillingFailure(reasonCodeDuplicateBilling),
+			reasonCode,
+			stageMessageOrFallback(item.Message, messageForBillingFailure(reasonCode)),
 		))
 	}
 	for _, failure := range result.Failures {
@@ -208,7 +223,7 @@ func buildBillingStageProgress(historyID uint64, result BillingResult) StageProg
 			workflowStageBilling,
 			failure.ExternalMessageID,
 			failure.Code,
-			messageForBillingFailure(failure.Code),
+			stageMessageOrFallback(failure.Message, messageForBillingFailure(failure.Code)),
 		))
 	}
 
@@ -216,7 +231,7 @@ func buildBillingStageProgress(historyID uint64, result BillingResult) StageProg
 		HistoryID:             historyID,
 		Stage:                 workflowStageBilling,
 		SuccessCount:          result.CreatedCount,
-		BusinessFailureCount:  result.DuplicateCount,
+		BusinessFailureCount:  len(result.DuplicateItems),
 		TechnicalFailureCount: len(result.Failures),
 		FailureRecords:        failureRecords,
 	}
@@ -253,12 +268,39 @@ func workflowStringPtr(value string) *string {
 	return &value
 }
 
+func stageMessageOrFallback(message string, fallback string) string {
+	if message != "" {
+		return message
+	}
+	return fallback
+}
+
+func inferredVendorUnresolvedMessage(input ParsedEmail) string {
+	candidateVendorName := ""
+	if input.Data.VendorName != nil {
+		candidateVendorName = *input.Data.VendorName
+	}
+	if candidateVendorName == "" {
+		return externalMessageIDText(input.ExternalMessageID) + " の支払先を特定できませんでした。"
+	}
+	return externalMessageIDText(input.ExternalMessageID) + " の候補「" + candidateVendorName + "」を支払先として特定できませんでした。"
+}
+
+func externalMessageIDText(externalMessageID string) string {
+	if externalMessageID == "" {
+		return "不明なメッセージ"
+	}
+	return externalMessageID
+}
+
 func messageForFetchFailure(code string) string {
 	switch code {
 	case "fetch_detail_failed":
 		return "メールの取得に失敗しました。"
 	case "invalid_fetched_email":
 		return "取得したメールの形式が不正でした。"
+	case "duplicate_external_message_id":
+		return "取得結果に重複したメールIDが含まれていました。"
 	case "email_save_failed":
 		return "取得したメールの保存に失敗しました。"
 	default:

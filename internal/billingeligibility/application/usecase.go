@@ -110,8 +110,8 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 				ParsedEmailID:     target.ParsedEmailID,
 				EmailID:           target.EmailID,
 				ExternalMessageID: target.ExternalMessageID,
-				Stage:             domain.FailureStageNormalizeInput,
 				Code:              domain.FailureCodeInvalidEligibilityTarget,
+				Message:           messageForEligibilityFailure(domain.FailureCodeInvalidEligibilityTarget, target),
 			})
 			continue
 		}
@@ -151,6 +151,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 				VendorName:        target.VendorName,
 				MatchedBy:         target.MatchedBy,
 				ReasonCode:        reasonCode,
+				Message:           messageForEligibilityReason(reasonCode, target),
 			})
 			continue
 		}
@@ -159,8 +160,8 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 			ParsedEmailID:     target.ParsedEmailID,
 			EmailID:           target.EmailID,
 			ExternalMessageID: target.ExternalMessageID,
-			Stage:             domain.FailureStageEvaluateEligibility,
 			Code:              domain.FailureCodeBillingEligibilityFail,
+			Message:           messageForEligibilityFailure(domain.FailureCodeBillingEligibilityFail, target),
 		})
 	}
 
@@ -205,6 +206,60 @@ func reasonCodeForError(err error) (string, bool) {
 		return domain.ReasonCodePaymentCycleInvalid, true
 	default:
 		return "", false
+	}
+}
+
+func messageForEligibilityReason(reasonCode string, target EligibilityTarget) string {
+	vendorName := strings.TrimSpace(target.VendorName)
+	if vendorName == "" {
+		vendorName = "不明の支払先"
+	}
+	externalMessageID := strings.TrimSpace(target.ExternalMessageID)
+	suffix := ""
+	if externalMessageID != "" {
+		suffix = " 対象メールID: " + externalMessageID
+	}
+
+	switch reasonCode {
+	case domain.ReasonCodeProductNameEmpty:
+		return vendorName + " の請求候補で商品名が不足しているため、請求を作成できませんでした。" + suffix
+	case domain.ReasonCodeAmountEmpty:
+		return vendorName + " の請求候補で金額が不足しているため、請求を作成できませんでした。" + suffix
+	case domain.ReasonCodeAmountInvalid:
+		return vendorName + " の請求候補で金額が不正なため、請求を作成できませんでした。" + suffix
+	case domain.ReasonCodeCurrencyEmpty:
+		return vendorName + " の請求候補で通貨が不足しているため、請求を作成できませんでした。" + suffix
+	case domain.ReasonCodeCurrencyInvalid:
+		return vendorName + " の請求候補で通貨が不正なため、請求を作成できませんでした。" + suffix
+	case domain.ReasonCodeBillingNumberEmpty:
+		return vendorName + " の請求候補で請求番号が不足しているため、請求を作成できませんでした。" + suffix
+	case domain.ReasonCodePaymentCycleEmpty:
+		return vendorName + " の請求候補で支払周期が不足しているため、請求を作成できませんでした。" + suffix
+	case domain.ReasonCodePaymentCycleInvalid:
+		return vendorName + " の請求候補で支払周期が不正なため、請求を作成できませんでした。" + suffix
+	default:
+		return vendorName + " の請求候補が請求成立条件を満たさないため、請求を作成できませんでした。" + suffix
+	}
+}
+
+func messageForEligibilityFailure(code string, target EligibilityTarget) string {
+	vendorName := strings.TrimSpace(target.VendorName)
+	if vendorName == "" {
+		vendorName = "不明の支払先"
+	}
+	externalMessageID := strings.TrimSpace(target.ExternalMessageID)
+	suffix := ""
+	if externalMessageID != "" {
+		suffix = " 対象メールID: " + externalMessageID
+	}
+
+	switch code {
+	case domain.FailureCodeInvalidEligibilityTarget:
+		return vendorName + " の請求成立判定入力が不正でした。" + suffix
+	case domain.FailureCodeBillingEligibilityFail:
+		return vendorName + " の請求成立判定中に予期しないエラーが発生しました。" + suffix
+	default:
+		return vendorName + " の請求成立判定中にエラーが発生しました。" + suffix
 	}
 }
 

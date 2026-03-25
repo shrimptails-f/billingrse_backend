@@ -73,6 +73,7 @@ type FetchFailure struct {
 	ExternalMessageID string
 	Stage             string
 	Code              string
+	Message           string
 }
 
 // AnalysisFailure は analysis stage から返る部分失敗。
@@ -81,26 +82,23 @@ type AnalysisFailure struct {
 	ExternalMessageID string
 	Stage             string
 	Code              string
+	Message           string
 }
 
 // FetchResult は fetch stage の正規化済み出力。
 type FetchResult struct {
-	Provider            string
-	AccountIdentifier   string
-	MatchedMessageCount int
-	CreatedEmailIDs     []uint
-	CreatedEmails       []CreatedEmail
-	ExistingEmailIDs    []uint
-	Failures            []FetchFailure
+	CreatedEmailIDs  []uint
+	CreatedEmails    []CreatedEmail
+	ExistingEmailIDs []uint
+	Failures         []FetchFailure
 }
 
 // AnalyzeResult は analysis stage の正規化済み出力。
 type AnalyzeResult struct {
-	ParsedEmailIDs     []uint
-	ParsedEmails       []ParsedEmail
-	AnalyzedEmailCount int
-	ParsedEmailCount   int
-	Failures           []AnalysisFailure
+	ParsedEmailIDs   []uint
+	ParsedEmails     []ParsedEmail
+	ParsedEmailCount int
+	Failures         []AnalysisFailure
 }
 
 // ParsedEmail は保存済み ParsedEmail と下流で使う source email 情報を束ねた workflow 所有の型。
@@ -120,7 +118,6 @@ type ResolvedItem struct {
 	ParsedEmailID     uint
 	EmailID           uint
 	ExternalMessageID string
-	BodyDigest        string
 	VendorID          uint
 	VendorName        string
 	MatchedBy         string
@@ -134,15 +131,26 @@ type VendorResolutionFailure struct {
 	ExternalMessageID string
 	Stage             string
 	Code              string
+	Message           string
 }
 
 // VendorResolutionResult は vendorresolution stage の正規化済み出力。
 type VendorResolutionResult struct {
-	ResolvedItems                []ResolvedItem
-	ResolvedCount                int
-	UnresolvedCount              int
-	UnresolvedExternalMessageIDs []string
-	Failures                     []VendorResolutionFailure
+	ResolvedItems   []ResolvedItem
+	ResolvedCount   int
+	UnresolvedItems []UnresolvedItem
+	UnresolvedCount int
+	Failures        []VendorResolutionFailure
+}
+
+// UnresolvedItem is a vendorresolution business failure returned by the stage.
+type UnresolvedItem struct {
+	ParsedEmailID       uint
+	EmailID             uint
+	ExternalMessageID   string
+	ReasonCode          string
+	Message             string
+	CandidateVendorName string
 }
 
 // EligibleItem は billingeligibility stage で請求成立と判定された 1 件分の結果。
@@ -171,6 +179,7 @@ type IneligibleItem struct {
 	VendorName        string
 	MatchedBy         string
 	ReasonCode        string
+	Message           string
 }
 
 // BillingEligibilityFailure は billingeligibility stage の部分失敗。
@@ -178,8 +187,8 @@ type BillingEligibilityFailure struct {
 	ParsedEmailID     uint
 	EmailID           uint
 	ExternalMessageID string
-	Stage             string
 	Code              string
+	Message           string
 }
 
 // BillingEligibilityResult は billingeligibility stage の正規化済み出力。
@@ -211,6 +220,8 @@ type BillingDuplicateItem struct {
 	VendorID          uint
 	VendorName        string
 	BillingNumber     string
+	ReasonCode        string
+	Message           string
 }
 
 // BillingFailure is a billing stage failure for a single target.
@@ -220,6 +231,7 @@ type BillingFailure struct {
 	ExternalMessageID string
 	Stage             string
 	Code              string
+	Message           string
 }
 
 // BillingResult is the billing stage output.

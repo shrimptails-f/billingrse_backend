@@ -130,7 +130,6 @@ func TestManualMailWorkflow_Runner_PartialSuccessScenario(t *testing.T) {
 
 	ref, result := env.runWorkflow("01JQ0B7N0M7H3X9C2J5K8V6P4")
 
-	require.Equal(t, 4, result.Fetch.MatchedMessageCount)
 	require.Len(t, result.Fetch.CreatedEmailIDs, 4)
 	require.Equal(t, 4, result.Analysis.ParsedEmailCount)
 	require.Equal(t, 3, result.VendorResolution.ResolvedCount)
@@ -164,14 +163,23 @@ func TestManualMailWorkflow_Runner_PartialSuccessScenario(t *testing.T) {
 	require.Len(t, failures, 3)
 
 	byStageAndReason := make(map[string]string, len(failures))
+	messageByStageAndReason := make(map[string]string, len(failures))
 	for _, failure := range failures {
 		require.NotNil(t, failure.ExternalMessageID)
-		byStageAndReason[failure.Stage+":"+failure.ReasonCode] = *failure.ExternalMessageID
+		key := failure.Stage + ":" + failure.ReasonCode
+		byStageAndReason[key] = *failure.ExternalMessageID
+		messageByStageAndReason[key] = failure.Message
 	}
 
 	require.Equal(t, "msg-unresolved", byStageAndReason["vendorresolution:vendor_unresolved"])
 	require.Equal(t, "msg-ineligible", byStageAndReason["billingeligibility:amount_empty"])
 	require.Equal(t, "msg-duplicate", byStageAndReason["billing:duplicate_billing"])
+	require.Contains(t, messageByStageAndReason["vendorresolution:vendor_unresolved"], "msg-unresolved")
+	require.Contains(t, messageByStageAndReason["billingeligibility:amount_empty"], "Netflix")
+	require.Contains(t, messageByStageAndReason["billingeligibility:amount_empty"], "msg-ineligible")
+	require.Contains(t, messageByStageAndReason["billing:duplicate_billing"], "Netflix")
+	require.Contains(t, messageByStageAndReason["billing:duplicate_billing"], "NF-2026-0001")
+	require.Contains(t, messageByStageAndReason["billing:duplicate_billing"], "msg-duplicate")
 
 	require.Equal(t, int64(4), env.mustCountEmails())
 	require.Equal(t, int64(4), env.mustCountParsedEmails())
@@ -224,7 +232,6 @@ func TestManualMailWorkflow_Runner_SucceededScenario(t *testing.T) {
 
 	ref, result := env.runWorkflow("01JQ0B7N0M7H3X9C2J5K8V6P5")
 
-	require.Equal(t, 1, result.Fetch.MatchedMessageCount)
 	require.Len(t, result.Fetch.CreatedEmailIDs, 1)
 	require.Equal(t, 1, result.Analysis.ParsedEmailCount)
 	require.Equal(t, 1, result.VendorResolution.ResolvedCount)

@@ -8,6 +8,9 @@ const (
 	// FailureStageSaveBilling indicates persistence failed unexpectedly.
 	FailureStageSaveBilling = "save_billing"
 
+	// ReasonCodeDuplicateBilling indicates the target was already persisted.
+	ReasonCodeDuplicateBilling = "duplicate_billing"
+
 	// FailureCodeInvalidCreationTarget indicates the workflow passed an invalid target.
 	FailureCodeInvalidCreationTarget = "invalid_creation_target"
 	// FailureCodeBillingConstructFailed indicates aggregate construction failed.
@@ -36,6 +39,8 @@ type DuplicateItem struct {
 	VendorID          uint
 	VendorName        string
 	BillingNumber     string
+	ReasonCode        string
+	Message           string
 }
 
 // Failure is a technical or contract failure for a single target.
@@ -45,4 +50,5 @@ type Failure struct {
 	ExternalMessageID string
 	Stage             string
 	Code              string
+	Message           string
 }

@@ -74,10 +74,7 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 					t.Fatalf("unexpected label: %q", cmd.Condition.LabelName)
 				}
 				return FetchResult{
-					Provider:            "gmail",
-					AccountIdentifier:   "user@example.com",
-					MatchedMessageCount: 2,
-					CreatedEmailIDs:     []uint{101},
+					CreatedEmailIDs: []uint{101},
 					CreatedEmails: []CreatedEmail{
 						{
 							EmailID:           101,
@@ -139,8 +136,7 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 							Data:              commondomain.ParsedEmail{VendorName: stringPtr("Unknown")},
 						},
 					},
-					AnalyzedEmailCount: 1,
-					ParsedEmailCount:   2,
+					ParsedEmailCount: 2,
 					Failures: []AnalysisFailure{
 						{EmailID: 101, ExternalMessageID: "msg-1", Stage: "save", Code: "parsed_email_save_failed"},
 					},
@@ -165,7 +161,6 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 							ParsedEmailID:     9001,
 							EmailID:           101,
 							ExternalMessageID: "msg-1",
-							BodyDigest:        "digest-msg-1",
 							VendorID:          3001,
 							VendorName:        "Acme",
 							MatchedBy:         "name_exact",
@@ -178,12 +173,11 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 							},
 						},
 					},
-					ResolvedCount:                1,
-					UnresolvedCount:              1,
-					UnresolvedExternalMessageIDs: []string{"msg-1"},
-					Failures: []VendorResolutionFailure{
-						{ParsedEmailID: 9002, EmailID: 101, ExternalMessageID: "msg-1", Stage: "resolve_vendor", Code: "vendor_resolution_failed"},
+					ResolvedCount: 1,
+					UnresolvedItems: []UnresolvedItem{
+						{ParsedEmailID: 9002, EmailID: 101, ExternalMessageID: "msg-1", ReasonCode: reasonCodeVendorUnresolved},
 					},
+					UnresolvedCount: 1,
 				}, nil
 			},
 		},
@@ -278,7 +272,7 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 	if billingCalls != 1 {
 		t.Fatalf("expected 1 billing call, got %d", billingCalls)
 	}
-	if result.Fetch.Provider != "gmail" {
+	if len(result.Fetch.CreatedEmailIDs) != 1 {
 		t.Fatalf("unexpected fetch result: %+v", result.Fetch)
 	}
 	if len(result.Analysis.ParsedEmailIDs) != 2 {
@@ -306,10 +300,7 @@ func TestUseCaseExecute_SkipsAnalyzeWhenNoCreatedEmails(t *testing.T) {
 		&stubFetchStage{
 			execute: func(ctx context.Context, cmd FetchCommand) (FetchResult, error) {
 				return FetchResult{
-					Provider:            "gmail",
-					AccountIdentifier:   "user@example.com",
-					MatchedMessageCount: 1,
-					ExistingEmailIDs:    []uint{10},
+					ExistingEmailIDs: []uint{10},
 				}, nil
 			},
 		},
@@ -384,9 +375,7 @@ func TestUseCaseExecute_SkipsVendorResolutionWhenNoParsedEmails(t *testing.T) {
 		&stubFetchStage{
 			execute: func(ctx context.Context, cmd FetchCommand) (FetchResult, error) {
 				return FetchResult{
-					Provider:          "gmail",
-					AccountIdentifier: "user@example.com",
-					CreatedEmailIDs:   []uint{101},
+					CreatedEmailIDs: []uint{101},
 					CreatedEmails: []CreatedEmail{
 						{
 							EmailID:           101,
@@ -404,8 +393,7 @@ func TestUseCaseExecute_SkipsVendorResolutionWhenNoParsedEmails(t *testing.T) {
 		&stubAnalyzeStage{
 			execute: func(ctx context.Context, cmd AnalyzeCommand) (AnalyzeResult, error) {
 				return AnalyzeResult{
-					ParsedEmails:       nil,
-					AnalyzedEmailCount: 1,
+					ParsedEmails: nil,
 				}, nil
 			},
 		},

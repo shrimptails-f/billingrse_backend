@@ -155,9 +155,6 @@ func TestUseCaseExecute_SavesParsedEmailsAndReturnsSummary(t *testing.T) {
 	if repositoryCalls != 1 {
 		t.Fatalf("expected 1 repository call, got %d", repositoryCalls)
 	}
-	if result.AnalyzedEmailCount != 1 {
-		t.Fatalf("expected analyzed count 1, got %d", result.AnalyzedEmailCount)
-	}
 	if result.ParsedEmailCount != 2 {
 		t.Fatalf("expected parsed email count 2, got %d", result.ParsedEmailCount)
 	}
@@ -235,9 +232,6 @@ func TestUseCaseExecute_PartialFailuresContinue(t *testing.T) {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 
-	if result.AnalyzedEmailCount != 3 {
-		t.Fatalf("expected analyzed count 3, got %d", result.AnalyzedEmailCount)
-	}
 	if result.ParsedEmailCount != 1 {
 		t.Fatalf("expected parsed email count 1, got %d", result.ParsedEmailCount)
 	}
@@ -252,16 +246,17 @@ func TestUseCaseExecute_PartialFailuresContinue(t *testing.T) {
 		emailID uint
 		stage   string
 		code    string
+		message string
 	}{
-		{emailID: 1, stage: domain.FailureStageNormalizeInput, code: domain.FailureCodeInvalidEmailInput},
-		{emailID: 2, stage: domain.FailureStageAnalyze, code: domain.FailureCodeAnalysisFailed},
-		{emailID: 3, stage: domain.FailureStageResponseParse, code: domain.FailureCodeAnalysisResponseInvalid},
-		{emailID: 4, stage: domain.FailureStageResponseParse, code: domain.FailureCodeAnalysisResponseEmpty},
-		{emailID: 5, stage: domain.FailureStageSave, code: domain.FailureCodeParsedEmailSaveFailed},
+		{emailID: 1, stage: domain.FailureStageNormalizeInput, code: domain.FailureCodeInvalidEmailInput, message: "メールID 1 (msg-invalid) の入力が不正です。件名、本文、外部メッセージIDを確認してください。"},
+		{emailID: 2, stage: domain.FailureStageAnalyze, code: domain.FailureCodeAnalysisFailed, message: "メールID 2 (msg-analyze-failed) の解析に失敗しました。しばらく時間をおいて再実行してください。"},
+		{emailID: 3, stage: domain.FailureStageResponseParse, code: domain.FailureCodeAnalysisResponseInvalid, message: "メールID 3 (msg-response-invalid) の解析結果の形式が不正でした。"},
+		{emailID: 4, stage: domain.FailureStageResponseParse, code: domain.FailureCodeAnalysisResponseEmpty, message: "メールID 4 (msg-empty) の解析結果を取得できませんでした。"},
+		{emailID: 5, stage: domain.FailureStageSave, code: domain.FailureCodeParsedEmailSaveFailed, message: "メールID 5 (msg-save-failed) の解析結果の保存に失敗しました。"},
 	}
 
 	for idx, failure := range result.Failures {
-		if failure.EmailID != expected[idx].emailID || failure.Stage != expected[idx].stage || failure.Code != expected[idx].code {
+		if failure.EmailID != expected[idx].emailID || failure.Stage != expected[idx].stage || failure.Code != expected[idx].code || failure.Message != expected[idx].message {
 			t.Fatalf("unexpected failure at %d: %+v", idx, failure)
 		}
 	}
@@ -321,7 +316,7 @@ func TestUseCaseExecute_EmptyEmailsReturnsImmediately(t *testing.T) {
 	if factoryCalled {
 		t.Fatal("factory should not be called for empty input")
 	}
-	if result.AnalyzedEmailCount != 0 || result.ParsedEmailCount != 0 || len(result.ParsedEmailIDs) != 0 || len(result.Failures) != 0 {
+	if result.ParsedEmailCount != 0 || len(result.ParsedEmailIDs) != 0 || len(result.Failures) != 0 {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 }
@@ -340,7 +335,7 @@ func TestUseCaseExecute_EmptyEmailsReturnsImmediatelyWithoutDependencies(t *test
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
-	if result.AnalyzedEmailCount != 0 || result.ParsedEmailCount != 0 || len(result.ParsedEmailIDs) != 0 || len(result.Failures) != 0 {
+	if result.ParsedEmailCount != 0 || len(result.ParsedEmailIDs) != 0 || len(result.Failures) != 0 {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 }

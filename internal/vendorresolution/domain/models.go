@@ -18,6 +18,9 @@ const (
 	FailureCodeInvalidResolutionTarget = "invalid_resolution_target"
 	FailureCodeVendorResolveFail       = "vendor_resolution_failed"
 	FailureCodeVendorRegisterFail      = "vendor_registration_failed"
+
+	// ReasonCode* は business-level な未解決結果を表す安定コード。
+	ReasonCodeVendorUnresolved = "vendor_unresolved"
 )
 
 // VendorResolutionInput は common/domain の vendor 判定入力を再エクスポートする。
@@ -40,10 +43,19 @@ type ResolvedItem struct {
 	ParsedEmailID     uint
 	EmailID           uint
 	ExternalMessageID string
-	BodyDigest        string
 	VendorID          uint
 	VendorName        string
 	MatchedBy         string
+}
+
+// UnresolvedItem は usecase が返す business-level な未解決結果。
+type UnresolvedItem struct {
+	ParsedEmailID       uint
+	EmailID             uint
+	ExternalMessageID   string
+	ReasonCode          string
+	Message             string
+	CandidateVendorName string
 }
 
 // Failure は usecase が返す 1 件単位の失敗結果。
@@ -53,4 +65,5 @@ type Failure struct {
 	ExternalMessageID string
 	Stage             string
 	Code              string
+	Message           string
 }

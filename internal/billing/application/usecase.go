@@ -143,6 +143,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 				ExternalMessageID: target.ExternalMessageID,
 				Stage:             domain.FailureStageNormalizeInput,
 				Code:              domain.FailureCodeInvalidCreationTarget,
+				Message:           messageForInvalidCreationTarget(target),
 			})
 			continue
 		}
@@ -166,6 +167,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 				ExternalMessageID: target.ExternalMessageID,
 				Stage:             domain.FailureStageBuildBilling,
 				Code:              domain.FailureCodeBillingConstructFailed,
+				Message:           messageForBillingConstructFailed(target),
 			})
 			continue
 		}
@@ -178,6 +180,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 				ExternalMessageID: target.ExternalMessageID,
 				Stage:             domain.FailureStageSaveBilling,
 				Code:              domain.FailureCodeBillingPersistFailed,
+				Message:           messageForBillingPersistFailed(target),
 			})
 			continue
 		}
@@ -191,6 +194,8 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 				VendorID:          target.VendorID,
 				VendorName:        target.VendorName,
 				BillingNumber:     billing.BillingNumber.String(),
+				ReasonCode:        domain.ReasonCodeDuplicateBilling,
+				Message:           messageForDuplicateBilling(target),
 			})
 			continue
 		}
@@ -248,4 +253,54 @@ func cloneTime(value *time.Time) *time.Time {
 	}
 	cloned := value.UTC()
 	return &cloned
+}
+
+func messageForInvalidCreationTarget(target CreationTarget) string {
+	return formatBillingMessage(
+		"請求作成対象が不正なため請求を作成できませんでした。",
+		target.ExternalMessageID,
+		target.VendorName,
+		target.BillingNumber,
+	)
+}
+
+func messageForBillingConstructFailed(target CreationTarget) string {
+	return formatBillingMessage(
+		"請求データの組み立てに失敗したため請求を作成できませんでした。",
+		target.ExternalMessageID,
+		target.VendorName,
+		target.BillingNumber,
+	)
+}
+
+func messageForBillingPersistFailed(target CreationTarget) string {
+	return formatBillingMessage(
+		"請求の保存に失敗しました。",
+		target.ExternalMessageID,
+		target.VendorName,
+		target.BillingNumber,
+	)
+}
+
+func messageForDuplicateBilling(target CreationTarget) string {
+	return formatBillingMessage(
+		"同じ請求が既に登録されているため、請求を作成しませんでした。",
+		target.ExternalMessageID,
+		target.VendorName,
+		target.BillingNumber,
+	)
+}
+
+func formatBillingMessage(prefix string, externalMessageID string, vendorName string, billingNumber string) string {
+	parts := []string{prefix}
+	if strings.TrimSpace(vendorName) != "" {
+		parts = append(parts, "vendor="+strings.TrimSpace(vendorName))
+	}
+	if strings.TrimSpace(billingNumber) != "" {
+		parts = append(parts, "billing_number="+strings.TrimSpace(billingNumber))
+	}
+	if strings.TrimSpace(externalMessageID) != "" {
+		parts = append(parts, "external_message_id="+strings.TrimSpace(externalMessageID))
+	}
+	return strings.Join(parts, " ")
 }
