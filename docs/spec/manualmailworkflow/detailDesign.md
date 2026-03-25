@@ -302,7 +302,8 @@ CREATE TABLE `manual_mail_workflow_histories` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `workflow_id` char(26) NOT NULL,
   `user_id` bigint unsigned NOT NULL,
-  `connection_id` bigint unsigned NOT NULL,
+  `provider` varchar(50) NOT NULL,
+  `account_identifier` varchar(255) NOT NULL,
   `label_name` varchar(255) NOT NULL,
   `since_at` datetime(3) NOT NULL,
   `until_at` datetime(3) NOT NULL,
@@ -337,6 +338,7 @@ CREATE TABLE `manual_mail_workflow_histories` (
 補足:
 
 - `workflow_id` は API 参照用の一意キーとする。
+- `provider` と `account_identifier` は workflow 受付時点のメール連携 snapshot を保持する。
 - `queued_at` は保持するが、`started_at` は持たない。
 - stage summary は一覧 API でも再利用できるよう header 側に持つ。
 

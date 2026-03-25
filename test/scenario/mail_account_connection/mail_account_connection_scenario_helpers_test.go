@@ -3,12 +3,14 @@ package test
 import (
 	"business/internal/app/middleware"
 	authpresentation "business/internal/app/presentation/auth"
+	billingpresentation "business/internal/app/presentation/billing"
 	macpresentation "business/internal/app/presentation/mailaccountconnection"
 	manualpresentation "business/internal/app/presentation/manualmailworkflow"
 	v1 "business/internal/app/router"
 	authapp "business/internal/auth/application"
 	authdomain "business/internal/auth/domain"
 	authinfra "business/internal/auth/infrastructure"
+	billingapp "business/internal/billing/application"
 	"business/internal/library/crypto"
 	"business/internal/library/gmailService"
 	"business/internal/library/logger"
@@ -109,6 +111,8 @@ type scenarioStubAuthUseCase struct{}
 
 type scenarioStubManualMailWorkflowUseCase struct{}
 
+type scenarioStubBillingListUseCase struct{}
+
 func newMailAccountConnectionScenarioEnv(t *testing.T) *mailAccountConnectionScenarioEnv {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -157,7 +161,9 @@ func newMailAccountConnectionScenarioEnv(t *testing.T) *mailAccountConnectionSce
 	macRepo := macinfra.NewRepository(mysqlConn.DB, log)
 	macUseCase := macapp.NewUseCase(macRepo, oauthCfg, exchanger, profileFetcher, vault, nil, log)
 	macController := macpresentation.NewController(macUseCase, log)
-	manualController := manualpresentation.NewController(&scenarioStubManualMailWorkflowUseCase{}, log)
+	manualUseCase := &scenarioStubManualMailWorkflowUseCase{}
+	manualController := manualpresentation.NewController(manualUseCase, manualUseCase, log)
+	billingController := billingpresentation.NewController(&scenarioStubBillingListUseCase{}, log)
 
 	router := gin.New()
 	container := dig.New()
@@ -165,6 +171,7 @@ func newMailAccountConnectionScenarioEnv(t *testing.T) *mailAccountConnectionSce
 	require.NoError(t, container.Provide(func() *middleware.AuthMiddleware { return authMiddleware }))
 	require.NoError(t, container.Provide(func() *macpresentation.Controller { return macController }))
 	require.NoError(t, container.Provide(func() *manualpresentation.Controller { return manualController }))
+	require.NoError(t, container.Provide(func() *billingpresentation.Controller { return billingController }))
 	_, err = v1.Router(router, container, log, scenarioAllowedOrigin)
 	require.NoError(t, err)
 
@@ -457,4 +464,18 @@ func (s *scenarioStubManualMailWorkflowUseCase) Start(ctx context.Context, cmd m
 	}, nil
 }
 
+func (s *scenarioStubManualMailWorkflowUseCase) List(ctx context.Context, query manualapp.ListQuery) (manualapp.ListResult, error) {
+	return manualapp.ListResult{
+		Items: []manualapp.WorkflowHistoryListItem{},
+	}, nil
+}
+
+func (s *scenarioStubBillingListUseCase) List(ctx context.Context, query billingapp.ListQuery) (billingapp.ListResult, error) {
+	return billingapp.ListResult{
+		Items: []billingapp.ListItem{},
+	}, nil
+}
+
 var _ manualapp.StartUseCase = (*scenarioStubManualMailWorkflowUseCase)(nil)
+var _ manualapp.ListUseCase = (*scenarioStubManualMailWorkflowUseCase)(nil)
+var _ billingapp.ListUseCase = (*scenarioStubBillingListUseCase)(nil)

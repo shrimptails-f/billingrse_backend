@@ -3,6 +3,7 @@ package router
 import (
 	"business/internal/app/middleware"
 	authpresentation "business/internal/app/presentation/auth"
+	billingpresentation "business/internal/app/presentation/billing"
 	macpresentation "business/internal/app/presentation/mailaccountconnection"
 	manualpresentation "business/internal/app/presentation/manualmailworkflow"
 	"business/internal/library/logger"
@@ -69,9 +70,23 @@ func Router(g *gin.Engine, container *dig.Container, log logger.Interface, allow
 		return g, err
 	}
 	registerManualMailWorkflowRoutes := func(group *gin.RouterGroup) {
+		group.GET("", authMiddleware.Authenticate(), manualController.List)
 		group.POST("", authMiddleware.Authenticate(), manualController.Execute)
 	}
 	registerManualMailWorkflowRoutes(g.Group("/api/v1/manual-mail-workflows"))
+
+	// Billing関連
+	var billingController *billingpresentation.Controller
+	if err := container.Invoke(func(bc *billingpresentation.Controller) {
+		billingController = bc
+	}); err != nil {
+		log.Error("failed to resolve billing controller", logger.Err(err))
+		return g, err
+	}
+	registerBillingRoutes := func(group *gin.RouterGroup) {
+		group.GET("", authMiddleware.Authenticate(), billingController.List)
+	}
+	registerBillingRoutes(g.Group("/api/v1/billings"))
 
 	return g, nil
 }

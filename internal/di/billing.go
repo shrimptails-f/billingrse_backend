@@ -1,6 +1,7 @@
 package di
 
 import (
+	billingpresentation "business/internal/app/presentation/billing"
 	billingapp "business/internal/billing/application"
 	billinginfra "business/internal/billing/infrastructure"
 	"business/internal/library/logger"
@@ -25,5 +26,19 @@ func ProvideBillingDependencies(container *dig.Container) {
 		log *logger.Logger,
 	) billingapp.UseCase {
 		return billingapp.NewUseCase(repository, log)
+	})
+
+	_ = container.Provide(func(
+		repository *billinginfra.GormBillingRepository,
+		log *logger.Logger,
+	) billingapp.ListUseCase {
+		return billingapp.NewListUseCase(repository, log)
+	})
+
+	_ = container.Provide(func(
+		usecase billingapp.ListUseCase,
+		log *logger.Logger,
+	) *billingpresentation.Controller {
+		return billingpresentation.NewController(usecase, log)
 	})
 }

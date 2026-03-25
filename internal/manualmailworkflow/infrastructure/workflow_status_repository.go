@@ -16,7 +16,8 @@ type manualMailWorkflowHistoryRecord struct {
 	ID                                      uint64     `gorm:"column:id;primaryKey;autoIncrement"`
 	WorkflowID                              string     `gorm:"column:workflow_id;type:char(26);not null;uniqueIndex:uni_manual_mail_workflow_histories_workflow_id"`
 	UserID                                  uint       `gorm:"column:user_id;not null;index:idx_manual_mail_workflow_histories_user_queued_at,priority:1;index:idx_manual_mail_workflow_histories_user_status_queued_at,priority:1"`
-	ConnectionID                            uint       `gorm:"column:connection_id;not null"`
+	Provider                                string     `gorm:"column:provider;size:50;not null"`
+	AccountIdentifier                       string     `gorm:"column:account_identifier;size:255;not null"`
 	LabelName                               string     `gorm:"column:label_name;size:255;not null"`
 	SinceAt                                 time.Time  `gorm:"column:since_at;not null"`
 	UntilAt                                 time.Time  `gorm:"column:until_at;not null"`
@@ -60,6 +61,18 @@ func (manualMailWorkflowStageFailureRecord) TableName() string {
 	return "manual_mail_workflow_stage_failures"
 }
 
+type emailCredentialSnapshotRecord struct {
+	ID           uint    `gorm:"column:id;primaryKey"`
+	UserID       uint    `gorm:"column:user_id;not null"`
+	Type         string  `gorm:"column:type;size:50;not null"`
+	GmailAddress string  `gorm:"column:gmail_address;size:255;not null"`
+	OAuthState   *string `gorm:"column:o_auth_state"`
+}
+
+func (emailCredentialSnapshotRecord) TableName() string {
+	return "email_credentials"
+}
+
 // GormWorkflowStatusRepository persists workflow history rows into MySQL.
 type GormWorkflowStatusRepository struct {
 	db    *gorm.DB
@@ -96,18 +109,24 @@ func (r *GormWorkflowStatusRepository) CreateQueued(ctx context.Context, cmd man
 		return manualapp.WorkflowHistoryRef{}, fmt.Errorf("gorm db is not configured")
 	}
 
+	provider, accountIdentifier, err := r.resolveConnectionSnapshot(ctx, cmd.UserID, cmd.ConnectionID)
+	if err != nil {
+		return manualapp.WorkflowHistoryRef{}, err
+	}
+
 	now := r.clock.Now().UTC()
 	record := manualMailWorkflowHistoryRecord{
-		WorkflowID:   strings.TrimSpace(cmd.WorkflowID),
-		UserID:       cmd.UserID,
-		ConnectionID: cmd.ConnectionID,
-		LabelName:    strings.TrimSpace(cmd.LabelName),
-		SinceAt:      cmd.SinceAt.UTC(),
-		UntilAt:      cmd.UntilAt.UTC(),
-		Status:       manualapp.WorkflowStatusQueued,
-		QueuedAt:     cmd.QueuedAt.UTC(),
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		WorkflowID:        strings.TrimSpace(cmd.WorkflowID),
+		UserID:            cmd.UserID,
+		Provider:          provider,
+		AccountIdentifier: accountIdentifier,
+		LabelName:         strings.TrimSpace(cmd.LabelName),
+		SinceAt:           cmd.SinceAt.UTC(),
+		UntilAt:           cmd.UntilAt.UTC(),
+		Status:            manualapp.WorkflowStatusQueued,
+		QueuedAt:          cmd.QueuedAt.UTC(),
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}
 
 	if err := r.db.WithContext(ctx).Create(&record).Error; err != nil {
@@ -221,6 +240,69 @@ func (r *GormWorkflowStatusRepository) SaveStageProgress(ctx context.Context, pr
 	return nil
 }
 
+// List loads one page of workflow histories and their stage failure details.
+func (r *GormWorkflowStatusRepository) List(ctx context.Context, query manualapp.ListQuery) (manualapp.ListResult, error) {
+	if ctx == nil {
+		return manualapp.ListResult{}, logger.ErrNilContext
+	}
+	if r.db == nil {
+		return manualapp.ListResult{}, fmt.Errorf("gorm db is not configured")
+	}
+
+	var totalCount int64
+	countTx := r.buildListBaseQuery(ctx, query).Count(&totalCount)
+	if countTx.Error != nil {
+		r.logDBError(ctx, "manual_mail_workflow_histories", "list_count", countTx.Error)
+		return manualapp.ListResult{}, fmt.Errorf("failed to count workflow histories: %w", countTx.Error)
+	}
+
+	var historyRecords []manualMailWorkflowHistoryRecord
+	pageTx := r.buildListBaseQuery(ctx, query).
+		Order("queued_at DESC").
+		Order("id DESC").
+		Limit(query.Limit).
+		Offset(query.Offset).
+		Find(&historyRecords)
+	if pageTx.Error != nil {
+		r.logDBError(ctx, "manual_mail_workflow_histories", "list_page", pageTx.Error)
+		return manualapp.ListResult{}, fmt.Errorf("failed to list workflow histories: %w", pageTx.Error)
+	}
+	if len(historyRecords) == 0 {
+		return manualapp.ListResult{
+			Items:      []manualapp.WorkflowHistoryListItem{},
+			TotalCount: totalCount,
+		}, nil
+	}
+
+	historyIDs := make([]uint64, 0, len(historyRecords))
+	for _, record := range historyRecords {
+		historyIDs = append(historyIDs, record.ID)
+	}
+
+	var failureRecords []manualMailWorkflowStageFailureRecord
+	failuresTx := r.db.WithContext(ctx).
+		Where("workflow_history_id IN ?", historyIDs).
+		Order("workflow_history_id ASC").
+		Order("stage ASC").
+		Order("created_at ASC").
+		Find(&failureRecords)
+	if failuresTx.Error != nil {
+		r.logDBError(ctx, "manual_mail_workflow_stage_failures", "list_failures", failuresTx.Error)
+		return manualapp.ListResult{}, fmt.Errorf("failed to list workflow stage failures: %w", failuresTx.Error)
+	}
+
+	failureViewsByHistory := groupFailureViewsByHistory(failureRecords)
+	items := make([]manualapp.WorkflowHistoryListItem, 0, len(historyRecords))
+	for _, record := range historyRecords {
+		items = append(items, buildWorkflowHistoryListItem(record, failureViewsByHistory[record.ID]))
+	}
+
+	return manualapp.ListResult{
+		Items:      items,
+		TotalCount: totalCount,
+	}, nil
+}
+
 // Complete finalizes a workflow as succeeded or partial_success.
 func (r *GormWorkflowStatusRepository) Complete(ctx context.Context, historyID uint64, status string, finishedAt time.Time) error {
 	return r.updateTerminalStatus(ctx, historyID, status, nil, finishedAt, "complete")
@@ -305,10 +387,137 @@ func stageCountColumns(stage string) (string, string, string, error) {
 	}
 }
 
+func (r *GormWorkflowStatusRepository) buildListBaseQuery(ctx context.Context, query manualapp.ListQuery) *gorm.DB {
+	tx := r.db.WithContext(ctx).
+		Model(&manualMailWorkflowHistoryRecord{}).
+		Where("user_id = ?", query.UserID)
+	if query.Status != nil {
+		tx = tx.Where("status = ?", *query.Status)
+	}
+
+	return tx
+}
+
+func buildWorkflowHistoryListItem(
+	record manualMailWorkflowHistoryRecord,
+	failuresByStage map[string][]manualapp.StageFailureView,
+) manualapp.WorkflowHistoryListItem {
+	return manualapp.WorkflowHistoryListItem{
+		WorkflowID:        record.WorkflowID,
+		Provider:          record.Provider,
+		AccountIdentifier: record.AccountIdentifier,
+		LabelName:         record.LabelName,
+		Since:             record.SinceAt.UTC(),
+		Until:             record.UntilAt.UTC(),
+		Status:            record.Status,
+		CurrentStage:      cloneOptionalString(record.CurrentStage),
+		QueuedAt:          record.QueuedAt.UTC(),
+		FinishedAt:        cloneOptionalTime(record.FinishedAt),
+		Fetch: manualapp.StageSummaryView{
+			SuccessCount:          record.FetchSuccessCount,
+			BusinessFailureCount:  record.FetchBusinessFailureCount,
+			TechnicalFailureCount: record.FetchTechnicalFailureCount,
+			Failures:              stageFailureViews(failuresByStage, "fetch"),
+		},
+		Analysis: manualapp.StageSummaryView{
+			SuccessCount:          record.AnalysisSuccessCount,
+			BusinessFailureCount:  record.AnalysisBusinessFailureCount,
+			TechnicalFailureCount: record.AnalysisTechnicalFailureCount,
+			Failures:              stageFailureViews(failuresByStage, "analysis"),
+		},
+		VendorResolution: manualapp.StageSummaryView{
+			SuccessCount:          record.VendorResolutionSuccessCount,
+			BusinessFailureCount:  record.VendorResolutionBusinessFailureCount,
+			TechnicalFailureCount: record.VendorResolutionTechnicalFailureCount,
+			Failures:              stageFailureViews(failuresByStage, "vendorresolution"),
+		},
+		BillingEligibility: manualapp.StageSummaryView{
+			SuccessCount:          record.BillingEligibilitySuccessCount,
+			BusinessFailureCount:  record.BillingEligibilityBusinessFailureCount,
+			TechnicalFailureCount: record.BillingEligibilityTechnicalFailureCount,
+			Failures:              stageFailureViews(failuresByStage, "billingeligibility"),
+		},
+		Billing: manualapp.StageSummaryView{
+			SuccessCount:          record.BillingSuccessCount,
+			BusinessFailureCount:  record.BillingBusinessFailureCount,
+			TechnicalFailureCount: record.BillingTechnicalFailureCount,
+			Failures:              stageFailureViews(failuresByStage, "billing"),
+		},
+	}
+}
+
+func (r *GormWorkflowStatusRepository) resolveConnectionSnapshot(
+	ctx context.Context,
+	userID uint,
+	connectionID uint,
+) (string, string, error) {
+	var credential emailCredentialSnapshotRecord
+	err := r.db.WithContext(ctx).
+		Where("id = ? AND user_id = ? AND o_auth_state IS NULL", connectionID, userID).
+		First(&credential).Error
+	if err != nil {
+		r.logDBError(ctx, "email_credentials", "find_connection_snapshot", err)
+		return "", "", fmt.Errorf("failed to find connection snapshot: %w", err)
+	}
+
+	provider := strings.ToLower(strings.TrimSpace(credential.Type))
+	accountIdentifier := strings.ToLower(strings.TrimSpace(credential.GmailAddress))
+	if provider == "" || accountIdentifier == "" {
+		return "", "", fmt.Errorf("connection snapshot is incomplete: connection_id=%d", connectionID)
+	}
+
+	return provider, accountIdentifier, nil
+}
+
+func groupFailureViewsByHistory(
+	records []manualMailWorkflowStageFailureRecord,
+) map[uint64]map[string][]manualapp.StageFailureView {
+	grouped := make(map[uint64]map[string][]manualapp.StageFailureView, len(records))
+	for _, record := range records {
+		stageGroup, ok := grouped[record.WorkflowHistoryID]
+		if !ok {
+			stageGroup = make(map[string][]manualapp.StageFailureView)
+			grouped[record.WorkflowHistoryID] = stageGroup
+		}
+		stageGroup[record.Stage] = append(stageGroup[record.Stage], manualapp.StageFailureView{
+			ExternalMessageID: cloneOptionalString(record.ExternalMessageID),
+			ReasonCode:        record.ReasonCode,
+			Message:           record.Message,
+			CreatedAt:         record.CreatedAt.UTC(),
+		})
+	}
+
+	return grouped
+}
+
+func stageFailureViews(
+	failuresByStage map[string][]manualapp.StageFailureView,
+	stage string,
+) []manualapp.StageFailureView {
+	if len(failuresByStage) == 0 {
+		return []manualapp.StageFailureView{}
+	}
+	failures, ok := failuresByStage[stage]
+	if !ok {
+		return []manualapp.StageFailureView{}
+	}
+
+	return failures
+}
+
 func cloneOptionalString(value *string) *string {
 	if value == nil {
 		return nil
 	}
 	cloned := *value
+	return &cloned
+}
+
+func cloneOptionalTime(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+
+	cloned := value.UTC()
 	return &cloned
 }

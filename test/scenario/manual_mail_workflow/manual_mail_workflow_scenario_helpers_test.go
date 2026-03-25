@@ -1,6 +1,7 @@
 package test
 
 import (
+	manualpresentation "business/internal/app/presentation/manualmailworkflow"
 	billingapp "business/internal/billing/application"
 	billinginfra "business/internal/billing/infrastructure"
 	beapp "business/internal/billingeligibility/application"
@@ -20,10 +21,14 @@ import (
 	vrinfra "business/internal/vendorresolution/infrastructure"
 	model "business/tools/migrations/models"
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -39,6 +44,7 @@ type manualMailWorkflowScenarioEnv struct {
 	connectionID uint
 	workflowRepo *manualinfra.GormWorkflowStatusRepository
 	runner       manualapp.UseCase
+	listUseCase  manualapp.ListUseCase
 }
 
 type manualMailWorkflowScenarioClock struct {
@@ -64,6 +70,40 @@ type scenarioAnalyzerFactory struct {
 
 type scenarioAnalyzer struct {
 	analyze func(ctx context.Context, email maapp.EmailForAnalysisTarget) (madomain.AnalysisOutput, error)
+}
+
+type scenarioWorkflowHistoryListResponse struct {
+	Items      []scenarioWorkflowHistoryListItem `json:"items"`
+	TotalCount int64                             `json:"total_count"`
+}
+
+type scenarioWorkflowHistoryListItem struct {
+	WorkflowID         string               `json:"workflow_id"`
+	Provider           string               `json:"provider"`
+	AccountIdentifier  string               `json:"account_identifier"`
+	LabelName          string               `json:"label_name"`
+	Status             string               `json:"status"`
+	CurrentStage       *string              `json:"current_stage"`
+	FinishedAt         *time.Time           `json:"finished_at"`
+	Fetch              scenarioStageSummary `json:"fetch"`
+	Analysis           scenarioStageSummary `json:"analysis"`
+	VendorResolution   scenarioStageSummary `json:"vendor_resolution"`
+	BillingEligibility scenarioStageSummary `json:"billing_eligibility"`
+	Billing            scenarioStageSummary `json:"billing"`
+}
+
+type scenarioStageSummary struct {
+	SuccessCount          int                            `json:"success_count"`
+	BusinessFailureCount  int                            `json:"business_failure_count"`
+	TechnicalFailureCount int                            `json:"technical_failure_count"`
+	Failures              []scenarioWorkflowStageFailure `json:"failures"`
+}
+
+type scenarioWorkflowStageFailure struct {
+	ExternalMessageID *string   `json:"external_message_id"`
+	ReasonCode        string    `json:"reason_code"`
+	Message           string    `json:"message"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 func (c *manualMailWorkflowScenarioClock) Now() time.Time {
@@ -187,6 +227,7 @@ func newManualMailWorkflowScenarioEnv(
 		clock,
 		log,
 	)
+	env.listUseCase = manualapp.NewListUseCase(env.workflowRepo, log)
 
 	return env
 }
@@ -395,6 +436,33 @@ func (e *manualMailWorkflowScenarioEnv) mustCountBillings() int64 {
 	var count int64
 	require.NoError(e.t, e.db.Model(&model.Billing{}).Count(&count).Error)
 	return count
+}
+
+func (e *manualMailWorkflowScenarioEnv) listWorkflowHistories(rawQuery string) scenarioWorkflowHistoryListResponse {
+	e.t.Helper()
+
+	gin.SetMode(gin.TestMode)
+
+	controller := manualpresentation.NewController(nil, e.listUseCase, e.log)
+	router := gin.New()
+	router.GET("/manual-mail-workflows", func(c *gin.Context) {
+		c.Set("userID", e.userID)
+	}, controller.List)
+
+	path := "/manual-mail-workflows"
+	if trimmed := strings.TrimSpace(rawQuery); trimmed != "" {
+		path += "?" + trimmed
+	}
+
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	require.Equal(e.t, http.StatusOK, resp.Code)
+
+	var result scenarioWorkflowHistoryListResponse
+	require.NoError(e.t, json.NewDecoder(resp.Body).Decode(&result))
+	return result
 }
 
 func float64Ptr(value float64) *float64 {

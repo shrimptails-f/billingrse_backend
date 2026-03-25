@@ -78,6 +78,15 @@ func Seed(tx *gorm.DB) error {
 	if err = seeders.CreateUser(tx); err != nil {
 		return err
 	}
+	if err = seeders.CreateMailAccountConnections(tx); err != nil {
+		return err
+	}
+	if err = seeders.CreateBillingSamples(tx); err != nil {
+		return err
+	}
+	if err = seeders.CreateManualMailWorkflowHistories(tx); err != nil {
+		return err
+	}
 
 	return nil
 }

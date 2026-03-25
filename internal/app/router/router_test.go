@@ -7,9 +7,11 @@ import (
 
 	"business/internal/app/middleware"
 	authpresentation "business/internal/app/presentation/auth"
+	billingpresentation "business/internal/app/presentation/billing"
 	macpresentation "business/internal/app/presentation/mailaccountconnection"
 	manualpresentation "business/internal/app/presentation/manualmailworkflow"
 	"business/internal/auth/domain"
+	billingapp "business/internal/billing/application"
 	"business/internal/library/logger"
 	macapp "business/internal/mailaccountconnection/application"
 	macdomain "business/internal/mailaccountconnection/domain"
@@ -103,6 +105,18 @@ func (s *stubManualMailWorkflowUseCase) Start(ctx context.Context, cmd manualapp
 	}, nil
 }
 
+type stubManualMailWorkflowListUseCase struct{}
+
+func (s *stubManualMailWorkflowListUseCase) List(ctx context.Context, query manualapp.ListQuery) (manualapp.ListResult, error) {
+	return manualapp.ListResult{Items: []manualapp.WorkflowHistoryListItem{}}, nil
+}
+
+type stubBillingListUseCase struct{}
+
+func (s *stubBillingListUseCase) List(ctx context.Context, query billingapp.ListQuery) (billingapp.ListResult, error) {
+	return billingapp.ListResult{Items: []billingapp.ListItem{}}, nil
+}
+
 func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -128,7 +142,11 @@ func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	err = container.Provide(func() *manualpresentation.Controller {
-		return manualpresentation.NewController(&stubManualMailWorkflowUseCase{}, log)
+		return manualpresentation.NewController(&stubManualMailWorkflowUseCase{}, &stubManualMailWorkflowListUseCase{}, log)
+	})
+	assert.NoError(t, err)
+	err = container.Provide(func() *billingpresentation.Controller {
+		return billingpresentation.NewController(&stubBillingListUseCase{}, log)
 	})
 	assert.NoError(t, err)
 
@@ -155,7 +173,9 @@ func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 		"DELETE /api/v1/mail-account-connections/:connection_id",
 		"POST /api/v1/mail-account-connections/gmail/authorize",
 		"POST /api/v1/mail-account-connections/gmail/callback",
+		"GET /api/v1/manual-mail-workflows",
 		"POST /api/v1/manual-mail-workflows",
+		"GET /api/v1/billings",
 	}
 	for _, route := range expectedRoutes {
 		assert.Contains(t, routes, route)

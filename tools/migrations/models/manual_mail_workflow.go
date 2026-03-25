@@ -7,7 +7,8 @@ type ManualMailWorkflowHistory struct {
 	ID                                      uint64    `gorm:"primaryKey;autoIncrement"`
 	WorkflowID                              string    `gorm:"type:char(26);not null;uniqueIndex:uni_manual_mail_workflow_histories_workflow_id"`
 	UserID                                  uint      `gorm:"not null;index:idx_manual_mail_workflow_histories_user_queued_at,priority:1;index:idx_manual_mail_workflow_histories_user_status_queued_at,priority:1"`
-	ConnectionID                            uint      `gorm:"not null"`
+	Provider                                string    `gorm:"size:50;not null"`
+	AccountIdentifier                       string    `gorm:"size:255;not null"`
 	LabelName                               string    `gorm:"size:255;not null"`
 	SinceAt                                 time.Time `gorm:"not null"`
 	UntilAt                                 time.Time `gorm:"not null"`
