@@ -19,10 +19,20 @@ func (m *mockUseCase) Start(ctx context.Context, cmd manualapp.Command) (manuala
 	return result, args.Error(1)
 }
 
+type mockListUseCase struct {
+	mock.Mock
+}
+
+func (m *mockListUseCase) List(ctx context.Context, query manualapp.ListQuery) (manualapp.ListResult, error) {
+	args := m.Called(ctx, query)
+	result, _ := args.Get(0).(manualapp.ListResult)
+	return result, args.Error(1)
+}
+
 func newTestLogger() logger.Interface {
 	return mocklibrary.NewNopLogger()
 }
 
-func newTestController(usecase manualapp.StartUseCase) *Controller {
-	return NewController(usecase, newTestLogger())
+func newTestController(startUseCase manualapp.StartUseCase, listUseCase manualapp.ListUseCase) *Controller {
+	return NewController(startUseCase, listUseCase, newTestLogger())
 }

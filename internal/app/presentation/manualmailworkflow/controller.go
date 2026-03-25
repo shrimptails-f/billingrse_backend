@@ -6,6 +6,7 @@ import (
 	manualapp "business/internal/manualmailworkflow/application"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -13,19 +14,25 @@ import (
 
 // Controller handles manual mail workflow HTTP requests.
 type Controller struct {
-	usecase manualapp.StartUseCase
-	log     logger.Interface
+	startUseCase manualapp.StartUseCase
+	listUseCase  manualapp.ListUseCase
+	log          logger.Interface
 }
 
 // NewController creates a new Controller.
-func NewController(usecase manualapp.StartUseCase, log logger.Interface) *Controller {
+func NewController(
+	startUseCase manualapp.StartUseCase,
+	listUseCase manualapp.ListUseCase,
+	log logger.Interface,
+) *Controller {
 	if log == nil {
 		log = logger.NewNop()
 	}
 
 	return &Controller{
-		usecase: usecase,
-		log:     log.With(logger.Component("manual_mail_workflow_controller")),
+		startUseCase: startUseCase,
+		listUseCase:  listUseCase,
+		log:          log.With(logger.Component("manual_mail_workflow_controller")),
 	}
 }
 
@@ -40,6 +47,42 @@ type executeAcceptedResponse struct {
 	Message    string `json:"message"`
 	WorkflowID string `json:"workflow_id"`
 	Status     string `json:"status"`
+}
+
+type listResponse struct {
+	Items      []workflowHistoryItemResponse `json:"items"`
+	TotalCount int64                         `json:"total_count"`
+}
+
+type workflowHistoryItemResponse struct {
+	WorkflowID         string               `json:"workflow_id"`
+	ConnectionID       uint                 `json:"connection_id"`
+	LabelName          string               `json:"label_name"`
+	Since              time.Time            `json:"since"`
+	Until              time.Time            `json:"until"`
+	Status             string               `json:"status"`
+	CurrentStage       *string              `json:"current_stage"`
+	QueuedAt           time.Time            `json:"queued_at"`
+	FinishedAt         *time.Time           `json:"finished_at"`
+	Fetch              stageSummaryResponse `json:"fetch"`
+	Analysis           stageSummaryResponse `json:"analysis"`
+	VendorResolution   stageSummaryResponse `json:"vendor_resolution"`
+	BillingEligibility stageSummaryResponse `json:"billing_eligibility"`
+	Billing            stageSummaryResponse `json:"billing"`
+}
+
+type stageSummaryResponse struct {
+	SuccessCount          int                    `json:"success_count"`
+	BusinessFailureCount  int                    `json:"business_failure_count"`
+	TechnicalFailureCount int                    `json:"technical_failure_count"`
+	Failures              []stageFailureResponse `json:"failures"`
+}
+
+type stageFailureResponse struct {
+	ExternalMessageID *string   `json:"external_message_id"`
+	ReasonCode        string    `json:"reason_code"`
+	Message           string    `json:"message"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 // Execute handles POST /api/v1/manual-mail-workflows.
@@ -60,7 +103,13 @@ func (ctrl *Controller) Execute(c *gin.Context) {
 		return
 	}
 
-	result, err := ctrl.usecase.Start(c.Request.Context(), manualapp.Command{
+	if ctrl.startUseCase == nil {
+		reqLog.Error("manual_mail_workflow_start_usecase_not_configured")
+		httpresponse.WriteInternalServerError(c)
+		return
+	}
+
+	result, err := ctrl.startUseCase.Start(c.Request.Context(), manualapp.Command{
 		UserID:       uid,
 		ConnectionID: req.ConnectionID,
 		Condition: manualapp.FetchCondition{
@@ -78,6 +127,55 @@ func (ctrl *Controller) Execute(c *gin.Context) {
 		Message:    "メール取得ワークフローを受け付けました。",
 		WorkflowID: result.WorkflowID,
 		Status:     result.Status,
+	})
+}
+
+// List handles GET /api/v1/manual-mail-workflows.
+func (ctrl *Controller) List(c *gin.Context) {
+	reqLog := ctrl.log
+	if l, err := ctrl.log.WithContext(c.Request.Context()); err == nil {
+		reqLog = l
+	}
+
+	uid, ok := currentUserID(c)
+	if !ok {
+		return
+	}
+	if ctrl.listUseCase == nil {
+		reqLog.Error("manual_mail_workflow_list_usecase_not_configured")
+		httpresponse.WriteInternalServerError(c)
+		return
+	}
+
+	query, err := buildListQuery(c, uid)
+	if err != nil {
+		httpresponse.WriteInvalidRequest(c)
+		return
+	}
+
+	result, err := ctrl.listUseCase.List(c.Request.Context(), query)
+	if err != nil {
+		switch {
+		case errors.Is(err, manualapp.ErrInvalidListQuery):
+			httpresponse.WriteInvalidRequest(c)
+		default:
+			reqLog.Error("manual_mail_workflow_list_failed",
+				logger.UserID(uid),
+				logger.Err(err),
+			)
+			httpresponse.WriteInternalServerError(c)
+		}
+		return
+	}
+
+	items := make([]workflowHistoryItemResponse, 0, len(result.Items))
+	for _, item := range result.Items {
+		items = append(items, toWorkflowHistoryItemResponse(item))
+	}
+
+	c.JSON(http.StatusOK, listResponse{
+		Items:      items,
+		TotalCount: result.TotalCount,
 	})
 }
 
@@ -109,4 +207,90 @@ func currentUserID(c *gin.Context) (uint, bool) {
 	}
 
 	return uid, true
+}
+
+func buildListQuery(c *gin.Context, userID uint) (manualapp.ListQuery, error) {
+	query := manualapp.ListQuery{
+		UserID: userID,
+	}
+
+	if rawLimit, exists := c.GetQuery("limit"); exists {
+		limit, err := strconv.Atoi(rawLimit)
+		if err != nil {
+			return manualapp.ListQuery{}, err
+		}
+		query.Limit = limit
+		query.HasLimit = true
+	}
+
+	if rawOffset, exists := c.GetQuery("offset"); exists {
+		offset, err := strconv.Atoi(rawOffset)
+		if err != nil {
+			return manualapp.ListQuery{}, err
+		}
+		query.Offset = offset
+		query.HasOffset = true
+	}
+
+	if rawStatus, exists := c.GetQuery("status"); exists {
+		query.Status = &rawStatus
+	}
+
+	return query, nil
+}
+
+func toWorkflowHistoryItemResponse(item manualapp.WorkflowHistoryListItem) workflowHistoryItemResponse {
+	return workflowHistoryItemResponse{
+		WorkflowID:         item.WorkflowID,
+		ConnectionID:       item.ConnectionID,
+		LabelName:          item.LabelName,
+		Since:              item.Since,
+		Until:              item.Until,
+		Status:             item.Status,
+		CurrentStage:       cloneOptionalString(item.CurrentStage),
+		QueuedAt:           item.QueuedAt,
+		FinishedAt:         cloneOptionalTime(item.FinishedAt),
+		Fetch:              toStageSummaryResponse(item.Fetch),
+		Analysis:           toStageSummaryResponse(item.Analysis),
+		VendorResolution:   toStageSummaryResponse(item.VendorResolution),
+		BillingEligibility: toStageSummaryResponse(item.BillingEligibility),
+		Billing:            toStageSummaryResponse(item.Billing),
+	}
+}
+
+func toStageSummaryResponse(summary manualapp.StageSummaryView) stageSummaryResponse {
+	failures := make([]stageFailureResponse, 0, len(summary.Failures))
+	for _, failure := range summary.Failures {
+		failures = append(failures, stageFailureResponse{
+			ExternalMessageID: cloneOptionalString(failure.ExternalMessageID),
+			ReasonCode:        failure.ReasonCode,
+			Message:           failure.Message,
+			CreatedAt:         failure.CreatedAt,
+		})
+	}
+
+	return stageSummaryResponse{
+		SuccessCount:          summary.SuccessCount,
+		BusinessFailureCount:  summary.BusinessFailureCount,
+		TechnicalFailureCount: summary.TechnicalFailureCount,
+		Failures:              failures,
+	}
+}
+
+func cloneOptionalString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+
+	cloned := *value
+	return &cloned
+}
+
+func cloneOptionalTime(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+
+	cloned := value.UTC()
+	return &cloned
 }

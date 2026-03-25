@@ -14,6 +14,7 @@ type stubWorkflowStatusRepository struct {
 	saveStage    func(ctx context.Context, progress StageProgress) error
 	complete     func(ctx context.Context, historyID uint64, status string, finishedAt time.Time) error
 	fail         func(ctx context.Context, historyID uint64, currentStage string, finishedAt time.Time) error
+	list         func(ctx context.Context, query ListQuery) (ListResult, error)
 }
 
 func (s *stubWorkflowStatusRepository) CreateQueued(ctx context.Context, cmd QueuedWorkflowHistory) (WorkflowHistoryRef, error) {
@@ -49,6 +50,13 @@ func (s *stubWorkflowStatusRepository) Fail(ctx context.Context, historyID uint6
 		return nil
 	}
 	return s.fail(ctx, historyID, currentStage, finishedAt)
+}
+
+func (s *stubWorkflowStatusRepository) List(ctx context.Context, query ListQuery) (ListResult, error) {
+	if s.list == nil {
+		return ListResult{}, nil
+	}
+	return s.list(ctx, query)
 }
 
 type fixedClock struct {

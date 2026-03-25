@@ -166,3 +166,169 @@ func TestGormWorkflowStatusRepository_Fail(t *testing.T) {
 	require.NotNil(t, history.FinishedAt)
 	require.True(t, history.FinishedAt.Equal(finishedAt))
 }
+
+func TestGormWorkflowStatusRepository_List(t *testing.T) {
+	t.Parallel()
+
+	env := newWorkflowStatusRepoTestEnv(t)
+	defer env.clean()
+
+	ctx := context.Background()
+	queuedAt := time.Date(2026, 3, 25, 14, 0, 0, 0, time.UTC)
+	firstHistory := workflowHistoryRecordFixture(10, "wf-first", queuedAt, manualapp.WorkflowStatusPartialSuccess)
+	firstHistory.ConnectionID = 12
+	firstHistory.FetchSuccessCount = 2
+	firstHistory.FetchTechnicalFailureCount = 2
+	firstHistory.VendorResolutionSuccessCount = 1
+	firstHistory.VendorResolutionBusinessFailureCount = 1
+
+	secondHistory := workflowHistoryRecordFixture(10, "wf-second", queuedAt, manualapp.WorkflowStatusSucceeded)
+	secondHistory.ConnectionID = 13
+
+	otherUserHistory := workflowHistoryRecordFixture(20, "wf-other-user", queuedAt.Add(time.Hour), manualapp.WorkflowStatusFailed)
+
+	require.NoError(t, env.db.WithContext(ctx).Create(&firstHistory).Error)
+	require.NoError(t, env.db.WithContext(ctx).Create(&secondHistory).Error)
+	require.NoError(t, env.db.WithContext(ctx).Create(&otherUserHistory).Error)
+
+	failures := []manualMailWorkflowStageFailureRecord{
+		{
+			WorkflowHistoryID: firstHistory.ID,
+			Stage:             "fetch",
+			ExternalMessageID: stringPtr("msg-1"),
+			ReasonCode:        "fetch_detail_failed",
+			Message:           "メールの取得に失敗しました。",
+			CreatedAt:         queuedAt.Add(2 * time.Minute),
+		},
+		{
+			WorkflowHistoryID: firstHistory.ID,
+			Stage:             "fetch",
+			ExternalMessageID: stringPtr("msg-2"),
+			ReasonCode:        "email_save_failed",
+			Message:           "メールの保存に失敗しました。",
+			CreatedAt:         queuedAt.Add(3 * time.Minute),
+		},
+		{
+			WorkflowHistoryID: firstHistory.ID,
+			Stage:             "vendorresolution",
+			ExternalMessageID: stringPtr("msg-3"),
+			ReasonCode:        "vendor_unresolved",
+			Message:           "支払先を特定できませんでした。",
+			CreatedAt:         queuedAt.Add(4 * time.Minute),
+		},
+		{
+			WorkflowHistoryID: otherUserHistory.ID,
+			Stage:             "billing",
+			ExternalMessageID: stringPtr("msg-hidden"),
+			ReasonCode:        "duplicate_billing",
+			Message:           "同じ請求番号の請求が既に存在します。",
+			CreatedAt:         queuedAt.Add(5 * time.Minute),
+		},
+	}
+	require.NoError(t, env.db.WithContext(ctx).Create(&failures).Error)
+
+	queryCount := 0
+	callbackName := "test:manual_mail_workflow_list_query_count"
+	require.NoError(t, env.db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		queryCount++
+	}))
+	defer func() {
+		_ = env.db.Callback().Query().Remove(callbackName)
+	}()
+
+	result, err := env.repo.List(ctx, manualapp.ListQuery{
+		UserID:    10,
+		Limit:     10,
+		Offset:    0,
+		HasLimit:  true,
+		HasOffset: true,
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, 2, result.TotalCount)
+	require.Len(t, result.Items, 2)
+	require.Equal(t, 3, queryCount)
+
+	require.Equal(t, "wf-second", result.Items[0].WorkflowID)
+	require.Equal(t, "wf-first", result.Items[1].WorkflowID)
+
+	firstItem := result.Items[1]
+	require.Equal(t, uint(12), firstItem.ConnectionID)
+	require.Equal(t, 2, firstItem.Fetch.SuccessCount)
+	require.Equal(t, 0, firstItem.Fetch.BusinessFailureCount)
+	require.Equal(t, 2, firstItem.Fetch.TechnicalFailureCount)
+	require.Len(t, firstItem.Fetch.Failures, 2)
+	require.Equal(t, "msg-1", *firstItem.Fetch.Failures[0].ExternalMessageID)
+	require.Equal(t, "fetch_detail_failed", firstItem.Fetch.Failures[0].ReasonCode)
+	require.Equal(t, "msg-2", *firstItem.Fetch.Failures[1].ExternalMessageID)
+	require.Len(t, firstItem.VendorResolution.Failures, 1)
+	require.Equal(t, "vendor_unresolved", firstItem.VendorResolution.Failures[0].ReasonCode)
+	require.Empty(t, firstItem.Analysis.Failures)
+	require.Empty(t, firstItem.BillingEligibility.Failures)
+	require.Empty(t, firstItem.Billing.Failures)
+}
+
+func TestGormWorkflowStatusRepository_List_WithStatusFilterAndEmptyPage(t *testing.T) {
+	t.Parallel()
+
+	env := newWorkflowStatusRepoTestEnv(t)
+	defer env.clean()
+
+	ctx := context.Background()
+	firstHistory := workflowHistoryRecordFixture(10, "wf-partial", time.Date(2026, 3, 25, 14, 0, 0, 0, time.UTC), manualapp.WorkflowStatusPartialSuccess)
+	secondHistory := workflowHistoryRecordFixture(10, "wf-succeeded", time.Date(2026, 3, 25, 13, 0, 0, 0, time.UTC), manualapp.WorkflowStatusSucceeded)
+	require.NoError(t, env.db.WithContext(ctx).Create(&firstHistory).Error)
+	require.NoError(t, env.db.WithContext(ctx).Create(&secondHistory).Error)
+
+	filtered, err := env.repo.List(ctx, manualapp.ListQuery{
+		UserID:    10,
+		Limit:     10,
+		Offset:    0,
+		Status:    stringPtr(manualapp.WorkflowStatusPartialSuccess),
+		HasLimit:  true,
+		HasOffset: true,
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, filtered.TotalCount)
+	require.Len(t, filtered.Items, 1)
+	require.Equal(t, "wf-partial", filtered.Items[0].WorkflowID)
+
+	queryCount := 0
+	callbackName := "test:manual_mail_workflow_list_empty_page_query_count"
+	require.NoError(t, env.db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		queryCount++
+	}))
+	defer func() {
+		_ = env.db.Callback().Query().Remove(callbackName)
+	}()
+
+	emptyPage, err := env.repo.List(ctx, manualapp.ListQuery{
+		UserID:    10,
+		Limit:     10,
+		Offset:    10,
+		HasLimit:  true,
+		HasOffset: true,
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, 2, emptyPage.TotalCount)
+	require.Empty(t, emptyPage.Items)
+	require.Equal(t, 2, queryCount)
+}
+
+func workflowHistoryRecordFixture(userID uint, workflowID string, queuedAt time.Time, status string) manualMailWorkflowHistoryRecord {
+	return manualMailWorkflowHistoryRecord{
+		WorkflowID:   workflowID,
+		UserID:       userID,
+		ConnectionID: 1,
+		LabelName:    "billing",
+		SinceAt:      time.Date(2026, 3, 24, 0, 0, 0, 0, time.UTC),
+		UntilAt:      time.Date(2026, 3, 25, 0, 0, 0, 0, time.UTC),
+		Status:       status,
+		QueuedAt:     queuedAt,
+		CreatedAt:    queuedAt,
+		UpdatedAt:    queuedAt,
+	}
+}
+
+func stringPtr(value string) *string {
+	return &value
+}

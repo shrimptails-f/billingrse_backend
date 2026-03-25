@@ -221,6 +221,69 @@ func (r *GormWorkflowStatusRepository) SaveStageProgress(ctx context.Context, pr
 	return nil
 }
 
+// List loads one page of workflow histories and their stage failure details.
+func (r *GormWorkflowStatusRepository) List(ctx context.Context, query manualapp.ListQuery) (manualapp.ListResult, error) {
+	if ctx == nil {
+		return manualapp.ListResult{}, logger.ErrNilContext
+	}
+	if r.db == nil {
+		return manualapp.ListResult{}, fmt.Errorf("gorm db is not configured")
+	}
+
+	var totalCount int64
+	countTx := r.buildListBaseQuery(ctx, query).Count(&totalCount)
+	if countTx.Error != nil {
+		r.logDBError(ctx, "manual_mail_workflow_histories", "list_count", countTx.Error)
+		return manualapp.ListResult{}, fmt.Errorf("failed to count workflow histories: %w", countTx.Error)
+	}
+
+	var historyRecords []manualMailWorkflowHistoryRecord
+	pageTx := r.buildListBaseQuery(ctx, query).
+		Order("queued_at DESC").
+		Order("id DESC").
+		Limit(query.Limit).
+		Offset(query.Offset).
+		Find(&historyRecords)
+	if pageTx.Error != nil {
+		r.logDBError(ctx, "manual_mail_workflow_histories", "list_page", pageTx.Error)
+		return manualapp.ListResult{}, fmt.Errorf("failed to list workflow histories: %w", pageTx.Error)
+	}
+	if len(historyRecords) == 0 {
+		return manualapp.ListResult{
+			Items:      []manualapp.WorkflowHistoryListItem{},
+			TotalCount: totalCount,
+		}, nil
+	}
+
+	historyIDs := make([]uint64, 0, len(historyRecords))
+	for _, record := range historyRecords {
+		historyIDs = append(historyIDs, record.ID)
+	}
+
+	var failureRecords []manualMailWorkflowStageFailureRecord
+	failuresTx := r.db.WithContext(ctx).
+		Where("workflow_history_id IN ?", historyIDs).
+		Order("workflow_history_id ASC").
+		Order("stage ASC").
+		Order("created_at ASC").
+		Find(&failureRecords)
+	if failuresTx.Error != nil {
+		r.logDBError(ctx, "manual_mail_workflow_stage_failures", "list_failures", failuresTx.Error)
+		return manualapp.ListResult{}, fmt.Errorf("failed to list workflow stage failures: %w", failuresTx.Error)
+	}
+
+	failureViewsByHistory := groupFailureViewsByHistory(failureRecords)
+	items := make([]manualapp.WorkflowHistoryListItem, 0, len(historyRecords))
+	for _, record := range historyRecords {
+		items = append(items, buildWorkflowHistoryListItem(record, failureViewsByHistory[record.ID]))
+	}
+
+	return manualapp.ListResult{
+		Items:      items,
+		TotalCount: totalCount,
+	}, nil
+}
+
 // Complete finalizes a workflow as succeeded or partial_success.
 func (r *GormWorkflowStatusRepository) Complete(ctx context.Context, historyID uint64, status string, finishedAt time.Time) error {
 	return r.updateTerminalStatus(ctx, historyID, status, nil, finishedAt, "complete")
@@ -305,10 +368,113 @@ func stageCountColumns(stage string) (string, string, string, error) {
 	}
 }
 
+func (r *GormWorkflowStatusRepository) buildListBaseQuery(ctx context.Context, query manualapp.ListQuery) *gorm.DB {
+	tx := r.db.WithContext(ctx).
+		Model(&manualMailWorkflowHistoryRecord{}).
+		Where("user_id = ?", query.UserID)
+	if query.Status != nil {
+		tx = tx.Where("status = ?", *query.Status)
+	}
+
+	return tx
+}
+
+func buildWorkflowHistoryListItem(
+	record manualMailWorkflowHistoryRecord,
+	failuresByStage map[string][]manualapp.StageFailureView,
+) manualapp.WorkflowHistoryListItem {
+	return manualapp.WorkflowHistoryListItem{
+		WorkflowID:   record.WorkflowID,
+		ConnectionID: record.ConnectionID,
+		LabelName:    record.LabelName,
+		Since:        record.SinceAt.UTC(),
+		Until:        record.UntilAt.UTC(),
+		Status:       record.Status,
+		CurrentStage: cloneOptionalString(record.CurrentStage),
+		QueuedAt:     record.QueuedAt.UTC(),
+		FinishedAt:   cloneOptionalTime(record.FinishedAt),
+		Fetch: manualapp.StageSummaryView{
+			SuccessCount:          record.FetchSuccessCount,
+			BusinessFailureCount:  record.FetchBusinessFailureCount,
+			TechnicalFailureCount: record.FetchTechnicalFailureCount,
+			Failures:              stageFailureViews(failuresByStage, "fetch"),
+		},
+		Analysis: manualapp.StageSummaryView{
+			SuccessCount:          record.AnalysisSuccessCount,
+			BusinessFailureCount:  record.AnalysisBusinessFailureCount,
+			TechnicalFailureCount: record.AnalysisTechnicalFailureCount,
+			Failures:              stageFailureViews(failuresByStage, "analysis"),
+		},
+		VendorResolution: manualapp.StageSummaryView{
+			SuccessCount:          record.VendorResolutionSuccessCount,
+			BusinessFailureCount:  record.VendorResolutionBusinessFailureCount,
+			TechnicalFailureCount: record.VendorResolutionTechnicalFailureCount,
+			Failures:              stageFailureViews(failuresByStage, "vendorresolution"),
+		},
+		BillingEligibility: manualapp.StageSummaryView{
+			SuccessCount:          record.BillingEligibilitySuccessCount,
+			BusinessFailureCount:  record.BillingEligibilityBusinessFailureCount,
+			TechnicalFailureCount: record.BillingEligibilityTechnicalFailureCount,
+			Failures:              stageFailureViews(failuresByStage, "billingeligibility"),
+		},
+		Billing: manualapp.StageSummaryView{
+			SuccessCount:          record.BillingSuccessCount,
+			BusinessFailureCount:  record.BillingBusinessFailureCount,
+			TechnicalFailureCount: record.BillingTechnicalFailureCount,
+			Failures:              stageFailureViews(failuresByStage, "billing"),
+		},
+	}
+}
+
+func groupFailureViewsByHistory(
+	records []manualMailWorkflowStageFailureRecord,
+) map[uint64]map[string][]manualapp.StageFailureView {
+	grouped := make(map[uint64]map[string][]manualapp.StageFailureView, len(records))
+	for _, record := range records {
+		stageGroup, ok := grouped[record.WorkflowHistoryID]
+		if !ok {
+			stageGroup = make(map[string][]manualapp.StageFailureView)
+			grouped[record.WorkflowHistoryID] = stageGroup
+		}
+		stageGroup[record.Stage] = append(stageGroup[record.Stage], manualapp.StageFailureView{
+			ExternalMessageID: cloneOptionalString(record.ExternalMessageID),
+			ReasonCode:        record.ReasonCode,
+			Message:           record.Message,
+			CreatedAt:         record.CreatedAt.UTC(),
+		})
+	}
+
+	return grouped
+}
+
+func stageFailureViews(
+	failuresByStage map[string][]manualapp.StageFailureView,
+	stage string,
+) []manualapp.StageFailureView {
+	if len(failuresByStage) == 0 {
+		return []manualapp.StageFailureView{}
+	}
+	failures, ok := failuresByStage[stage]
+	if !ok {
+		return []manualapp.StageFailureView{}
+	}
+
+	return failures
+}
+
 func cloneOptionalString(value *string) *string {
 	if value == nil {
 		return nil
 	}
 	cloned := *value
+	return &cloned
+}
+
+func cloneOptionalTime(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+
+	cloned := value.UTC()
 	return &cloned
 }
