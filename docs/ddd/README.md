@@ -5,7 +5,7 @@
 
 注記:
 - ここでは将来の到達像を含む概念モデルも扱う。
-- 現行実装の `manualmailworkflow` は `mailfetch -> mailanalysis -> vendorresolution -> billingeligibility` までが接続済みであり、`Billing` 生成はまだ workflow に接続されていない。
+- 現行実装の `manualmailworkflow` は `mailfetch -> mailanalysis -> vendorresolution -> billingeligibility -> billing` までが接続済みである。
 
 参照:
 - `docs/ddd/ubiquitous-language/README.md`

@@ -13,7 +13,7 @@
 
 ## スコープ
 - 手動メール取得 API の非同期化
-- workflow 受付 API と状態取得 API の責務定義
+- workflow 受付 API と、将来追加する状態取得 API の責務定義
 - background workflow における stage 実行順序の定義
 - package 間の依存方向整理
 - フロントエンド連携に必要な API 契約整理
@@ -35,7 +35,7 @@
 7. background runner が `vendorresolution` を実行し、canonical `Vendor` を解決する。
 8. background runner が `billingeligibility` を実行し、請求成立可否を判定する。
 9. background runner が `billing` を実行し、`Billing` を生成・保存する。
-10. クライアントは `workflow_id` を使って状態取得 API を呼び、進行状態または最終結果を参照する。
+10. クライアントは `workflow_id` を相関 ID として保持し、状態取得 API を追加する場合はそれを使って進行状態または最終結果を参照する。
 
 補足:
 - workflow 履歴の永続化詳細は今回深掘りせず、`TODO:` として残す。
@@ -129,7 +129,7 @@
 
 ## 設計方針
 - `POST /api/v1/manual-mail-workflows` は workflow 完了を待たず、受付結果のみを返す。
-- 完了結果は `GET /api/v1/manual-mail-workflows/:workflow_id` のような状態取得 API から参照する。
+- 完了結果の参照 API は将来追加対象とし、現時点では `workflow_id` を background 実行の相関 ID として返す。
 - HTTP request 中に保持するのは入力検証・受付・dispatch までとし、実処理は background context で進める。
 - package 間は直接具体実装に依存せず、application 層の port 経由で接続する。
 - stage 間連携は workflow payload を優先し、不要な再読込は増やさない。
@@ -138,6 +138,6 @@
 ## 成功条件
 - 手動メール取得 API が短時間で `202 Accepted` を返せる。
 - workflow が background で `mailfetch -> mailanalysis -> vendorresolution -> billingeligibility -> billing` の順に実行される。
-- フロントエンドが `workflow_id` を使って進行状態または最終結果を取得できる。
+- フロントエンドが `workflow_id` を相関 ID として扱え、状態取得 API を追加する場合は進行状態または最終結果を取得できる。
 - 各 stage の責務境界が崩れず、既存 stage 実装を流用できる。
 - workflow 履歴保存の詳細が未確定でも、非同期 API 契約の整理が先に進められる。

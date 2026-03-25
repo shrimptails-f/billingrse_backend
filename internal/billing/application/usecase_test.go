@@ -22,6 +22,7 @@ func TestUseCaseExecute_CreatedDuplicateAndFailures(t *testing.T) {
 
 	invoiceNumber := "t1234567890123"
 	billingDate := time.Date(2026, 3, 24, 10, 30, 0, 0, time.UTC)
+	productNameDisplay := " Example Product "
 
 	uc := NewUseCase(&stubBillingRepository{
 		saveIfAbsent: func(ctx context.Context, billing commondomain.Billing) (SaveResult, error) {
@@ -39,6 +40,9 @@ func TestUseCaseExecute_CreatedDuplicateAndFailures(t *testing.T) {
 				if billing.BillingDate == nil || !billing.BillingDate.Equal(billingDate) {
 					t.Fatalf("expected billing date to be preserved, got %+v", billing)
 				}
+				if billing.ProductNameDisplay == nil || *billing.ProductNameDisplay != "Example Product" {
+					t.Fatalf("expected normalized product name display, got %+v", billing)
+				}
 				return SaveResult{BillingID: 9001}, nil
 			case "INV-200":
 				return SaveResult{BillingID: 8001, Duplicate: true}, nil
@@ -55,18 +59,19 @@ func TestUseCaseExecute_CreatedDuplicateAndFailures(t *testing.T) {
 		UserID: 7,
 		EligibleItems: []CreationTarget{
 			{
-				ParsedEmailID:     101,
-				EmailID:           201,
-				ExternalMessageID: "msg-1",
-				VendorID:          301,
-				VendorName:        "Acme",
-				MatchedBy:         "name_exact",
-				BillingNumber:     " INV-100 ",
-				InvoiceNumber:     &invoiceNumber,
-				Amount:            1200.5,
-				Currency:          " jpy ",
-				BillingDate:       &billingDate,
-				PaymentCycle:      " recurring ",
+				ParsedEmailID:      101,
+				EmailID:            201,
+				ExternalMessageID:  "msg-1",
+				VendorID:           301,
+				VendorName:         "Acme",
+				MatchedBy:          "name_exact",
+				ProductNameDisplay: &productNameDisplay,
+				BillingNumber:      " INV-100 ",
+				InvoiceNumber:      &invoiceNumber,
+				Amount:             1200.5,
+				Currency:           " jpy ",
+				BillingDate:        &billingDate,
+				PaymentCycle:       " recurring ",
 			},
 			{
 				ParsedEmailID:     102,
@@ -163,15 +168,16 @@ func TestUseCaseExecute_AllowsNilBillingDate(t *testing.T) {
 		UserID: 1,
 		EligibleItems: []CreationTarget{
 			{
-				ParsedEmailID:     10,
-				EmailID:           20,
-				ExternalMessageID: "msg-10",
-				VendorID:          30,
-				VendorName:        "Acme",
-				BillingNumber:     "INV-010",
-				Amount:            100,
-				Currency:          "JPY",
-				PaymentCycle:      "one_time",
+				ParsedEmailID:      10,
+				EmailID:            20,
+				ExternalMessageID:  "msg-10",
+				VendorID:           30,
+				VendorName:         "Acme",
+				ProductNameDisplay: nil,
+				BillingNumber:      "INV-010",
+				Amount:             100,
+				Currency:           "JPY",
+				PaymentCycle:       "one_time",
 			},
 		},
 	})

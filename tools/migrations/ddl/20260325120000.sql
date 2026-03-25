@@ -4,6 +4,7 @@ CREATE TABLE `billings` (
   `user_id` bigint unsigned NOT NULL,
   `vendor_id` bigint unsigned NOT NULL,
   `email_id` bigint unsigned NOT NULL,
+  `product_name_display` varchar(255) NULL,
   `billing_number` varchar(255) NOT NULL,
   `invoice_number` varchar(14) NULL,
   `amount` decimal(18,3) NOT NULL,

@@ -29,7 +29,7 @@
 ### `internal/manualmailworkflow`
 - `BillingStage` 追加
 - `BillingCommand`, `BillingResult` 追加
-- `Result` と controller response へ `billing` を追加
+- workflow-owned `Result` と、将来の状態参照 API 向け controller response へ `billing` を追加
 
 ### `internal/di`
 - `billing.go` を追加
@@ -54,6 +54,7 @@ type CreationTarget struct {
 	VendorID          uint
 	VendorName        string
 	MatchedBy         string
+	ProductNameDisplay *string
 	BillingNumber     string
 	InvoiceNumber     *string
 	Amount            float64
@@ -67,6 +68,7 @@ type CreationTarget struct {
 - `billingeligibility` の `EligibleItem` が、既に `Billing` 生成に必要な情報を揃えている。
 - `billing` stage は保存責務に集中し、前段の判定責務へ逆流しない。
 - `VendorName` / `MatchedBy` は `Billing` aggregate には不要だが、workflow 結果やログの相関情報として維持する。
+- `ProductNameDisplay` は任意入力だが、`Billing` aggregate の表示用商品名として保持するため引き継ぐ。
 
 ## 4. `billing` application 設計
 
@@ -264,4 +266,5 @@ workflow 完了ログに以下を追加する。
 ### `internal/manualmailworkflow`
 - `billingeligibility` の後に `billing` が呼ばれること
 - eligible item 0 件なら `billing` を skip すること
-- controller response に `billing` 要約が載ること
+- workflow 統合 result に `billing` 要約が載ること
+- 状態参照 API を追加する場合は controller response に `billing` 要約が載ること

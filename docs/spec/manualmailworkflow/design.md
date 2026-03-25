@@ -130,12 +130,13 @@ response:
 }
 ```
 
-### 3.2 状態取得 API
+### 3.2 将来の状態取得 API（TODO）
 - endpoint:
   - `GET /api/v1/manual-mail-workflows/:workflow_id`
 - 役割:
   - workflow の現在状態を返す
   - 完了済みなら最終結果も返す
+  - 現時点では未実装であり、`workflow_id` は background 実行の相関 ID としてのみ返している
 
 状態値:
 - `queued`
@@ -146,7 +147,7 @@ response:
 
 補足:
 - `partial_success` は workflow 自体は完走したが、stage failure / unresolved / ineligible / duplicate などを含む状態を指す。
-- 履歴保存の詳細は `TODO:` だが、API 契約としては `workflow_id` による参照を前提にする。
+- 履歴保存の詳細と状態参照 API は `TODO:` であり、現行の公開 API にはまだ含めない。
 
 ## 4. `manualmailworkflow` application 設計
 

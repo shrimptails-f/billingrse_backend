@@ -24,18 +24,19 @@ type BillingRepository interface {
 
 // CreationTarget is a billing-ready item received from billingeligibility.
 type CreationTarget struct {
-	ParsedEmailID     uint
-	EmailID           uint
-	ExternalMessageID string
-	VendorID          uint
-	VendorName        string
-	MatchedBy         string
-	BillingNumber     string
-	InvoiceNumber     *string
-	Amount            float64
-	Currency          string
-	BillingDate       *time.Time
-	PaymentCycle      string
+	ParsedEmailID      uint
+	EmailID            uint
+	ExternalMessageID  string
+	VendorID           uint
+	VendorName         string
+	MatchedBy          string
+	ProductNameDisplay *string
+	BillingNumber      string
+	InvoiceNumber      *string
+	Amount             float64
+	Currency           string
+	BillingDate        *time.Time
+	PaymentCycle       string
 }
 
 // Normalize trims free-form strings and clones optional pointer values.
@@ -43,6 +44,7 @@ func (t CreationTarget) Normalize() CreationTarget {
 	t.ExternalMessageID = strings.TrimSpace(t.ExternalMessageID)
 	t.VendorName = strings.TrimSpace(t.VendorName)
 	t.MatchedBy = strings.TrimSpace(t.MatchedBy)
+	t.ProductNameDisplay = cloneString(t.ProductNameDisplay)
 	t.BillingNumber = strings.TrimSpace(t.BillingNumber)
 	t.InvoiceNumber = cloneString(t.InvoiceNumber)
 	t.Currency = strings.TrimSpace(t.Currency)
@@ -155,6 +157,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 			target.Currency,
 			target.BillingDate,
 			target.PaymentCycle,
+			target.ProductNameDisplay,
 		)
 		if err != nil {
 			result.Failures = append(result.Failures, domain.Failure{

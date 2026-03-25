@@ -30,16 +30,17 @@
             - auth/               // 認証系 controller と HTTP DTO
             - mailaccountconnection/
             - manualmailworkflow/
-        - di/                     // dig モジュール（auth.go, mail_account_connection.go, mailfetch.go, mailanalysis.go, vendorresolution.go, billingeligibility.go, manualmailworkflow.go, presentation.go, dig.go）
+        - di/                     // dig モジュール（auth.go, mail_account_connection.go, mailfetch.go, mailanalysis.go, vendorresolution.go, billingeligibility.go, billing.go, manualmailworkflow.go, presentation.go, dig.go）
         - library/                // 共通ラッパー: logger, mysql, gmail/gmailService, openai, oswrapper, ratelimit, secret, sendMailer, crypto, timewrapper
         - auth/                   // 認証ドメイン（domain/application/infrastructure）
+        - billing/                // Billing 生成・重複制御・保存 stage
         - common/                 // 共有ドメインモデル（Email, ParsedEmail, Billing, Vendor, VendorResolutionPolicy 等）
         - mailaccountconnection/  // Gmail OAuth 連携と資格情報管理
         - mailfetch/              // メール取得 stage
         - mailanalysis/           // AI 解析 stage
         - vendorresolution/       // canonical Vendor 解決 stage
         - billingeligibility/     // Billing 成立可否判定 stage
-        - manualmailworkflow/     // 非同期 workflow の受付、実行、状態参照を束ねる
+        - manualmailworkflow/     // 非同期 workflow の受付と実行を束ねる
     </root_packages>
   </directory_structure>
 
@@ -70,14 +71,15 @@
         - `internal/manualmailworkflow/application`
       - 役割:
         - ユースケース単位の入力検証、オーケストレーション、部分成功 / 部分失敗の集約を担当する。
-        - 代表例:
+      - 代表例:
           - `auth/application`: register / login / refresh / logout / verify email
           - `mailaccountconnection/application`: Gmail OAuth state 管理、資格情報保存、一覧 / 解除
           - `mailfetch/application`: 利用可能な連携解決、provider fetch、メール保存
           - `mailanalysis/application`: OpenAI 解析、`ParsedEmail` 永続化
           - `vendorresolution/application`: alias lookup、必要なら canonical Vendor 自動登録
           - `billingeligibility/application`: `ParsedEmail` と解決済み Vendor から Billing 成立可否を評価
-          - `manualmailworkflow/application`: workflow 受付、background 実行、状態取得
+          - `billing/application`: eligible item から Billing 生成、idempotent 保存、created / duplicate / failure 集約
+          - `manualmailworkflow/application`: workflow 受付、background 実行
       - 注意点:
         - `POST /api/v1/manual-mail-workflows` は短時間で `202 Accepted` を返し、実処理はバックグラウンドで進める。
         - workflow 結果保存用の履歴テーブル詳細は今後検討とし、現時点では TODO として扱う。
@@ -91,6 +93,7 @@
         - `internal/mailfetch/domain`
         - `internal/mailanalysis/domain`
         - `internal/vendorresolution/domain`
+        - `internal/billing/domain`
         - `internal/billingeligibility/domain`
         - `internal/common/domain`
       - 役割:
@@ -121,7 +124,6 @@
   <workflow>
     - 入口:
       - `POST /api/v1/manual-mail-workflows`
-      - `GET /api/v1/manual-mail-workflows/:workflow_id`
     - 実行順:
       - start usecase が workflow を受け付け、dispatcher が background 実行へ渡す。
       - background runner が `mailfetch`, `mailanalysis`, `vendorresolution`, `billingeligibility`, `billing` の各 stage を順に呼ぶ。
@@ -143,8 +145,8 @@
     - `billing`:
       - `BillingEligibility` で成立した対象から `Billing` を生成し、idempotent に保存する。
     - 履歴 / 状態参照:
-      - `GET /api/v1/manual-mail-workflows/:workflow_id` が受付済み workflow の状態と、取得可能なら最終結果を返す。
-      - 履歴テーブル設計は TODO とし、永続化スキーマ詳細は後続で詰める。
+      - 現時点の公開 API は `POST /api/v1/manual-mail-workflows` の受付までで、`workflow_id` は background 実行の相関 ID として返す。
+      - 履歴テーブル設計と状態参照 API は TODO とし、永続化スキーマ詳細は後続で詰める。
   </workflow>
 
   <context_management>
@@ -174,7 +176,7 @@
     - 依存注入は `internal/di` に集約する。
       - `dig.go` が共通依存（mysql, gmail, openai, oswrapper, ratelimit, logger, vault, clock）を登録する。
       - 各機能モジュールが repository / adapter / usecase / controller を Provide する。
-      - `manualmailworkflow` は direct stage adapter に加え、dispatcher / status repository を束ねる。
+      - `manualmailworkflow` は direct stage adapter に加え、dispatcher / start usecase を束ねる。
     - ブートストラップ手順:
       - `cmd/app/main.go` → `internal/app/server.Run`
       - `server.Run` が secret client、logger、MySQL、rate limit provider、Gmail / OpenAI client、Vault を初期化

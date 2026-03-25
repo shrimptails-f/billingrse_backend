@@ -10,6 +10,8 @@ func TestBillingEligibility(t *testing.T) {
 	t.Parallel()
 
 	vendorName := "Netflix"
+	productNameDisplay := "Netflix Standard"
+	productNameRaw := "Netflix Standard Plan"
 	billingNumber := "INV-001"
 	amount := 1200.0
 	currency := "JPY"
@@ -17,12 +19,14 @@ func TestBillingEligibility(t *testing.T) {
 	paymentCycle := "one_time"
 
 	parsed := ParsedEmail{
-		VendorName:    &vendorName,
-		BillingNumber: &billingNumber,
-		Amount:        &amount,
-		Currency:      &currency,
-		BillingDate:   &billingDate,
-		PaymentCycle:  &paymentCycle,
+		ProductNameDisplay: &productNameDisplay,
+		ProductNameRaw:     &productNameRaw,
+		VendorName:         &vendorName,
+		BillingNumber:      &billingNumber,
+		Amount:             &amount,
+		Currency:           &currency,
+		BillingDate:        &billingDate,
+		PaymentCycle:       &paymentCycle,
 	}
 
 	resolution := VendorResolution{
@@ -43,8 +47,25 @@ func TestBillingEligibility(t *testing.T) {
 		t.Fatalf("expected no error when resolved vendor exists, got %v", err)
 	}
 
+	parsedFallbackRawProduct := parsed
+	parsedFallbackRawProduct.ProductNameDisplay = nil
+	if err := eligibility.Evaluate(parsedFallbackRawProduct, resolution); err != nil {
+		t.Fatalf("expected raw product name to be accepted as fallback, got %v", err)
+	}
+	resolvedProductName := eligibility.ResolvedProductNameDisplay(parsedFallbackRawProduct)
+	if resolvedProductName == nil || *resolvedProductName != "Netflix Standard Plan" {
+		t.Fatalf("expected raw product name fallback, got %+v", resolvedProductName)
+	}
+
 	if err := eligibility.Evaluate(parsed, VendorResolution{}); !errors.Is(err, ErrBillingEligibilityVendorUnresolved) {
 		t.Fatalf("expected ErrBillingEligibilityVendorUnresolved, got %v", err)
+	}
+
+	parsedMissingProductNames := parsed
+	parsedMissingProductNames.ProductNameDisplay = nil
+	parsedMissingProductNames.ProductNameRaw = nil
+	if err := eligibility.Evaluate(parsedMissingProductNames, resolution); !errors.Is(err, ErrBillingEligibilityProductNameEmpty) {
+		t.Fatalf("expected ErrBillingEligibilityProductNameEmpty, got %v", err)
 	}
 
 	parsedMissingAmount := parsed

@@ -137,11 +137,13 @@ func TestNewBilling(t *testing.T) {
 		"usd",
 		timePtr(time.Date(2025, 1, 5, 12, 30, 15, 0, time.UTC)),
 		"recurring",
+		nil,
 	)
 	assert.ErrorIs(t, err, ErrBillingNumberEmpty)
 
 	billingNumber := " INV-100 "
 	invoice = "T1234567890123"
+	productNameDisplay := " Example Product "
 	billing, err = NewBilling(
 		1,
 		2,
@@ -152,6 +154,7 @@ func TestNewBilling(t *testing.T) {
 		"JPY",
 		timePtr(time.Date(2025, 1, 5, 12, 30, 0, 0, time.UTC)),
 		"one_time",
+		&productNameDisplay,
 	)
 	if err != nil {
 		t.Fatalf("NewBilling returned error: %v", err)
@@ -161,6 +164,9 @@ func TestNewBilling(t *testing.T) {
 	}
 	if billing.BillingDate == nil || !billing.BillingDate.Equal(time.Date(2025, 1, 5, 12, 30, 0, 0, time.UTC)) {
 		t.Fatalf("expected billing date to be preserved, got %+v", billing.BillingDate)
+	}
+	if billing.ProductNameDisplay == nil || *billing.ProductNameDisplay != "Example Product" {
+		t.Fatalf("expected product name display to be normalized, got %+v", billing.ProductNameDisplay)
 	}
 
 	empty := "  "
@@ -174,6 +180,7 @@ func TestNewBilling(t *testing.T) {
 		"JPY",
 		nil,
 		"one_time",
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("NewBilling returned error: %v", err)

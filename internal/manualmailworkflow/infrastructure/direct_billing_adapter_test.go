@@ -22,6 +22,7 @@ func TestDirectBillingAdapter_Execute_ConvertsCommandAndResult(t *testing.T) {
 
 	invoiceNumber := "T1234567890123"
 	billingDate := time.Date(2026, 3, 25, 0, 0, 0, 0, time.UTC)
+	productNameDisplay := "Example Product"
 	adapter := NewDirectBillingAdapter(&stubBillingUseCase{
 		execute: func(ctx context.Context, cmd billingapp.Command) (billingapp.Result, error) {
 			if len(cmd.EligibleItems) != 1 {
@@ -32,6 +33,9 @@ func TestDirectBillingAdapter_Execute_ConvertsCommandAndResult(t *testing.T) {
 			}
 			if cmd.EligibleItems[0].BillingDate == nil || !cmd.EligibleItems[0].BillingDate.Equal(billingDate) {
 				t.Fatalf("expected billing date in target, got %+v", cmd.EligibleItems[0])
+			}
+			if cmd.EligibleItems[0].ProductNameDisplay == nil || *cmd.EligibleItems[0].ProductNameDisplay != productNameDisplay {
+				t.Fatalf("expected product name display in target, got %+v", cmd.EligibleItems[0])
 			}
 			return billingapp.Result{
 				CreatedItems: []billingdomain.CreatedItem{
@@ -75,18 +79,19 @@ func TestDirectBillingAdapter_Execute_ConvertsCommandAndResult(t *testing.T) {
 		UserID: 1,
 		EligibleItems: []manualapp.EligibleItem{
 			{
-				ParsedEmailID:     9001,
-				EmailID:           101,
-				ExternalMessageID: "msg-1",
-				VendorID:          3001,
-				VendorName:        "Acme",
-				MatchedBy:         "name_exact",
-				BillingNumber:     "INV-001",
-				InvoiceNumber:     &invoiceNumber,
-				Amount:            1200,
-				Currency:          "JPY",
-				BillingDate:       &billingDate,
-				PaymentCycle:      "one_time",
+				ParsedEmailID:      9001,
+				EmailID:            101,
+				ExternalMessageID:  "msg-1",
+				VendorID:           3001,
+				VendorName:         "Acme",
+				MatchedBy:          "name_exact",
+				ProductNameDisplay: &productNameDisplay,
+				BillingNumber:      "INV-001",
+				InvoiceNumber:      &invoiceNumber,
+				Amount:             1200,
+				Currency:           "JPY",
+				BillingDate:        &billingDate,
+				PaymentCycle:       "one_time",
 			},
 		},
 	})

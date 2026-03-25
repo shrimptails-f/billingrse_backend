@@ -26,18 +26,19 @@ func (a *DirectBillingAdapter) Execute(ctx context.Context, cmd manualapp.Billin
 	targets := make([]billingapp.CreationTarget, 0, len(cmd.EligibleItems))
 	for _, item := range cmd.EligibleItems {
 		targets = append(targets, billingapp.CreationTarget{
-			ParsedEmailID:     item.ParsedEmailID,
-			EmailID:           item.EmailID,
-			ExternalMessageID: item.ExternalMessageID,
-			VendorID:          item.VendorID,
-			VendorName:        item.VendorName,
-			MatchedBy:         item.MatchedBy,
-			BillingNumber:     item.BillingNumber,
-			InvoiceNumber:     cloneString(item.InvoiceNumber),
-			Amount:            item.Amount,
-			Currency:          item.Currency,
-			BillingDate:       cloneTime(item.BillingDate),
-			PaymentCycle:      item.PaymentCycle,
+			ParsedEmailID:      item.ParsedEmailID,
+			EmailID:            item.EmailID,
+			ExternalMessageID:  item.ExternalMessageID,
+			VendorID:           item.VendorID,
+			VendorName:         item.VendorName,
+			MatchedBy:          item.MatchedBy,
+			ProductNameDisplay: cloneString(item.ProductNameDisplay),
+			BillingNumber:      item.BillingNumber,
+			InvoiceNumber:      cloneString(item.InvoiceNumber),
+			Amount:             item.Amount,
+			Currency:           item.Currency,
+			BillingDate:        cloneTime(item.BillingDate),
+			PaymentCycle:       item.PaymentCycle,
 		})
 	}
 

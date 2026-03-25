@@ -450,8 +450,11 @@ func (s *scenarioStubAuthUseCase) Logout(ctx context.Context, req authdomain.Log
 
 var _ authapp.AuthUseCaseInterface = (*scenarioStubAuthUseCase)(nil)
 
-func (s *scenarioStubManualMailWorkflowUseCase) Execute(ctx context.Context, cmd manualapp.Command) (manualapp.Result, error) {
-	return manualapp.Result{}, nil
+func (s *scenarioStubManualMailWorkflowUseCase) Start(ctx context.Context, cmd manualapp.Command) (manualapp.StartResult, error) {
+	return manualapp.StartResult{
+		WorkflowID: "scenario-workflow",
+		Status:     manualapp.WorkflowStatusQueued,
+	}, nil
 }
 
-var _ manualapp.UseCase = (*scenarioStubManualMailWorkflowUseCase)(nil)
+var _ manualapp.StartUseCase = (*scenarioStubManualMailWorkflowUseCase)(nil)

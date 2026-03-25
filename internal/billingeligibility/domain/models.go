@@ -15,6 +15,8 @@ const (
 
 	// ReasonCodeAmountEmpty indicates amount is missing.
 	ReasonCodeAmountEmpty = "amount_empty"
+	// ReasonCodeProductNameEmpty indicates both display/raw product names are missing.
+	ReasonCodeProductNameEmpty = "product_name_empty"
 	// ReasonCodeAmountInvalid indicates amount is invalid.
 	ReasonCodeAmountInvalid = "amount_invalid"
 	// ReasonCodeCurrencyEmpty indicates currency is missing.
@@ -31,18 +33,19 @@ const (
 
 // EligibleItem is a billing-ready item that can be passed to the next stage.
 type EligibleItem struct {
-	ParsedEmailID     uint
-	EmailID           uint
-	ExternalMessageID string
-	VendorID          uint
-	VendorName        string
-	MatchedBy         string
-	BillingNumber     string
-	InvoiceNumber     *string
-	Amount            float64
-	Currency          string
-	BillingDate       *time.Time
-	PaymentCycle      string
+	ParsedEmailID      uint
+	EmailID            uint
+	ExternalMessageID  string
+	VendorID           uint
+	VendorName         string
+	MatchedBy          string
+	ProductNameDisplay *string
+	BillingNumber      string
+	InvoiceNumber      *string
+	Amount             float64
+	Currency           string
+	BillingDate        *time.Time
+	PaymentCycle       string
 }
 
 // IneligibleItem is a business-level non-eligible result with a stable reason code.

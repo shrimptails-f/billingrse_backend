@@ -1,15 +1,15 @@
 # Billing stage 要件定義
 
 ## 背景
-- 現行実装では `mailfetch`・`mailanalysis`・`vendorresolution`・`billingeligibility` が概ね実装済みで、`manualmailworkflow` も `fetch -> analysis -> vendorresolution -> billingeligibility` まで接続済みである。
+- 現行実装では `mailfetch`・`mailanalysis`・`vendorresolution`・`billingeligibility`・`billing` が実装済みで、`manualmailworkflow` も `fetch -> analysis -> vendorresolution -> billingeligibility -> billing` まで接続済みである。
 - `internal/common/domain` には `Billing`, `Money`, `BillingNumber`, `InvoiceNumber`, `PaymentCycle` が既に存在し、DDD 上の請求不変条件も整理済みである。
 - DDD では請求の同一性を `user + vendor + billing_number` で判定し、`billing_date` は任意 (`nil` 許容) としている。
-- 一方で `billing` stage は未実装のため、`billingeligibility` で成立した対象をどの契約で `Billing` に変換し、どう重複保存を防ぐかが未確定である。
+- 本ドキュメントでは、`billingeligibility` で成立した対象をどの契約で `Billing` に変換し、どう重複保存を防ぐかを明文化する。
 
 ## 目的
 - `BillingEligibility` の `eligible_items` から `Billing` を生成し、重複を防ぎながら保存できるようにする。
 - duplicate を top-level error にせず、業務結果として created / duplicate / failure を分けて返せるようにする。
-- `manualmailworkflow` に `billing` stage を追加しても、前段責務を壊さずに end-to-end の結果を返せるようにする。
+- `manualmailworkflow` の `billing` stage を含めても、前段責務を壊さずに end-to-end の結果を返せるようにする。
 
 ## 機能要件
 - `billing` stage は `user_id` と `eligible_items` 一覧を入力として処理できること。
@@ -48,7 +48,7 @@
 - duplicate 判定はアプリケーションの事前確認だけに頼らず、DB 一意制約でも守られること。
 
 ## 制約事項
-- 現行 workflow は `mailanalysis -> vendorresolution -> billingeligibility` を workflow payload で接続している。
+- 現行 workflow は `mailanalysis -> vendorresolution -> billingeligibility -> billing` を workflow payload で接続している。
 - `billing` stage も原則として追加の `ParsedEmail` / `Email` 再読込を前提にせず、`eligible_items` だけで `Billing` 生成を完結できる形にする。
 - `Billing` の参照元は `Email` であり、`ParsedEmail` を参照元として保持しない。
 - `billing_date` は任意であり、メールに存在しないケースを許容する。
@@ -65,7 +65,7 @@
 ## 成功条件
 - `eligible_items` から追加参照なしで `Billing` を生成・保存できる。
 - 同じ入力を再実行しても duplicate として観測でき、二重登録されない。
-- created / duplicate / failure が分離され、workflow / controller がそのまま応答に載せられる。
+- created / duplicate / failure が分離され、workflow result から controller response を組み立てられる。
 - `billing_date == nil` の対象でも、他の要件を満たせば保存できる。
 - `billing` の責務が「生成・重複制御・保存」に限定され、前段責務と混ざらない。
 

@@ -74,6 +74,7 @@ func TestGormBillingRepository_SaveIfAbsent_CreatedAndDuplicate(t *testing.T) {
 	ctx := context.Background()
 	invoiceNumber := "t1234567890123"
 	billingDate := time.Date(2026, 3, 24, 8, 0, 0, 0, time.UTC)
+	productNameDisplay := "Example Product"
 	billing, err := commondomain.NewBilling(
 		1,
 		2,
@@ -84,6 +85,7 @@ func TestGormBillingRepository_SaveIfAbsent_CreatedAndDuplicate(t *testing.T) {
 		" jpy ",
 		&billingDate,
 		" recurring ",
+		&productNameDisplay,
 	)
 	require.NoError(t, err)
 
@@ -102,6 +104,8 @@ func TestGormBillingRepository_SaveIfAbsent_CreatedAndDuplicate(t *testing.T) {
 	require.Equal(t, uint(1), stored.UserID)
 	require.Equal(t, uint(2), stored.VendorID)
 	require.Equal(t, uint(3), stored.EmailID)
+	require.NotNil(t, stored.ProductNameDisplay)
+	require.Equal(t, "Example Product", *stored.ProductNameDisplay)
 	require.Equal(t, "INV-001", stored.BillingNumber)
 	require.NotNil(t, stored.InvoiceNumber)
 	require.Equal(t, "T1234567890123", *stored.InvoiceNumber)
@@ -134,6 +138,7 @@ func TestGormBillingRepository_SaveIfAbsent_ConcurrentDuplicate(t *testing.T) {
 		"USD",
 		nil,
 		"one_time",
+		nil,
 	)
 	require.NoError(t, err)
 

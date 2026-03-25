@@ -16,16 +16,20 @@ func TestUseCaseExecute(t *testing.T) {
 	now := time.Date(2026, 3, 25, 0, 0, 0, 0, time.UTC)
 	amount := 1200.0
 	currency := " jpy "
+	productNameRaw := " Example Product Full Name "
 	billingNumber := " INV-001 "
 	invoiceNumber := " T1234567890123 "
 	paymentCycle := " one time "
+	productNameDisplay := " Example Product "
 	validData := commondomain.ParsedEmail{
-		BillingNumber: &billingNumber,
-		InvoiceNumber: &invoiceNumber,
-		Amount:        &amount,
-		Currency:      &currency,
-		BillingDate:   &now,
-		PaymentCycle:  &paymentCycle,
+		ProductNameDisplay: &productNameDisplay,
+		ProductNameRaw:     &productNameRaw,
+		BillingNumber:      &billingNumber,
+		InvoiceNumber:      &invoiceNumber,
+		Amount:             &amount,
+		Currency:           &currency,
+		BillingDate:        &now,
+		PaymentCycle:       &paymentCycle,
 	}
 
 	missingCurrencyData := validData
@@ -33,6 +37,7 @@ func TestUseCaseExecute(t *testing.T) {
 
 	nilBillingDateData := validData
 	nilBillingDateData.BillingDate = nil
+	nilBillingDateData.ProductNameDisplay = nil
 
 	uc := NewUseCase(logger.NewNop())
 
@@ -107,10 +112,16 @@ func TestUseCaseExecute(t *testing.T) {
 	if first.BillingDate == nil || !first.BillingDate.Equal(now) {
 		t.Fatalf("expected billing date to be preserved, got %+v", first)
 	}
+	if first.ProductNameDisplay == nil || *first.ProductNameDisplay != "Example Product" {
+		t.Fatalf("expected product name display to be preserved, got %+v", first)
+	}
 
 	second := result.EligibleItems[1]
 	if second.BillingDate != nil {
 		t.Fatalf("expected nil billing date to remain allowed, got %+v", second)
+	}
+	if second.ProductNameDisplay == nil || *second.ProductNameDisplay != "Example Product Full Name" {
+		t.Fatalf("expected product name raw to be used as fallback, got %+v", second)
 	}
 
 	if result.IneligibleItems[0].ReasonCode != domain.ReasonCodeCurrencyEmpty {
@@ -130,6 +141,46 @@ func TestUseCaseExecute_InvalidCommand(t *testing.T) {
 	_, err := uc.Execute(context.Background(), Command{})
 	if !errors.Is(err, domain.ErrInvalidCommand) {
 		t.Fatalf("expected ErrInvalidCommand, got %v", err)
+	}
+}
+
+func TestUseCaseExecute_ProductNameMissingBecomesIneligible(t *testing.T) {
+	t.Parallel()
+
+	amount := 1200.0
+	currency := "JPY"
+	billingNumber := "INV-001"
+	paymentCycle := "one_time"
+
+	uc := NewUseCase(logger.NewNop())
+	result, err := uc.Execute(context.Background(), Command{
+		UserID: 10,
+		ResolvedItems: []EligibilityTarget{
+			{
+				ParsedEmailID:     9001,
+				EmailID:           101,
+				ExternalMessageID: "msg-1",
+				VendorID:          3001,
+				VendorName:        "Acme",
+				MatchedBy:         "name_exact",
+				Data: commondomain.ParsedEmail{
+					BillingNumber: &billingNumber,
+					Amount:        &amount,
+					Currency:      &currency,
+					PaymentCycle:  &paymentCycle,
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	if result.EligibleCount != 0 || result.IneligibleCount != 1 {
+		t.Fatalf("expected one ineligible item, got %+v", result)
+	}
+	if result.IneligibleItems[0].ReasonCode != domain.ReasonCodeProductNameEmpty {
+		t.Fatalf("expected product_name_empty, got %+v", result.IneligibleItems[0])
 	}
 }
 

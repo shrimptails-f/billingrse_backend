@@ -16,18 +16,19 @@ import (
 )
 
 type billingRecord struct {
-	ID            uint            `gorm:"column:id;primaryKey;autoIncrement"`
-	UserID        uint            `gorm:"column:user_id;not null;uniqueIndex:uni_billings_user_vendor_number,priority:1"`
-	VendorID      uint            `gorm:"column:vendor_id;not null;uniqueIndex:uni_billings_user_vendor_number,priority:2"`
-	EmailID       uint            `gorm:"column:email_id;not null"`
-	BillingNumber string          `gorm:"column:billing_number;size:255;not null;uniqueIndex:uni_billings_user_vendor_number,priority:3"`
-	InvoiceNumber *string         `gorm:"column:invoice_number;size:14"`
-	Amount        decimal.Decimal `gorm:"column:amount;type:decimal(18,3);not null"`
-	Currency      string          `gorm:"column:currency;type:char(3);not null"`
-	BillingDate   *time.Time      `gorm:"column:billing_date"`
-	PaymentCycle  string          `gorm:"column:payment_cycle;size:32;not null"`
-	CreatedAt     time.Time       `gorm:"column:created_at;not null"`
-	UpdatedAt     time.Time       `gorm:"column:updated_at;not null"`
+	ID                 uint            `gorm:"column:id;primaryKey;autoIncrement"`
+	UserID             uint            `gorm:"column:user_id;not null;uniqueIndex:uni_billings_user_vendor_number,priority:1"`
+	VendorID           uint            `gorm:"column:vendor_id;not null;uniqueIndex:uni_billings_user_vendor_number,priority:2"`
+	EmailID            uint            `gorm:"column:email_id;not null"`
+	ProductNameDisplay *string         `gorm:"column:product_name_display;size:255"`
+	BillingNumber      string          `gorm:"column:billing_number;size:255;not null;uniqueIndex:uni_billings_user_vendor_number,priority:3"`
+	InvoiceNumber      *string         `gorm:"column:invoice_number;size:14"`
+	Amount             decimal.Decimal `gorm:"column:amount;type:decimal(18,3);not null"`
+	Currency           string          `gorm:"column:currency;type:char(3);not null"`
+	BillingDate        *time.Time      `gorm:"column:billing_date"`
+	PaymentCycle       string          `gorm:"column:payment_cycle;size:32;not null"`
+	CreatedAt          time.Time       `gorm:"column:created_at;not null"`
+	UpdatedAt          time.Time       `gorm:"column:updated_at;not null"`
 }
 
 func (billingRecord) TableName() string {
@@ -80,17 +81,18 @@ func (r *GormBillingRepository) SaveIfAbsent(ctx context.Context, billing common
 
 	now := r.clock.Now().UTC()
 	record := billingRecord{
-		UserID:        billing.UserID,
-		VendorID:      billing.VendorID,
-		EmailID:       billing.EmailID,
-		BillingNumber: billing.BillingNumber.String(),
-		InvoiceNumber: invoiceNumberPtr(billing.InvoiceNumber),
-		Amount:        billing.Money.Amount,
-		Currency:      billing.Money.Currency,
-		BillingDate:   cloneBillingDate(billing.BillingDate),
-		PaymentCycle:  billing.PaymentCycle.String(),
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		UserID:             billing.UserID,
+		VendorID:           billing.VendorID,
+		EmailID:            billing.EmailID,
+		ProductNameDisplay: cloneOptionalString(billing.ProductNameDisplay),
+		BillingNumber:      billing.BillingNumber.String(),
+		InvoiceNumber:      invoiceNumberPtr(billing.InvoiceNumber),
+		Amount:             billing.Money.Amount,
+		Currency:           billing.Money.Currency,
+		BillingDate:        cloneBillingDate(billing.BillingDate),
+		PaymentCycle:       billing.PaymentCycle.String(),
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 
 	tx := r.db.WithContext(ctx).Clauses(clause.OnConflict{
@@ -162,5 +164,13 @@ func cloneBillingDate(value *time.Time) *time.Time {
 		return nil
 	}
 	cloned := value.UTC()
+	return &cloned
+}
+
+func cloneOptionalString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
 	return &cloned
 }

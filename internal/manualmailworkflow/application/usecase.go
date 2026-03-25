@@ -146,18 +146,19 @@ type VendorResolutionResult struct {
 
 // EligibleItem は billingeligibility stage で請求成立と判定された 1 件分の結果。
 type EligibleItem struct {
-	ParsedEmailID     uint
-	EmailID           uint
-	ExternalMessageID string
-	VendorID          uint
-	VendorName        string
-	MatchedBy         string
-	BillingNumber     string
-	InvoiceNumber     *string
-	Amount            float64
-	BillingDate       *time.Time
-	Currency          string
-	PaymentCycle      string
+	ParsedEmailID      uint
+	EmailID            uint
+	ExternalMessageID  string
+	VendorID           uint
+	VendorName         string
+	MatchedBy          string
+	ProductNameDisplay *string
+	BillingNumber      string
+	InvoiceNumber      *string
+	Amount             float64
+	BillingDate        *time.Time
+	Currency           string
+	PaymentCycle       string
 }
 
 // IneligibleItem は billingeligibility stage の業務上の非成立結果。

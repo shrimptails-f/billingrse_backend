@@ -48,7 +48,21 @@ func ProvideManualMailWorkflowDependencies(container *dig.Container) {
 	})
 
 	_ = container.Provide(func(
-		usecase manualapp.UseCase,
+		runner manualapp.UseCase,
+		log *logger.Logger,
+	) *manualinfra.InProcessWorkflowDispatcher {
+		return manualinfra.NewInProcessWorkflowDispatcher(runner, log)
+	})
+
+	_ = container.Provide(func(
+		dispatcher *manualinfra.InProcessWorkflowDispatcher,
+		log *logger.Logger,
+	) manualapp.StartUseCase {
+		return manualapp.NewStartUseCase(dispatcher, log)
+	})
+
+	_ = container.Provide(func(
+		usecase manualapp.StartUseCase,
 		log *logger.Logger,
 	) *manualpresentation.Controller {
 		return manualpresentation.NewController(usecase, log)
