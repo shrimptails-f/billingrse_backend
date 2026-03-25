@@ -14,6 +14,8 @@ classDiagram
   class MailAccountConnection["メールアカウント連携（MailAccountConnection）"]
   class MailFetch["メール取得（MailFetch）"]
   class ManualMailFetch["手動メール取得（ManualMailFetch）"]
+  class ManualMailWorkflowHistory["手動履歴（ManualMailWorkflowHistory）"]
+  class ManualMailWorkflowFailure["手動履歴失敗（ManualMailWorkflowFailure）"]
   class MailFetchBatch["メール取得バッチ（MailFetchBatch）"]
   class BatchSetting["バッチ設定（BatchSetting）"]
   class FetchCondition["取得条件（FetchCondition）"]
@@ -66,6 +68,7 @@ classDiagram
   User "1" --> "0..*" MailAccountConnection : 連携
   User "1" --> "0..*" EmailVerificationToken : 認証
   User "1" --> "0..*" BatchSetting : 所有
+  User "1" --> "0..*" ManualMailWorkflowHistory : 所有
   User "1" --> "0..*" Email : 所有
   User "1" --> "0..*" Billing : 所有
 
@@ -77,6 +80,9 @@ classDiagram
 
   MailFetchBatch "1" --> "1" BatchSetting : 設定
   BatchSetting "1" *-- "1" FetchCondition : 取得条件
+  ManualMailWorkflowHistory --> MailAccountConnection : 実行対象
+  ManualMailWorkflowHistory *-- "1" FetchCondition : 実行条件
+  ManualMailWorkflowHistory *-- "0..*" ManualMailWorkflowFailure : failure
 
   ManualMailFetch --> Email : 取得
   MailFetchBatch --> Email : 取得
@@ -101,7 +107,7 @@ classDiagram
 | カテゴリ名 | 言語 |
 | --- | --- |
 | [ユーザー系](user.md) | ユーザー（User）,ログイン（Login）,ログアウト（Logout）,ユーザー名（UserName）,メールアドレス（EmailAddress）,パスワード（Password）,パスワードハッシュ（PasswordHash）,メール認証（EmailVerification）,メール認証トークン（EmailVerificationToken） |
-| [メール連携/取得系](mail-integration-fetch.md) | メールサービス（MailService）,メールアカウント連携（MailAccountConnection）,メール取得（MailFetch）,手動メール取得（ManualMailFetch）,メール取得バッチ（MailFetchBatch）,バッチ設定（BatchSetting）,取得条件（FetchCondition） |
+| [メール連携/取得系](mail-integration-fetch.md) | メールサービス（MailService）,メールアカウント連携（MailAccountConnection）,メール取得（MailFetch）,手動メール取得（ManualMailFetch）,手動履歴（ManualMailWorkflowHistory）,手動履歴失敗（ManualMailWorkflowFailure）,メール取得バッチ（MailFetchBatch）,バッチ設定（BatchSetting）,取得条件（FetchCondition） |
 | [メール/解析系](mail-analysis.md) | メール（Email）,メール解析結果（ParsedEmail）,請求成立判定（BillingEligibility） |
 | [請求/支払先系](billing-vendor.md) | 支払先（Vendor）,支払先解決（VendorResolution）,請求（Billing）,支払周期（PaymentCycle）,金額（Money）,請求番号（BillingNumber）,インボイス番号（InvoiceNumber） |
 
@@ -117,6 +123,9 @@ classDiagram
   ├─ 所有
   │   └─ バッチ設定
   │       └─ 取得条件
+  ├─ 所有
+  │   └─ 手動履歴
+  │       └─ 手動履歴失敗
   ├─ 所有
   │   └─ メール
   │       └─ メール解析結果
@@ -135,6 +144,10 @@ classDiagram
 
 請求成立判定
   └─ 支払先解決の結果を利用する
+
+手動履歴
+  ├─ 実行対象として メールアカウント連携 を持つ
+  └─ failure として 手動履歴失敗 を持つ
 ```
 
 ## 意図的に未定義としている言葉

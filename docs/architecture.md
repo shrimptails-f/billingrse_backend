@@ -79,11 +79,11 @@
           - `vendorresolution/application`: alias lookup、必要なら canonical Vendor 自動登録
           - `billingeligibility/application`: `ParsedEmail` と解決済み Vendor から Billing 成立可否を評価
           - `billing/application`: eligible item から Billing 生成、idempotent 保存、created / duplicate / failure 集約
-          - `manualmailworkflow/application`: workflow 受付、background 実行
+          - `manualmailworkflow/application`: workflow 受付、background 実行、履歴集約
       - 注意点:
         - `POST /api/v1/manual-mail-workflows` は短時間で `202 Accepted` を返し、実処理はバックグラウンドで進める。
-        - workflow 結果保存用の履歴テーブル詳細は今後検討とし、現時点では TODO として扱う。
-        - stage 単位の technical failure は `Failures` に集約し、業務上の unresolved は failure と分離する。
+        - workflow 履歴は `manual_mail_workflow_histories` と `manual_mail_workflow_stage_failures` に保存し、header には件数、child table には失敗理由を保持する。
+        - stage の元 result では technical failure と unresolved / ineligible / duplicate を分けて扱うが、workflow 履歴ではユーザー表示用の failure count / reason_code 側に集約する。
     </application>
 
     <domain>
@@ -145,8 +145,8 @@
     - `billing`:
       - `BillingEligibility` で成立した対象から `Billing` を生成し、idempotent に保存する。
     - 履歴 / 状態参照:
-      - 現時点の公開 API は `POST /api/v1/manual-mail-workflows` の受付までで、`workflow_id` は background 実行の相関 ID として返す。
-      - 履歴テーブル設計と状態参照 API は TODO とし、永続化スキーマ詳細は後続で詰める。
+      - `manual_mail_workflow_histories` が `workflow_id` ごとの受付条件、状態、stage ごとの成功件数 / 失敗件数を保持する。
+      - `manual_mail_workflow_stage_failures` が `stage` / `reason_code` / `external_message_id` を保持し、将来の `GET /api/v1/manual-mail-workflows/:workflow_id` は両テーブルから状態を返す前提で設計する。
   </workflow>
 
   <context_management>

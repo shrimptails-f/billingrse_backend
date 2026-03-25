@@ -49,6 +49,38 @@
 ### ルール
 - Email の意味解釈は持たない
 
+## 手動履歴（ManualMailWorkflowHistory）
+
+### 定義
+- 手動メール取得 workflow 1回分の受付条件・進行状態・stage 集計を保持する履歴
+
+### 説明
+- ユーザーが所有する集約ルート
+- 実行対象のメールアカウント連携と、受付時点の取得条件を持つ
+- stage ごとの成功件数 / 失敗件数と、子としての failure 記録を持つ
+- `Email` / `ParsedEmail` / `Billing` の正本ではなく、workflow の監査と参照のために保持する
+
+### ルール
+- 手動履歴が集約ルートである
+- 手動履歴失敗は必ず手動履歴にぶら下がる
+- 手動履歴は workflow 単位の履歴であり、手動メール取得そのものとは区別する
+- 業務上の未解決・不成立・重複も、履歴上は failure として記録できる
+
+## 手動履歴失敗（ManualMailWorkflowFailure）
+
+### 定義
+- 手動履歴にぶら下がる stage 単位の failure 記録
+
+### 説明
+- `stage`、`reason_code`、ユーザー表示用 `message`、必要に応じて `external_message_id` を持つ
+- technical failure だけでなく、未解決・不成立・重複のような業務結果も履歴表現として保持できる
+
+### ルール
+- 単独の集約にしない
+- 手動履歴の外でライフサイクルを持たない
+- 同一手動履歴内では `stage + external_message_id + reason_code` で識別する
+- 同一手動履歴内で同一 `stage + external_message_id + reason_code` を重複させない
+
 ## メール取得バッチ（MailFetchBatch）
 
 ### 定義
