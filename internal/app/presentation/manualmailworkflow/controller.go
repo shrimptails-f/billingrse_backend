@@ -65,6 +65,7 @@ type workflowHistoryItemResponse struct {
 	CurrentStage       *string              `json:"current_stage"`
 	QueuedAt           time.Time            `json:"queued_at"`
 	FinishedAt         *time.Time           `json:"finished_at"`
+	ErrorMessage       *string              `json:"error_message"`
 	Fetch              stageSummaryResponse `json:"fetch"`
 	Analysis           stageSummaryResponse `json:"analysis"`
 	VendorResolution   stageSummaryResponse `json:"vendor_resolution"`
@@ -252,6 +253,7 @@ func toWorkflowHistoryItemResponse(item manualapp.WorkflowHistoryListItem) workf
 		CurrentStage:       cloneOptionalString(item.CurrentStage),
 		QueuedAt:           item.QueuedAt,
 		FinishedAt:         cloneOptionalTime(item.FinishedAt),
+		ErrorMessage:       cloneOptionalString(item.ErrorMessage),
 		Fetch:              toStageSummaryResponse(item.Fetch),
 		Analysis:           toStageSummaryResponse(item.Analysis),
 		VendorResolution:   toStageSummaryResponse(item.VendorResolution),

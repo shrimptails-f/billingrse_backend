@@ -65,6 +65,7 @@
       "current_stage": null,
       "queued_at": "2026-03-25T17:00:00Z",
       "finished_at": "2026-03-25T17:00:12Z",
+      "error_message": "Gmail連携が無効になっています。再連携してください。",
       "fetch": {
         "success_count": 14,
         "business_failure_count": 0,
@@ -156,6 +157,9 @@
   - workflow 受付時刻
 - `finished_at`
   - terminal status になった時刻。未完了時は `null`
+- `error_message`
+  - workflow header に保存された top-level error message
+  - top-level error がない場合は `null`
 - `fetch`, `analysis`, `vendor_resolution`, `billing_eligibility`, `billing`
   - stage ごとの件数と failure 明細
 - `failures`
@@ -256,6 +260,7 @@ SELECT
   current_stage,
   queued_at,
   finished_at,
+  error_message,
   fetch_success_count,
   fetch_business_failure_count,
   fetch_technical_failure_count,
@@ -352,6 +357,7 @@ type WorkflowHistoryListItem struct {
     CurrentStage       *string
     QueuedAt           time.Time
     FinishedAt         *time.Time
+    ErrorMessage       *string
     Fetch              StageSummaryView
     Analysis           StageSummaryView
     VendorResolution   StageSummaryView

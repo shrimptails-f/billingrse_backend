@@ -39,6 +39,7 @@ func TestListUseCase_List_NormalizesAndDefaultsQuery(t *testing.T) {
 						Until:             time.Date(2026, 3, 25, 0, 0, 0, 0, time.UTC),
 						Status:            WorkflowStatusPartialSuccess,
 						QueuedAt:          time.Date(2026, 3, 25, 9, 0, 0, 0, time.UTC),
+						ErrorMessage:      stringPtr("Gmail連携が無効になっています。再連携してください。"),
 						Fetch: StageSummaryView{
 							Failures: []StageFailureView{},
 						},
@@ -76,6 +77,9 @@ func TestListUseCase_List_NormalizesAndDefaultsQuery(t *testing.T) {
 	}
 	if len(result.Items) != 1 || result.Items[0].WorkflowID != "wf-1" {
 		t.Fatalf("unexpected items: %+v", result.Items)
+	}
+	if result.Items[0].ErrorMessage == nil || *result.Items[0].ErrorMessage != "Gmail連携が無効になっています。再連携してください。" {
+		t.Fatalf("unexpected error message: %+v", result.Items[0].ErrorMessage)
 	}
 }
 

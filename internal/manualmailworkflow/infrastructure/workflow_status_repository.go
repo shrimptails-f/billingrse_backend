@@ -25,6 +25,7 @@ type manualMailWorkflowHistoryRecord struct {
 	CurrentStage                            *string    `gorm:"column:current_stage;size:32"`
 	QueuedAt                                time.Time  `gorm:"column:queued_at;not null;index:idx_manual_mail_workflow_histories_user_queued_at,priority:2;index:idx_manual_mail_workflow_histories_user_status_queued_at,priority:3"`
 	FinishedAt                              *time.Time `gorm:"column:finished_at"`
+	ErrorMessage                            *string    `gorm:"column:error_message;type:text"`
 	FetchSuccessCount                       int        `gorm:"column:fetch_success_count;not null;default:0"`
 	FetchBusinessFailureCount               int        `gorm:"column:fetch_business_failure_count;not null;default:0"`
 	FetchTechnicalFailureCount              int        `gorm:"column:fetch_technical_failure_count;not null;default:0"`
@@ -161,6 +162,7 @@ func (r *GormWorkflowStatusRepository) MarkRunning(ctx context.Context, historyI
 		Updates(map[string]interface{}{
 			"status":        manualapp.WorkflowStatusRunning,
 			"current_stage": currentStage,
+			"error_message": nil,
 			"updated_at":    now,
 		})
 	if tx.Error != nil {
@@ -305,17 +307,28 @@ func (r *GormWorkflowStatusRepository) List(ctx context.Context, query manualapp
 
 // Complete finalizes a workflow as succeeded or partial_success.
 func (r *GormWorkflowStatusRepository) Complete(ctx context.Context, historyID uint64, status string, finishedAt time.Time) error {
-	return r.updateTerminalStatus(ctx, historyID, status, nil, finishedAt, "complete")
+	return r.updateTerminalStatus(ctx, historyID, status, nil, finishedAt, nil, "complete")
 }
 
 // Fail finalizes a workflow as failed while preserving the failed stage when present.
-func (r *GormWorkflowStatusRepository) Fail(ctx context.Context, historyID uint64, currentStage string, finishedAt time.Time) error {
+func (r *GormWorkflowStatusRepository) Fail(
+	ctx context.Context,
+	historyID uint64,
+	currentStage string,
+	finishedAt time.Time,
+	errorMessage string,
+) error {
 	currentStage = strings.TrimSpace(currentStage)
 	var stagePtr *string
 	if currentStage != "" {
 		stagePtr = &currentStage
 	}
-	return r.updateTerminalStatus(ctx, historyID, manualapp.WorkflowStatusFailed, stagePtr, finishedAt, "fail")
+	errorMessage = strings.TrimSpace(errorMessage)
+	var errorMessagePtr *string
+	if errorMessage != "" {
+		errorMessagePtr = &errorMessage
+	}
+	return r.updateTerminalStatus(ctx, historyID, manualapp.WorkflowStatusFailed, stagePtr, finishedAt, errorMessagePtr, "fail")
 }
 
 func (r *GormWorkflowStatusRepository) updateTerminalStatus(
@@ -324,6 +337,7 @@ func (r *GormWorkflowStatusRepository) updateTerminalStatus(
 	status string,
 	currentStage *string,
 	finishedAt time.Time,
+	errorMessage *string,
 	operation string,
 ) error {
 	if ctx == nil {
@@ -343,6 +357,7 @@ func (r *GormWorkflowStatusRepository) updateTerminalStatus(
 			"status":        status,
 			"current_stage": currentStage,
 			"finished_at":   &finishedAt,
+			"error_message": cloneOptionalString(errorMessage),
 			"updated_at":    now,
 		})
 	if tx.Error != nil {
@@ -413,6 +428,7 @@ func buildWorkflowHistoryListItem(
 		CurrentStage:      cloneOptionalString(record.CurrentStage),
 		QueuedAt:          record.QueuedAt.UTC(),
 		FinishedAt:        cloneOptionalTime(record.FinishedAt),
+		ErrorMessage:      cloneOptionalString(record.ErrorMessage),
 		Fetch: manualapp.StageSummaryView{
 			SuccessCount:          record.FetchSuccessCount,
 			BusinessFailureCount:  record.FetchBusinessFailureCount,

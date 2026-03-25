@@ -181,6 +181,7 @@ classDiagram
 - 手動メール取得 workflow 1回分の受付・進行・結果サマリを表す集約ルート
 - 実行対象のメールアカウント連携と受付時点の手動メール取得条件を保持する
 - stage ごとの成功件数 / 失敗件数と failure を保持する
+- workflow 全体を失敗させた top-level error message を親に任意で保持できる
 - `Email` / `ParsedEmail` / `Billing` の正本を置き換えない
 
 #### 手動履歴失敗（ManualMailWorkflowFailure）

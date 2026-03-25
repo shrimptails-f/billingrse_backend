@@ -82,7 +82,7 @@
           - `manualmailworkflow/application`: workflow 受付、background 実行、履歴集約
       - 注意点:
         - `POST /api/v1/manual-mail-workflows` は短時間で `202 Accepted` を返し、実処理はバックグラウンドで進める。
-        - workflow 履歴は `manual_mail_workflow_histories` と `manual_mail_workflow_stage_failures` に保存し、header には件数、child table には失敗理由を保持する。
+        - workflow 履歴は `manual_mail_workflow_histories` と `manual_mail_workflow_stage_failures` に保存し、header には件数と top-level error message、child table には stage failure 理由を保持する。
         - stage の元 result では technical failure と unresolved / ineligible / duplicate を分けて扱い、workflow 履歴 header でも `*_business_failure_count` / `*_technical_failure_count` として分離して保持する。
     </application>
 

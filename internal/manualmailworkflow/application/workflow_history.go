@@ -1,7 +1,10 @@
 package application
 
 import (
+	mfdomain "business/internal/mailfetch/domain"
 	"context"
+	"errors"
+	"strings"
 	"time"
 )
 
@@ -70,7 +73,73 @@ type WorkflowStatusRepository interface {
 	MarkRunning(ctx context.Context, historyID uint64, currentStage string) error
 	SaveStageProgress(ctx context.Context, progress StageProgress) error
 	Complete(ctx context.Context, historyID uint64, status string, finishedAt time.Time) error
-	Fail(ctx context.Context, historyID uint64, currentStage string, finishedAt time.Time) error
+	Fail(ctx context.Context, historyID uint64, currentStage string, finishedAt time.Time, errorMessage string) error
+}
+
+func localizedWorkflowErrorMessage(currentStage string, err error) string {
+	if err == nil {
+		return "メール取得ワークフローの実行に失敗しました。"
+	}
+
+	switch strings.TrimSpace(currentStage) {
+	case "":
+		return "メール取得ワークフローの起動に失敗しました。"
+	case workflowStageFetch:
+		return localizedFetchWorkflowErrorMessage(err)
+	case workflowStageAnalysis:
+		return "メール解析に失敗しました。"
+	case workflowStageVendorResolution:
+		return "支払先解決に失敗しました。"
+	case workflowStageBillingEligibility:
+		return "請求成立判定に失敗しました。"
+	case workflowStageBilling:
+		return "請求作成に失敗しました。"
+	default:
+		return "メール取得ワークフローの実行に失敗しました。"
+	}
+}
+
+func localizedFetchWorkflowErrorMessage(err error) string {
+	raw := strings.TrimSpace(err.Error())
+	switch {
+	case errors.Is(err, mfdomain.ErrConnectionNotFound):
+		return "指定したGmail連携が見つかりませんでした。"
+	case errors.Is(err, mfdomain.ErrConnectionUnavailable):
+		return "指定したGmail連携は利用できません。再連携をおねがいします。"
+	case errors.Is(err, mfdomain.ErrProviderUnsupported):
+		return "指定したメール連携サービスには対応していません。"
+	case errors.Is(err, mfdomain.ErrProviderLabelNotFound):
+		return "指定したGmailラベルが見つかりませんでした。"
+	case errors.Is(err, mfdomain.ErrProviderListFailed):
+		return "Gmailからメール一覧を取得できませんでした。時間をおいて再試行してください。"
+	case errors.Is(err, mfdomain.ErrProviderSessionBuildFailed):
+		return localizedGmailSessionBuildErrorMessage(raw)
+	case strings.Contains(raw, "failed to decrypt access token"),
+		strings.Contains(raw, "failed to decrypt refresh token"),
+		strings.Contains(raw, "failed to load gmail oauth config"),
+		strings.Contains(raw, "failed to create gmail service"):
+		return localizedGmailSessionBuildErrorMessage(raw)
+	default:
+		return "メール取得に失敗しました。"
+	}
+}
+
+func localizedGmailSessionBuildErrorMessage(raw string) string {
+	raw = strings.TrimSpace(raw)
+	switch {
+	case strings.Contains(raw, "failed to decrypt access token"):
+		return "Gmail連携のアクセストークンを復号できませんでした。再連携をおねがいします。"
+	case strings.Contains(raw, "failed to decrypt refresh token"):
+		return "Gmail連携のリフレッシュトークンを復号できませんでした。再連携をおねがいします。"
+	case strings.Contains(raw, "failed to load gmail oauth config"):
+		return "Gmail OAuth設定の読み込みに失敗しました。システム設定を確認してください。"
+	case strings.Contains(raw, "failed to create gmail service") && strings.Contains(raw, "invalid_grant"):
+		return "Gmail連携が無効になっています。再連携してください。"
+	case strings.Contains(raw, "failed to create gmail service"):
+		return "Gmail連携の初期化に失敗しました。連携設定を確認してください。"
+	default:
+		return "Gmail連携の初期化に失敗しました。連携設定を確認してください。"
+	}
 }
 
 func buildFetchStageProgress(historyID uint64, result FetchResult) StageProgress {

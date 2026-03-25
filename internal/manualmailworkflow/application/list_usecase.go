@@ -48,6 +48,7 @@ type WorkflowHistoryListItem struct {
 	CurrentStage       *string
 	QueuedAt           time.Time
 	FinishedAt         *time.Time
+	ErrorMessage       *string
 	Fetch              StageSummaryView
 	Analysis           StageSummaryView
 	VendorResolution   StageSummaryView

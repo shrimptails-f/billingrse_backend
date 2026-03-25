@@ -21,6 +21,7 @@ type workflowHistorySeed struct {
 	CurrentStage                            *string
 	QueuedAt                                time.Time
 	FinishedAt                              *time.Time
+	ErrorMessage                            *string
 	FetchSuccessCount                       int
 	FetchBusinessFailureCount               int
 	FetchTechnicalFailureCount              int
@@ -246,6 +247,7 @@ func CreateManualMailWorkflowHistories(tx *gorm.DB) error {
 			Status:                        "failed",
 			QueuedAt:                      time.Date(2026, 3, 25, 11, 20, 0, 0, time.UTC),
 			FinishedAt:                    &finishedAdminFailed,
+			ErrorMessage:                  stringPtr("AI 解析がタイムアウトし workflow を異常終了しました。"),
 			FetchSuccessCount:             3,
 			FetchTechnicalFailureCount:    1,
 			AnalysisSuccessCount:          2,
@@ -302,6 +304,7 @@ func CreateManualMailWorkflowHistories(tx *gorm.DB) error {
 			CurrentStage:                            cloneSeedString(seed.CurrentStage),
 			QueuedAt:                                seed.QueuedAt.UTC(),
 			FinishedAt:                              cloneSeedTime(seed.FinishedAt),
+			ErrorMessage:                            cloneSeedString(seed.ErrorMessage),
 			FetchSuccessCount:                       seed.FetchSuccessCount,
 			FetchBusinessFailureCount:               seed.FetchBusinessFailureCount,
 			FetchTechnicalFailureCount:              seed.FetchTechnicalFailureCount,
@@ -356,6 +359,7 @@ func upsertWorkflowHistoryByWorkflowID(tx *gorm.DB, record model.ManualMailWorkf
 			"current_stage":                    record.CurrentStage,
 			"queued_at":                        record.QueuedAt,
 			"finished_at":                      record.FinishedAt,
+			"error_message":                    record.ErrorMessage,
 			"fetch_success_count":              record.FetchSuccessCount,
 			"fetch_business_failure_count":     record.FetchBusinessFailureCount,
 			"fetch_technical_failure_count":    record.FetchTechnicalFailureCount,

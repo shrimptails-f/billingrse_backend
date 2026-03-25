@@ -282,7 +282,7 @@ type WorkflowStatusRepository interface {
 	MarkRunning(ctx context.Context, historyID uint64, currentStage string) error
 	SaveStageProgress(ctx context.Context, progress StageProgress) error
 	Complete(ctx context.Context, historyID uint64, status string, finishedAt time.Time) error
-	Fail(ctx context.Context, historyID uint64, currentStage string, finishedAt time.Time) error
+	Fail(ctx context.Context, historyID uint64, currentStage string, finishedAt time.Time, errorMessage string) error
 	FindByWorkflowID(ctx context.Context, userID uint, workflowID string) (GetStatusResult, error)
 }
 ```
@@ -292,7 +292,7 @@ type WorkflowStatusRepository interface {
 - `SaveStageProgress` は header table の count 更新と failure row insert を同一 transaction で行う。
 - failure row は stage から返された明細をそのまま insert し、workflow 層では dedupe しない。
 - `FailureCount` と `FailureRecords` の整合は各 stage が保証する。
-- `Fail` は途中までの count / failure rows を残したまま `failed` へ遷移させる。
+- `Fail` は途中までの count / failure rows を残したまま `failed` へ遷移させ、workflow header の `error_message` に top-level error を保存する。
 - `FindByWorkflowID` は header と failure rows から API 向け DTO を再構築する。
 
 ### 3.2 `manual_mail_workflow_histories`
@@ -311,6 +311,7 @@ CREATE TABLE `manual_mail_workflow_histories` (
   `current_stage` varchar(32) NULL,
   `queued_at` datetime(3) NOT NULL,
   `finished_at` datetime(3) NULL,
+  `error_message` text NULL,
   `fetch_success_count` int NOT NULL DEFAULT 0,
   `fetch_business_failure_count` int NOT NULL DEFAULT 0,
   `fetch_technical_failure_count` int NOT NULL DEFAULT 0,
@@ -454,7 +455,7 @@ CREATE TABLE `manual_mail_workflow_stage_failures` (
 
 - panic は recover してログへ出すだけで終わらせず、履歴も `failed` に更新する。
 - top-level error が返った stage では、それ以前に保存済みの stage progress は残す。
-- `Fail` では `finished_at` を保存し、`current_stage` は失敗した stage 名を残す。
+- `Fail` では `finished_at` と `error_message` を保存し、`current_stage` は失敗した stage 名を残す。
 
 ## 7. dispatcher / adapter 設計
 

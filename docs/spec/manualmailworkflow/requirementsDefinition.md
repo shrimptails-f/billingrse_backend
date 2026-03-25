@@ -78,7 +78,7 @@ flowchart LR
 - `FR-6`
   - `vendorresolution` の未解決、`billingeligibility` の不成立、`billing` の重複は technical failure とは分けて扱う。
 - `FR-7`
-  - stage top-level error や panic が起きても、それまでに保存済みの件数と failure reason は失わない。
+  - stage top-level error や panic が起きても、それまでに保存済みの件数と failure reason は失わず、workflow header に top-level error message を残す。
 - `FR-8`
   - 将来の状態取得 API は `workflow_id` を受け取り、workflow の現在状態または最終結果を返せるようにする。
 - `FR-9`

@@ -11,6 +11,7 @@ CREATE TABLE `manual_mail_workflow_histories` (
   `current_stage` varchar(32) NULL,
   `queued_at` datetime(3) NOT NULL,
   `finished_at` datetime(3) NULL,
+  `error_message` text NULL,
   `fetch_success_count` int NOT NULL DEFAULT 0,
   `fetch_business_failure_count` int NOT NULL DEFAULT 0,
   `fetch_technical_failure_count` int NOT NULL DEFAULT 0,
