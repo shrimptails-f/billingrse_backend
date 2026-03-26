@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -119,6 +120,12 @@ type useCase struct {
 	log             logger.Interface
 }
 
+type analysisExecutionResult struct {
+	email  EmailForAnalysisTarget
+	output domain.AnalysisOutput
+	err    error
+}
+
 // NewUseCase は mailanalysis の usecase を生成する。
 func NewUseCase(
 	clock timewrapper.ClockInterface,
@@ -152,13 +159,28 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 	if len(cmd.Emails) == 0 {
 		return Result{}, nil
 	}
-	if err := uc.validateDependencies(); err != nil {
-		return Result{}, err
-	}
 
 	reqLog := uc.log
 	if withContext, err := uc.log.WithContext(ctx); err == nil {
 		reqLog = withContext
+	}
+
+	result := Result{}
+	validEmails, failures := normalizeAndValidateEmails(cmd.Emails)
+	result.Failures = append(result.Failures, failures...)
+
+	if len(validEmails) == 0 {
+		reqLog.Info("email_analysis_succeeded",
+			logger.UserID(cmd.UserID),
+			logger.Int("input_email_count", len(cmd.Emails)),
+			logger.Int("parsed_email_count", result.ParsedEmailCount),
+			logger.Int("failure_count", len(result.Failures)),
+		)
+		return result, nil
+	}
+
+	if err := uc.validateDependencies(); err != nil {
+		return Result{}, err
 	}
 
 	analyzer, err := uc.analyzerFactory.Create(ctx, AnalyzerSpec{UserID: cmd.UserID})
@@ -166,33 +188,21 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 		return Result{}, fmt.Errorf("failed to create analyzer: %w", err)
 	}
 
-	result := Result{}
-	for _, email := range cmd.Emails {
-		email = email.Normalize()
-		if err := email.Validate(); err != nil {
-			result.Failures = append(result.Failures, domain.MessageFailure{
-				EmailID:           email.EmailID,
-				ExternalMessageID: email.ExternalMessageID,
-				Stage:             domain.FailureStageNormalizeInput,
-				Code:              domain.FailureCodeInvalidEmailInput,
-				Message:           messageForInvalidEmailInput(email),
-			})
-			continue
-		}
-
-		output, err := analyzer.Analyze(ctx, email)
-		if err != nil {
+	analyzedResults := analyzeEmailsConcurrently(ctx, analyzer, validEmails)
+	for _, analyzed := range analyzedResults {
+		email := analyzed.email
+		if analyzed.err != nil {
 			reqLog.Error("email_analysis_failed",
 				logger.UserID(cmd.UserID),
 				logger.Uint("email_id", email.EmailID),
 				logger.String("external_message_id", email.ExternalMessageID),
-				logger.Err(err),
+				logger.Err(analyzed.err),
 			)
-			result.Failures = append(result.Failures, failureForAnalyzeError(email, err))
+			result.Failures = append(result.Failures, failureForAnalyzeError(email, analyzed.err))
 			continue
 		}
 
-		output = output.Normalize()
+		output := analyzed.output.Normalize()
 		output.ParsedEmails = applyFallbackBillingNumbers(output.ParsedEmails, email.BodyDigest)
 
 		if len(output.ParsedEmails) == 0 {
@@ -268,6 +278,48 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 	)
 
 	return result, nil
+}
+
+func normalizeAndValidateEmails(emails []EmailForAnalysisTarget) ([]EmailForAnalysisTarget, []domain.MessageFailure) {
+	validEmails := make([]EmailForAnalysisTarget, 0, len(emails))
+	failures := make([]domain.MessageFailure, 0)
+	for _, email := range emails {
+		email = email.Normalize()
+		if err := email.Validate(); err != nil {
+			failures = append(failures, domain.MessageFailure{
+				EmailID:           email.EmailID,
+				ExternalMessageID: email.ExternalMessageID,
+				Stage:             domain.FailureStageNormalizeInput,
+				Code:              domain.FailureCodeInvalidEmailInput,
+				Message:           messageForInvalidEmailInput(email),
+			})
+			continue
+		}
+		validEmails = append(validEmails, email)
+	}
+	return validEmails, failures
+}
+
+func analyzeEmailsConcurrently(ctx context.Context, analyzer Analyzer, emails []EmailForAnalysisTarget) []analysisExecutionResult {
+	results := make([]analysisExecutionResult, len(emails))
+
+	var wg sync.WaitGroup
+	wg.Add(len(emails))
+	for idx, email := range emails {
+		go func(idx int, email EmailForAnalysisTarget) {
+			defer wg.Done()
+
+			output, err := analyzer.Analyze(ctx, email)
+			results[idx] = analysisExecutionResult{
+				email:  email,
+				output: output,
+				err:    err,
+			}
+		}(idx, email)
+	}
+	wg.Wait()
+
+	return results
 }
 
 func (uc *useCase) validateDependencies() error {

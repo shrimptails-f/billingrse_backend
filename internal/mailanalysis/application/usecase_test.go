@@ -262,6 +262,119 @@ func TestUseCaseExecute_PartialFailuresContinue(t *testing.T) {
 	}
 }
 
+func TestUseCaseExecute_AllInvalidEmailsSkipsAnalyzerAndReturnsFailures(t *testing.T) {
+	t.Parallel()
+
+	factoryCalled := false
+	uc := NewUseCase(
+		&mockClock{now: time.Date(2026, 3, 24, 11, 30, 0, 0, time.UTC)},
+		&mockAnalyzerFactory{
+			create: func(ctx context.Context, spec AnalyzerSpec) (Analyzer, error) {
+				factoryCalled = true
+				return &mockAnalyzer{
+					analyze: func(ctx context.Context, email EmailForAnalysisTarget) (domain.AnalysisOutput, error) {
+						t.Fatal("analyze should not be called")
+						return domain.AnalysisOutput{}, nil
+					},
+				}, nil
+			},
+		},
+		&mockParsedEmailRepository{
+			saveAll: func(ctx context.Context, input domain.SaveInput) ([]domain.ParsedEmailRecord, error) {
+				t.Fatal("repository should not be called")
+				return nil, nil
+			},
+		},
+		logger.NewNop(),
+	)
+
+	result, err := uc.Execute(context.Background(), Command{
+		UserID: 9,
+		Emails: []EmailForAnalysisTarget{
+			{EmailID: 1, ExternalMessageID: "msg-invalid-1", Body: "   "},
+			{EmailID: 2, ExternalMessageID: "   ", Body: "body"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if factoryCalled {
+		t.Fatal("factory should not be called when all emails are invalid")
+	}
+	if result.ParsedEmailCount != 0 || len(result.ParsedEmailIDs) != 0 || len(result.ParsedEmails) != 0 {
+		t.Fatalf("unexpected parsed email result: %+v", result)
+	}
+	if len(result.Failures) != 2 {
+		t.Fatalf("expected 2 failures, got %+v", result.Failures)
+	}
+	if result.Failures[0].EmailID != 1 || result.Failures[1].EmailID != 2 {
+		t.Fatalf("unexpected failure order: %+v", result.Failures)
+	}
+}
+
+func TestUseCaseExecute_AnalyzeCompletesOutOfOrderButSaveOrderStaysStable(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 3, 24, 11, 45, 0, 0, time.UTC)
+	savedEmailIDs := make([]uint, 0, 3)
+
+	uc := NewUseCase(
+		&mockClock{now: now},
+		&mockAnalyzerFactory{
+			create: func(ctx context.Context, spec AnalyzerSpec) (Analyzer, error) {
+				return &mockAnalyzer{
+					analyze: func(ctx context.Context, email EmailForAnalysisTarget) (domain.AnalysisOutput, error) {
+						switch email.EmailID {
+						case 1:
+							time.Sleep(30 * time.Millisecond)
+						case 2:
+							time.Sleep(5 * time.Millisecond)
+						case 3:
+							time.Sleep(15 * time.Millisecond)
+						}
+						return domain.AnalysisOutput{
+							ParsedEmails: []commondomain.ParsedEmail{
+								{VendorName: stringPtr(fmt.Sprintf("Vendor-%d", email.EmailID))},
+							},
+							PromptVersion: "emailanalysis_v1",
+						}, nil
+					},
+				}, nil
+			},
+		},
+		&mockParsedEmailRepository{
+			saveAll: func(ctx context.Context, input domain.SaveInput) ([]domain.ParsedEmailRecord, error) {
+				savedEmailIDs = append(savedEmailIDs, input.EmailID)
+				return []domain.ParsedEmailRecord{{ID: input.EmailID + 1000, EmailID: input.EmailID}}, nil
+			},
+		},
+		logger.NewNop(),
+	)
+
+	result, err := uc.Execute(context.Background(), Command{
+		UserID: 9,
+		Emails: []EmailForAnalysisTarget{
+			{EmailID: 1, ExternalMessageID: "msg-1", Body: "body-1"},
+			{EmailID: 2, ExternalMessageID: "msg-2", Body: "body-2"},
+			{EmailID: 3, ExternalMessageID: "msg-3", Body: "body-3"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	expectedOrder := []uint{1, 2, 3}
+	if fmt.Sprint(savedEmailIDs) != fmt.Sprint(expectedOrder) {
+		t.Fatalf("unexpected save order: got=%v want=%v", savedEmailIDs, expectedOrder)
+	}
+	if len(result.ParsedEmailIDs) != 3 || result.ParsedEmailIDs[0] != 1001 || result.ParsedEmailIDs[1] != 1002 || result.ParsedEmailIDs[2] != 1003 {
+		t.Fatalf("unexpected parsed email ids: %+v", result.ParsedEmailIDs)
+	}
+	if len(result.Failures) != 0 {
+		t.Fatalf("unexpected failures: %+v", result.Failures)
+	}
+}
+
 func TestUseCaseExecute_InvalidCommand(t *testing.T) {
 	t.Parallel()
 
