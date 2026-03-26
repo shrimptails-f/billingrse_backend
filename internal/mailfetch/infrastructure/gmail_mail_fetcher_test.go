@@ -129,6 +129,81 @@ func TestGmailMailFetcherAdapter_Fetch_DetailFailureContinues(t *testing.T) {
 	}
 }
 
+func TestGmailMailFetcherAdapter_Fetch_LoadsDetailsConcurrentlyAndKeepsOrder(t *testing.T) {
+	t.Parallel()
+
+	since := time.Date(2026, 3, 20, 0, 0, 0, 0, time.UTC)
+	until := time.Date(2026, 3, 22, 0, 0, 0, 0, time.UTC)
+	releaseCh := make(chan struct{})
+	startedCh := make(chan string, 3)
+
+	adapter := NewGmailMailFetcherAdapter(
+		mfdomain.ConnectionRef{ConnectionID: 1, UserID: 2, Provider: "gmail", AccountIdentifier: "user@gmail.com"},
+		&stubGmailClientBuilder{
+			build: func(ctx context.Context, connectionID, userID uint) (gmailMessageClient, error) {
+				return &stubGmailMessageClient{
+					list: func(ctx context.Context, labelName string, startDate time.Time) ([]string, error) {
+						return []string{"msg-1", "msg-2", "msg-3"}, nil
+					},
+					detail: func(ctx context.Context, id string) (cd.FetchedEmailDTO, error) {
+						startedCh <- id
+						<-releaseCh
+						return cd.FetchedEmailDTO{ID: id, Date: since.Add(time.Hour)}, nil
+					},
+				}, nil
+			},
+		},
+		nil,
+	)
+
+	type fetchResult struct {
+		fetched  []cd.FetchedEmailDTO
+		failures []mfdomain.MessageFailure
+		err      error
+	}
+
+	resultCh := make(chan fetchResult, 1)
+	go func() {
+		fetched, failures, err := adapter.Fetch(context.Background(), mfdomain.FetchCondition{
+			LabelName: "billing",
+			Since:     since,
+			Until:     until,
+		})
+		resultCh <- fetchResult{
+			fetched:  fetched,
+			failures: failures,
+			err:      err,
+		}
+	}()
+
+	for i := 0; i < 2; i++ {
+		select {
+		case <-startedCh:
+		case <-time.After(time.Second):
+			t.Fatal("expected multiple detail fetches to start concurrently")
+		}
+	}
+	close(releaseCh)
+
+	result := <-resultCh
+	if result.err != nil {
+		t.Fatalf("Fetch returned error: %v", result.err)
+	}
+	if len(result.failures) != 0 {
+		t.Fatalf("unexpected failures: %+v", result.failures)
+	}
+	if len(result.fetched) != 3 {
+		t.Fatalf("unexpected fetched messages: %+v", result.fetched)
+	}
+
+	expectedIDs := []string{"msg-1", "msg-2", "msg-3"}
+	for idx, fetched := range result.fetched {
+		if fetched.ID != expectedIDs[idx] {
+			t.Fatalf("unexpected fetched order: %+v", result.fetched)
+		}
+	}
+}
+
 func TestGmailMailFetcherAdapter_Fetch_SessionBuildFailure(t *testing.T) {
 	t.Parallel()
 
