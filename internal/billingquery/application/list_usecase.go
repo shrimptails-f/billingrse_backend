@@ -1,7 +1,6 @@
 package application
 
 import (
-	"business/internal/billing/domain"
 	"business/internal/library/logger"
 	"context"
 	"fmt"
@@ -58,19 +57,19 @@ func (q ListQuery) Normalize() ListQuery {
 // Validate checks whether the query satisfies the billing list contract.
 func (q ListQuery) Validate() error {
 	if q.UserID == 0 {
-		return fmt.Errorf("%w: user_id is required", domain.ErrInvalidListQuery)
+		return fmt.Errorf("%w: user_id is required", ErrInvalidListQuery)
 	}
 	if q.EmailID != nil && *q.EmailID == 0 {
-		return fmt.Errorf("%w: email_id must be greater than zero", domain.ErrInvalidListQuery)
+		return fmt.Errorf("%w: email_id must be greater than zero", ErrInvalidListQuery)
 	}
 	if q.Limit == nil || *q.Limit < 1 || *q.Limit > maxBillingListLimit {
-		return fmt.Errorf("%w: limit must be between 1 and %d", domain.ErrInvalidListQuery, maxBillingListLimit)
+		return fmt.Errorf("%w: limit must be between 1 and %d", ErrInvalidListQuery, maxBillingListLimit)
 	}
 	if q.Offset == nil || *q.Offset < 0 {
-		return fmt.Errorf("%w: offset must be greater than or equal to zero", domain.ErrInvalidListQuery)
+		return fmt.Errorf("%w: offset must be greater than or equal to zero", ErrInvalidListQuery)
 	}
 	if q.DateFrom != nil && q.DateTo != nil && q.DateFrom.After(*q.DateTo) {
-		return fmt.Errorf("%w: date_from must be earlier than or equal to date_to", domain.ErrInvalidListQuery)
+		return fmt.Errorf("%w: date_from must be earlier than or equal to date_to", ErrInvalidListQuery)
 	}
 	return nil
 }
@@ -100,8 +99,8 @@ type BillingListRepository interface {
 	List(ctx context.Context, query ListQuery) (ListResult, error)
 }
 
-// ListUseCase loads billing list items for the authenticated user.
-type ListUseCase interface {
+// ListUseCaseInterface loads billing list items for the authenticated user.
+type ListUseCaseInterface interface {
 	List(ctx context.Context, query ListQuery) (ListResult, error)
 }
 
@@ -110,8 +109,11 @@ type listUseCase struct {
 	log        logger.Interface
 }
 
+// ListUseCase is the concrete billing list usecase type exposed for DI.
+type ListUseCase = listUseCase
+
 // NewListUseCase creates a billing list use case.
-func NewListUseCase(repository BillingListRepository, log logger.Interface) ListUseCase {
+func NewListUseCase(repository BillingListRepository, log logger.Interface) *ListUseCase {
 	if log == nil {
 		log = logger.NewNop()
 	}

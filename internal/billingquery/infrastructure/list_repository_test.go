@@ -1,7 +1,7 @@
 package infrastructure
 
 import (
-	billingapp "business/internal/billing/application"
+	billingqueryapp "business/internal/billingquery/application"
 	"business/internal/library/logger"
 	"business/internal/library/mysql"
 	"context"
@@ -14,7 +14,7 @@ import (
 )
 
 type billingListRepoTestEnv struct {
-	repo  *GormBillingRepository
+	repo  *BillingQueryRepository
 	db    *gorm.DB
 	clean func() error
 }
@@ -34,7 +34,7 @@ func newBillingListRepoTestEnv(t *testing.T) *billingListRepoTestEnv {
 	))
 
 	return &billingListRepoTestEnv{
-		repo:  NewGormBillingRepository(mysqlConn.DB, &billingRepoFixedClock{now: time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)}, logger.NewNop()),
+		repo:  NewBillingQueryRepository(mysqlConn.DB, &billingRepoFixedClock{now: time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)}, logger.NewNop()),
 		db:    mysqlConn.DB,
 		clean: cleanup,
 	}
@@ -127,6 +127,7 @@ func seedBillingListFixtures(t *testing.T, db *gorm.DB) {
 
 	billingDateMarch1 := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 	billingDateMarch25 := time.Date(2026, 3, 25, 0, 0, 0, 0, time.UTC)
+	summaryDateMarch21 := time.Date(2026, 3, 21, 15, 0, 0, 0, time.UTC)
 	productAWS1 := "AWS Support Enterprise"
 	productAWS2 := "AWS Support Business"
 	productGoogle1 := "Google Workspace Business"
@@ -143,6 +144,7 @@ func seedBillingListFixtures(t *testing.T, db *gorm.DB) {
 			Amount:             decimal.RequireFromString("1200.500"),
 			Currency:           "JPY",
 			BillingDate:        &billingDateMarch1,
+			BillingSummaryDate: billingDateMarch1,
 			PaymentCycle:       "recurring",
 			CreatedAt:          now,
 			UpdatedAt:          now,
@@ -157,6 +159,7 @@ func seedBillingListFixtures(t *testing.T, db *gorm.DB) {
 			Amount:             decimal.RequireFromString("800.000"),
 			Currency:           "JPY",
 			BillingDate:        nil,
+			BillingSummaryDate: summaryDateMarch21,
 			PaymentCycle:       "recurring",
 			CreatedAt:          now,
 			UpdatedAt:          now,
@@ -171,6 +174,7 @@ func seedBillingListFixtures(t *testing.T, db *gorm.DB) {
 			Amount:             decimal.RequireFromString("99.990"),
 			Currency:           "USD",
 			BillingDate:        &billingDateMarch25,
+			BillingSummaryDate: billingDateMarch25,
 			PaymentCycle:       "recurring",
 			CreatedAt:          now,
 			UpdatedAt:          now,
@@ -185,6 +189,7 @@ func seedBillingListFixtures(t *testing.T, db *gorm.DB) {
 			Amount:             decimal.RequireFromString("500.000"),
 			Currency:           "JPY",
 			BillingDate:        &billingDateMarch25,
+			BillingSummaryDate: billingDateMarch25,
 			PaymentCycle:       "one_time",
 			CreatedAt:          now,
 			UpdatedAt:          now,
@@ -199,6 +204,7 @@ func seedBillingListFixtures(t *testing.T, db *gorm.DB) {
 			Amount:             decimal.RequireFromString("199.990"),
 			Currency:           "USD",
 			BillingDate:        &billingDateMarch25,
+			BillingSummaryDate: billingDateMarch25,
 			PaymentCycle:       "recurring",
 			CreatedAt:          now,
 			UpdatedAt:          now,
@@ -207,7 +213,7 @@ func seedBillingListFixtures(t *testing.T, db *gorm.DB) {
 	require.NoError(t, db.Create(&billings).Error)
 }
 
-func TestGormBillingRepository_List_AppliesUserScopeAndFilters(t *testing.T) {
+func TestBillingQueryRepository_List_AppliesUserScopeAndFilters(t *testing.T) {
 	t.Parallel()
 
 	env := newBillingListRepoTestEnv(t)
@@ -219,7 +225,7 @@ func TestGormBillingRepository_List_AppliesUserScopeAndFilters(t *testing.T) {
 	offset := 0
 	fallback := true
 
-	result, err := env.repo.List(context.Background(), billingapp.ListQuery{
+	result, err := env.repo.List(context.Background(), billingqueryapp.ListQuery{
 		UserID:                1,
 		Q:                     "aws",
 		EmailID:               &emailID,
@@ -234,7 +240,7 @@ func TestGormBillingRepository_List_AppliesUserScopeAndFilters(t *testing.T) {
 	require.Equal(t, "msg-aws-001", result.Items[0].ExternalMessageID)
 	require.Equal(t, "AWS", result.Items[0].VendorName)
 
-	result, err = env.repo.List(context.Background(), billingapp.ListQuery{
+	result, err = env.repo.List(context.Background(), billingqueryapp.ListQuery{
 		UserID:            1,
 		ExternalMessageID: "msg-google-001",
 		Limit:             &limit,
@@ -247,7 +253,7 @@ func TestGormBillingRepository_List_AppliesUserScopeAndFilters(t *testing.T) {
 	require.Equal(t, "msg-google-001", result.Items[0].ExternalMessageID)
 }
 
-func TestGormBillingRepository_List_DateFallbackChangesResults(t *testing.T) {
+func TestBillingQueryRepository_List_DateFallbackChangesResults(t *testing.T) {
 	t.Parallel()
 
 	env := newBillingListRepoTestEnv(t)
@@ -261,7 +267,7 @@ func TestGormBillingRepository_List_DateFallbackChangesResults(t *testing.T) {
 	fallbackTrue := true
 	fallbackFalse := false
 
-	withFallback, err := env.repo.List(context.Background(), billingapp.ListQuery{
+	withFallback, err := env.repo.List(context.Background(), billingqueryapp.ListQuery{
 		UserID:                1,
 		DateFrom:              &dateFrom,
 		DateTo:                &dateTo,
@@ -275,7 +281,7 @@ func TestGormBillingRepository_List_DateFallbackChangesResults(t *testing.T) {
 	require.Equal(t, uint(103), withFallback.Items[0].EmailID)
 	require.Nil(t, withFallback.Items[0].BillingDate)
 
-	withoutFallback, err := env.repo.List(context.Background(), billingapp.ListQuery{
+	withoutFallback, err := env.repo.List(context.Background(), billingqueryapp.ListQuery{
 		UserID:                1,
 		DateFrom:              &dateFrom,
 		DateTo:                &dateTo,
@@ -288,7 +294,7 @@ func TestGormBillingRepository_List_DateFallbackChangesResults(t *testing.T) {
 	require.Empty(t, withoutFallback.Items)
 }
 
-func TestGormBillingRepository_List_UsesStableOrderingAndTotalCount(t *testing.T) {
+func TestBillingQueryRepository_List_UsesStableOrderingAndTotalCount(t *testing.T) {
 	t.Parallel()
 
 	env := newBillingListRepoTestEnv(t)
@@ -301,7 +307,7 @@ func TestGormBillingRepository_List_UsesStableOrderingAndTotalCount(t *testing.T
 	offsetZero := 0
 	limitTen := 10
 
-	page, err := env.repo.List(context.Background(), billingapp.ListQuery{
+	page, err := env.repo.List(context.Background(), billingqueryapp.ListQuery{
 		UserID:                1,
 		Q:                     "google",
 		UseReceivedAtFallback: &fallbackTrue,
@@ -313,7 +319,7 @@ func TestGormBillingRepository_List_UsesStableOrderingAndTotalCount(t *testing.T
 	require.Len(t, page.Items, 1)
 	require.Equal(t, uint(105), page.Items[0].EmailID)
 
-	withFallback, err := env.repo.List(context.Background(), billingapp.ListQuery{
+	withFallback, err := env.repo.List(context.Background(), billingqueryapp.ListQuery{
 		UserID:                1,
 		UseReceivedAtFallback: &fallbackTrue,
 		Limit:                 &limitTen,
@@ -322,7 +328,7 @@ func TestGormBillingRepository_List_UsesStableOrderingAndTotalCount(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, []uint{105, 102, 103, 101}, billingListEmailIDs(withFallback.Items))
 
-	withoutFallback, err := env.repo.List(context.Background(), billingapp.ListQuery{
+	withoutFallback, err := env.repo.List(context.Background(), billingqueryapp.ListQuery{
 		UserID:                1,
 		UseReceivedAtFallback: &fallbackFalse,
 		Limit:                 &limitTen,
@@ -332,7 +338,7 @@ func TestGormBillingRepository_List_UsesStableOrderingAndTotalCount(t *testing.T
 	require.Equal(t, []uint{105, 102, 101, 103}, billingListEmailIDs(withoutFallback.Items))
 }
 
-func billingListEmailIDs(items []billingapp.ListItem) []uint {
+func billingListEmailIDs(items []billingqueryapp.ListItem) []uint {
 	ids := make([]uint, 0, len(items))
 	for _, item := range items {
 		ids = append(ids, item.EmailID)

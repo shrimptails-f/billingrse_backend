@@ -28,12 +28,14 @@
           - httpresponse/         // 標準エラーレスポンス
           - presentation/
             - auth/               // 認証系 controller と HTTP DTO
+            - billing/            // Billing 一覧 / Monthly Trend / Month Detail controller と HTTP DTO
             - mailaccountconnection/
             - manualmailworkflow/
         - di/                     // dig モジュール（auth.go, mail_account_connection.go, mailfetch.go, mailanalysis.go, vendorresolution.go, billingeligibility.go, billing.go, manualmailworkflow.go, presentation.go, dig.go）
         - library/                // 共通ラッパー: logger, mysql, gmail/gmailService, openai, oswrapper, ratelimit, secret, sendMailer, crypto, timewrapper
         - auth/                   // 認証ドメイン（domain/application/infrastructure）
-        - billing/                // Billing 生成・重複制御・保存 stage
+        - billing/                // Billing 生成 stage
+        - billingquery/           // Billing read API（一覧 / Monthly Trend / Month Detail）
         - common/                 // 共有ドメインモデル（Email, ParsedEmail, Billing, Vendor, VendorResolutionPolicy 等）
         - mailaccountconnection/  // Gmail OAuth 連携と資格情報管理
         - mailfetch/              // メール取得 stage
@@ -79,6 +81,7 @@
           - `vendorresolution/application`: alias lookup、必要なら canonical Vendor 自動登録
           - `billingeligibility/application`: `ParsedEmail` と解決済み Vendor から Billing 成立可否を評価
           - `billing/application`: eligible item から Billing 生成、idempotent 保存、created / duplicate / failure 集約
+          - `billingquery/application`: Billing 一覧、Monthly Trend、Month Detail の read usecase
           - `manualmailworkflow/application`: workflow 受付、background 実行、履歴集約
       - 注意点:
         - `POST /api/v1/manual-mail-workflows` は短時間で `202 Accepted` を返し、実処理はバックグラウンドで進める。
@@ -108,6 +111,7 @@
     <infrastructure>
       - 配置:
         - `internal/{domain}/infrastructure`
+        - `internal/billingquery/infrastructure`
         - `internal/manualmailworkflow/infrastructure`
       - 役割:
         - Gorm repository、OAuth exchanger、Gmail profile fetcher、Gmail session builder、OpenAI analyzer adapter など外部依存との接続を担当する。

@@ -1,7 +1,6 @@
 package application
 
 import (
-	"business/internal/billing/domain"
 	"business/internal/library/logger"
 	"context"
 	"errors"
@@ -159,7 +158,7 @@ func TestListUseCase_List_RejectsInvalidQuery(t *testing.T) {
 			t.Parallel()
 
 			_, err := uc.List(context.Background(), tc.query)
-			if !errors.Is(err, domain.ErrInvalidListQuery) {
+			if !errors.Is(err, ErrInvalidListQuery) {
 				t.Fatalf("expected ErrInvalidListQuery, got %v", err)
 			}
 		})

@@ -1,7 +1,7 @@
 package infrastructure
 
 import (
-	billingapp "business/internal/billing/application"
+	billingqueryapp "business/internal/billingquery/application"
 	"business/internal/library/logger"
 	"context"
 	"fmt"
@@ -55,17 +55,17 @@ func (billingListVendorRecord) TableName() string {
 }
 
 // List loads billing list read models joined with vendor and email metadata.
-func (r *GormBillingRepository) List(ctx context.Context, query billingapp.ListQuery) (billingapp.ListResult, error) {
+func (r *BillingQueryRepository) List(ctx context.Context, query billingqueryapp.ListQuery) (billingqueryapp.ListResult, error) {
 	if ctx == nil {
-		return billingapp.ListResult{}, logger.ErrNilContext
+		return billingqueryapp.ListResult{}, logger.ErrNilContext
 	}
 	if r.db == nil {
-		return billingapp.ListResult{}, fmt.Errorf("gorm db is not configured")
+		return billingqueryapp.ListResult{}, fmt.Errorf("gorm db is not configured")
 	}
 
 	query = query.Normalize()
 	if err := query.Validate(); err != nil {
-		return billingapp.ListResult{}, err
+		return billingqueryapp.ListResult{}, err
 	}
 
 	reqLog := r.log
@@ -75,14 +75,14 @@ func (r *GormBillingRepository) List(ctx context.Context, query billingapp.ListQ
 
 	var totalCount int64
 	countQuery := r.buildListBaseQuery(ctx, query)
-	if err := countQuery.Distinct("billings.id").Count(&totalCount).Error; err != nil {
+	if err := countQuery.Count(&totalCount).Error; err != nil {
 		reqLog.Error("db_query_failed",
 			logger.String("db_system", "mysql"),
 			logger.String("table", "billings"),
 			logger.String("operation", "list_count"),
 			logger.Err(err),
 		)
-		return billingapp.ListResult{}, fmt.Errorf("failed to count billings: %w", err)
+		return billingqueryapp.ListResult{}, fmt.Errorf("failed to count billings: %w", err)
 	}
 
 	var rows []billingListRow
@@ -108,12 +108,12 @@ func (r *GormBillingRepository) List(ctx context.Context, query billingapp.ListQ
 			logger.String("operation", "list_items"),
 			logger.Err(err),
 		)
-		return billingapp.ListResult{}, fmt.Errorf("failed to list billings: %w", err)
+		return billingqueryapp.ListResult{}, fmt.Errorf("failed to list billings: %w", err)
 	}
 
-	items := make([]billingapp.ListItem, 0, len(rows))
+	items := make([]billingqueryapp.ListItem, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, billingapp.ListItem{
+		items = append(items, billingqueryapp.ListItem{
 			EmailID:            row.EmailID,
 			ExternalMessageID:  strings.TrimSpace(row.ExternalMessageID),
 			VendorName:         strings.TrimSpace(row.VendorName),
@@ -125,7 +125,7 @@ func (r *GormBillingRepository) List(ctx context.Context, query billingapp.ListQ
 		})
 	}
 
-	return billingapp.ListResult{
+	return billingqueryapp.ListResult{
 		Items:      items,
 		Limit:      *query.Limit,
 		Offset:     *query.Offset,
@@ -133,18 +133,18 @@ func (r *GormBillingRepository) List(ctx context.Context, query billingapp.ListQ
 	}, nil
 }
 
-func (r *GormBillingRepository) buildListBaseQuery(ctx context.Context, query billingapp.ListQuery) *gorm.DB {
+func (r *BillingQueryRepository) buildListBaseQuery(ctx context.Context, query billingqueryapp.ListQuery) *gorm.DB {
 	tx := r.db.WithContext(ctx).
 		Table("billings").
 		Joins("INNER JOIN vendors ON vendors.id = billings.vendor_id").
-		Joins("INNER JOIN emails ON emails.id = billings.email_id").
+		Joins("INNER JOIN emails ON emails.id = billings.email_id AND emails.user_id = billings.user_id").
 		Where("billings.user_id = ?", query.UserID)
 
 	if query.EmailID != nil {
 		tx = tx.Where("billings.email_id = ?", *query.EmailID)
 	}
 	if query.ExternalMessageID != "" {
-		tx = tx.Where("emails.external_message_id = ?", query.ExternalMessageID)
+		tx = tx.Where("emails.user_id = ? AND emails.external_message_id = ?", query.UserID, query.ExternalMessageID)
 	}
 	if query.Q != "" {
 		pattern := "%" + strings.ToLower(query.Q) + "%"
@@ -158,7 +158,7 @@ func (r *GormBillingRepository) buildListBaseQuery(ctx context.Context, query bi
 
 	dateColumn := "billings.billing_date"
 	if query.UseReceivedAtFallback != nil && *query.UseReceivedAtFallback {
-		dateColumn = "COALESCE(billings.billing_date, emails.received_at)"
+		dateColumn = "billings.billing_summary_date"
 	}
 	if query.DateFrom != nil {
 		tx = tx.Where(dateColumn+" >= ?", *query.DateFrom)
@@ -170,10 +170,10 @@ func (r *GormBillingRepository) buildListBaseQuery(ctx context.Context, query bi
 	return tx
 }
 
-func applyBillingListOrder(tx *gorm.DB, query billingapp.ListQuery) *gorm.DB {
+func applyBillingListOrder(tx *gorm.DB, query billingqueryapp.ListQuery) *gorm.DB {
 	if query.UseReceivedAtFallback != nil && *query.UseReceivedAtFallback {
 		return tx.
-			Order("COALESCE(billings.billing_date, emails.received_at) DESC").
+			Order("billings.billing_summary_date DESC").
 			Order("billings.id DESC")
 	}
 

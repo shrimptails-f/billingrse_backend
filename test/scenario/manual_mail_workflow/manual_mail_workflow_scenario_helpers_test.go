@@ -212,7 +212,7 @@ func newManualMailWorkflowScenarioEnv(
 	)
 	billingEligibilityUseCase := beapp.NewUseCase(log)
 	billingUseCase := billingapp.NewUseCase(
-		billinginfra.NewGormBillingRepository(env.db, clock, log),
+		billinginfra.NewBillingRepository(env.db, clock, log),
 		log,
 	)
 

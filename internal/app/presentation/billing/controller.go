@@ -2,8 +2,7 @@ package billing
 
 import (
 	"business/internal/app/httpresponse"
-	billingapp "business/internal/billing/application"
-	billingdomain "business/internal/billing/domain"
+	billingqueryapp "business/internal/billingquery/application"
 	"business/internal/library/logger"
 	"errors"
 	"net/http"
@@ -14,21 +13,30 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Controller handles billing list HTTP requests.
+// Controller handles billing HTTP requests.
 type Controller struct {
-	usecase billingapp.ListUseCase
-	log     logger.Interface
+	usecase             billingqueryapp.ListUseCaseInterface
+	monthlyTrendUseCase billingqueryapp.MonthlyTrendUseCaseInterface
+	monthDetailUseCase  billingqueryapp.MonthDetailUseCaseInterface
+	log                 logger.Interface
 }
 
 // NewController creates a new billing controller.
-func NewController(usecase billingapp.ListUseCase, log logger.Interface) *Controller {
+func NewController(
+	usecase billingqueryapp.ListUseCaseInterface,
+	monthlyTrendUseCase billingqueryapp.MonthlyTrendUseCaseInterface,
+	monthDetailUseCase billingqueryapp.MonthDetailUseCaseInterface,
+	log logger.Interface,
+) *Controller {
 	if log == nil {
 		log = logger.NewNop()
 	}
 
 	return &Controller{
-		usecase: usecase,
-		log:     log.With(logger.Component("billing_controller")),
+		usecase:             usecase,
+		monthlyTrendUseCase: monthlyTrendUseCase,
+		monthDetailUseCase:  monthDetailUseCase,
+		log:                 log.With(logger.Component("billing_controller")),
 	}
 }
 
@@ -72,6 +80,13 @@ func (ctrl *Controller) List(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if ctrl.usecase == nil {
+		reqLog.Error("billing_list_usecase_not_configured",
+			logger.UserID(userID),
+		)
+		httpresponse.WriteInternalServerError(c)
+		return
+	}
 
 	var req listQueryRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
@@ -87,7 +102,7 @@ func (ctrl *Controller) List(c *gin.Context) {
 
 	result, err := ctrl.usecase.List(c.Request.Context(), query)
 	if err != nil {
-		if errors.Is(err, billingdomain.ErrInvalidListQuery) {
+		if errors.Is(err, billingqueryapp.ErrInvalidListQuery) {
 			httpresponse.WriteInvalidRequest(c)
 			return
 		}
@@ -122,33 +137,33 @@ func (ctrl *Controller) List(c *gin.Context) {
 	})
 }
 
-func (r listQueryRequest) toApplicationQuery(userID uint) (billingapp.ListQuery, error) {
+func (r listQueryRequest) toApplicationQuery(userID uint) (billingqueryapp.ListQuery, error) {
 	emailID, err := parseOptionalUint(r.EmailID)
 	if err != nil {
-		return billingapp.ListQuery{}, err
+		return billingqueryapp.ListQuery{}, err
 	}
 	dateFrom, err := parseOptionalRFC3339(r.DateFrom)
 	if err != nil {
-		return billingapp.ListQuery{}, err
+		return billingqueryapp.ListQuery{}, err
 	}
 	dateTo, err := parseOptionalRFC3339(r.DateTo)
 	if err != nil {
-		return billingapp.ListQuery{}, err
+		return billingqueryapp.ListQuery{}, err
 	}
 	useReceivedAtFallback, err := parseOptionalBool(r.UseReceivedAtFallback)
 	if err != nil {
-		return billingapp.ListQuery{}, err
+		return billingqueryapp.ListQuery{}, err
 	}
 	limit, err := parseOptionalInt(r.Limit)
 	if err != nil {
-		return billingapp.ListQuery{}, err
+		return billingqueryapp.ListQuery{}, err
 	}
 	offset, err := parseOptionalInt(r.Offset)
 	if err != nil {
-		return billingapp.ListQuery{}, err
+		return billingqueryapp.ListQuery{}, err
 	}
 
-	return billingapp.ListQuery{
+	return billingqueryapp.ListQuery{
 		UserID:                userID,
 		Q:                     r.Q,
 		EmailID:               emailID,

@@ -16,7 +16,7 @@ import (
 )
 
 type billingRepoTestEnv struct {
-	repo   *GormBillingRepository
+	repo   *BillingRepository
 	db     *gorm.DB
 	nowUTC time.Time
 	clean  func() error
@@ -44,15 +44,24 @@ func newBillingRepoTestEnv(t *testing.T) *billingRepoTestEnv {
 		skipIfBillingRepoDBUnavailable(t, err)
 	}
 	require.NoError(t, err)
-	require.NoError(t, mysqlConn.DB.AutoMigrate(&billingRecord{}))
+	require.NoError(t, mysqlConn.DB.AutoMigrate(&billingSourceEmailRecord{}, &billingRecord{}))
 	nowUTC := time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)
 
 	return &billingRepoTestEnv{
-		repo:   NewGormBillingRepository(mysqlConn.DB, &billingRepoFixedClock{now: nowUTC}, logger.NewNop()),
+		repo:   NewBillingRepository(mysqlConn.DB, &billingRepoFixedClock{now: nowUTC}, logger.NewNop()),
 		db:     mysqlConn.DB,
 		nowUTC: nowUTC,
 		clean:  cleanup,
 	}
+}
+
+func seedBillingSourceEmail(t *testing.T, db *gorm.DB, id, userID uint, receivedAt time.Time) {
+	t.Helper()
+	require.NoError(t, db.Create(&billingSourceEmailRecord{
+		ID:         id,
+		UserID:     userID,
+		ReceivedAt: receivedAt,
+	}).Error)
 }
 
 func skipIfBillingRepoDBUnavailable(t *testing.T, err error) {
@@ -65,7 +74,7 @@ func skipIfBillingRepoDBUnavailable(t *testing.T, err error) {
 	}
 }
 
-func TestGormBillingRepository_SaveIfAbsent_CreatedAndDuplicate(t *testing.T) {
+func TestBillingRepository_SaveIfAbsent_CreatedAndDuplicate(t *testing.T) {
 	t.Parallel()
 
 	env := newBillingRepoTestEnv(t)
@@ -74,7 +83,9 @@ func TestGormBillingRepository_SaveIfAbsent_CreatedAndDuplicate(t *testing.T) {
 	ctx := context.Background()
 	invoiceNumber := "t1234567890123"
 	billingDate := time.Date(2026, 3, 24, 8, 0, 0, 0, time.UTC)
+	sourceReceivedAt := time.Date(2026, 3, 20, 10, 0, 0, 0, time.UTC)
 	productNameDisplay := "Example Product"
+	seedBillingSourceEmail(t, env.db, 3, 1, sourceReceivedAt)
 	billing, err := commondomain.NewBilling(
 		1,
 		2,
@@ -113,6 +124,7 @@ func TestGormBillingRepository_SaveIfAbsent_CreatedAndDuplicate(t *testing.T) {
 	require.Equal(t, "JPY", stored.Currency)
 	require.NotNil(t, stored.BillingDate)
 	require.True(t, stored.BillingDate.Equal(billingDate))
+	require.True(t, stored.BillingSummaryDate.Equal(billingDate))
 	require.Equal(t, "recurring", stored.PaymentCycle)
 	require.True(t, stored.CreatedAt.Equal(env.nowUTC))
 	require.True(t, stored.UpdatedAt.Equal(env.nowUTC))
@@ -122,11 +134,14 @@ func TestGormBillingRepository_SaveIfAbsent_CreatedAndDuplicate(t *testing.T) {
 	require.EqualValues(t, 1, count)
 }
 
-func TestGormBillingRepository_SaveIfAbsent_ConcurrentDuplicate(t *testing.T) {
+func TestBillingRepository_SaveIfAbsent_ConcurrentDuplicate(t *testing.T) {
 	t.Parallel()
 
 	env := newBillingRepoTestEnv(t)
 	defer env.clean()
+
+	sourceReceivedAt := time.Date(2026, 3, 18, 9, 30, 0, 0, time.UTC)
+	seedBillingSourceEmail(t, env.db, 3, 1, sourceReceivedAt)
 
 	billing, err := commondomain.NewBilling(
 		1,
@@ -183,4 +198,9 @@ func TestGormBillingRepository_SaveIfAbsent_ConcurrentDuplicate(t *testing.T) {
 	var count int64
 	require.NoError(t, env.db.WithContext(context.Background()).Model(&billingRecord{}).Count(&count).Error)
 	require.EqualValues(t, 1, count)
+
+	var stored billingRecord
+	require.NoError(t, env.db.WithContext(context.Background()).First(&stored).Error)
+	require.Nil(t, stored.BillingDate)
+	require.True(t, stored.BillingSummaryDate.Equal(sourceReceivedAt))
 }

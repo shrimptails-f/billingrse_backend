@@ -134,7 +134,7 @@
 本 API における検索対象日は、`billing_date` を基準とする。
 
 - `use_received_at_fallback=true`
-  - 検索対象日と並び順の基準は `COALESCE(billings.billing_date, emails.received_at)` とする。
+  - 検索対象日と並び順の基準は `billings.billing_summary_date` とする。
   - 請求日が欠損しているレコードも、受信日時ベースで検索できる。
 - `use_received_at_fallback=false`
   - 日付検索には `billings.billing_date` のみを使う。
@@ -149,7 +149,7 @@
 既定の並び順は以下とする。
 
 - `use_received_at_fallback=true`
-  - `effective_date DESC`
+  - `billing_summary_date DESC`
   - `billings.id DESC`
 - `use_received_at_fallback=false`
   - `billing_date DESC NULLS LAST`
@@ -157,7 +157,8 @@
   - `billings.id DESC`
 
 補足:
-- `effective_date` は API の公開フィールドではなく、検索・並び順のための内部概念とする。
+- `billing_summary_date` は API の公開フィールドではなく、検索・並び順のための内部概念とする。
+- `billing_summary_date` は保存時に `COALESCE(billings.billing_date, emails.received_at)` を materialize した派生カラムとする。
 - offset pagination でも順序がぶれにくいよう、最後に `billings.id` を tie-breaker に使う。
 
 ### ページネーション
@@ -199,6 +200,7 @@
 ### 補足
 - `vendor_name` は canonical `Vendor` の `name` を使う。
 - `received_at` と `external_message_id` は参照元 `Email` から返す。
+- `billing_summary_date` は `use_received_at_fallback=true` の検索・並び順専用の内部カラムであり、レスポンスには含めない。
 - `Billing` の参照元は `Email` であり、`ParsedEmail` はレスポンスに含めない。
 - v1 の `q` は通常の部分一致検索とし、全文検索や検索専用 index 最適化は別タスクとする。
 
@@ -211,7 +213,7 @@
 - controller は認証済み `userID` を受け取り、application 層へ検索条件を渡して response DTO に変換する。
 
 ### Application
-- `internal/billing/application` に一覧取得 usecase を追加する。
+- `internal/billingquery/application` に一覧取得 usecase を置く。
 - `ListQuery`, `ListResult`, `ListItem`, `BillingListRepository` を定義する。
 - query parameter の normalize / validate をここで扱う。
 - read model は一覧 API 用に閉じた shape とし、`common/domain.Billing` aggregate は直接返さない。
@@ -222,11 +224,30 @@
 - 一覧 API のために `Billing` aggregate 自体へ表示項目を過剰に持ち込まない。
 
 ### Infrastructure
-- `billings`, `vendors`, `emails` を join する read repository を追加する。
+- `internal/billingquery/infrastructure` に、`billings`, `vendors`, `emails` を join する read repository を置く。
 - 並び順と filter のロジックは SQL で安定して表現する。
 - `total_count` と `items` を同一条件で取得できるようにする。
 
-## 7. テスト観点
+## 7. 実装反映
+
+- route:
+  - `internal/app/router/router.go`
+- DI:
+  - `internal/di/billing.go`
+- application:
+  - `internal/billingquery/application/list_usecase.go`
+- infrastructure:
+  - `internal/billingquery/infrastructure/list_repository.go`
+- presentation:
+  - `internal/app/presentation/billing/controller.go`
+
+### 実装済みテストファイル
+- `internal/app/presentation/billing/controller_test.go`
+- `internal/billingquery/application/list_usecase_test.go`
+- `internal/billingquery/infrastructure/list_repository_test.go`
+- `internal/app/router/router_test.go`
+
+## 8. テスト観点
 
 ### Controller
 - 200 正常系
@@ -251,10 +272,10 @@
 ### Router
 - `GET /api/v1/billings` が登録される
 
-## 8. 判断事項
+## 9. 判断事項
 
 - v1 は検索中心 API とし、エクスポート用途にはしない。
 - v1 は `limit` / `offset` を採用する。
 - v1 は並び順の自由指定を入れず、固定の規定順のみとする。
 - 日付検索の fallback は default `true` とする。
-- v1 のレスポンスはユーザー要件に合わせ、`billing_id` を含めない→含めておいて。
+- v1 のレスポンスはユーザー要件に合わせ、`billing_id` を含めない。

@@ -10,7 +10,7 @@ import (
 	authapp "business/internal/auth/application"
 	authdomain "business/internal/auth/domain"
 	authinfra "business/internal/auth/infrastructure"
-	billingapp "business/internal/billing/application"
+	billingqueryapp "business/internal/billingquery/application"
 	"business/internal/library/crypto"
 	"business/internal/library/gmailService"
 	"business/internal/library/logger"
@@ -113,6 +113,10 @@ type scenarioStubManualMailWorkflowUseCase struct{}
 
 type scenarioStubBillingListUseCase struct{}
 
+type scenarioStubBillingMonthlyTrendUseCase struct{}
+
+type scenarioStubBillingMonthDetailUseCase struct{}
+
 func newMailAccountConnectionScenarioEnv(t *testing.T) *mailAccountConnectionScenarioEnv {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -163,7 +167,12 @@ func newMailAccountConnectionScenarioEnv(t *testing.T) *mailAccountConnectionSce
 	macController := macpresentation.NewController(macUseCase, log)
 	manualUseCase := &scenarioStubManualMailWorkflowUseCase{}
 	manualController := manualpresentation.NewController(manualUseCase, manualUseCase, log)
-	billingController := billingpresentation.NewController(&scenarioStubBillingListUseCase{}, log)
+	billingController := billingpresentation.NewController(
+		&scenarioStubBillingListUseCase{},
+		&scenarioStubBillingMonthlyTrendUseCase{},
+		&scenarioStubBillingMonthDetailUseCase{},
+		log,
+	)
 
 	router := gin.New()
 	container := dig.New()
@@ -470,12 +479,26 @@ func (s *scenarioStubManualMailWorkflowUseCase) List(ctx context.Context, query 
 	}, nil
 }
 
-func (s *scenarioStubBillingListUseCase) List(ctx context.Context, query billingapp.ListQuery) (billingapp.ListResult, error) {
-	return billingapp.ListResult{
-		Items: []billingapp.ListItem{},
+func (s *scenarioStubBillingListUseCase) List(ctx context.Context, query billingqueryapp.ListQuery) (billingqueryapp.ListResult, error) {
+	return billingqueryapp.ListResult{
+		Items: []billingqueryapp.ListItem{},
+	}, nil
+}
+
+func (s *scenarioStubBillingMonthlyTrendUseCase) Get(ctx context.Context, query billingqueryapp.MonthlyTrendQuery) (billingqueryapp.MonthlyTrendResult, error) {
+	return billingqueryapp.MonthlyTrendResult{
+		Items: []billingqueryapp.MonthlyTrendItem{},
+	}, nil
+}
+
+func (s *scenarioStubBillingMonthDetailUseCase) Get(ctx context.Context, query billingqueryapp.MonthDetailQuery) (billingqueryapp.MonthDetailResult, error) {
+	return billingqueryapp.MonthDetailResult{
+		VendorItems: []billingqueryapp.MonthDetailVendorItem{},
 	}, nil
 }
 
 var _ manualapp.StartUseCase = (*scenarioStubManualMailWorkflowUseCase)(nil)
 var _ manualapp.ListUseCase = (*scenarioStubManualMailWorkflowUseCase)(nil)
-var _ billingapp.ListUseCase = (*scenarioStubBillingListUseCase)(nil)
+var _ billingqueryapp.ListUseCaseInterface = (*scenarioStubBillingListUseCase)(nil)
+var _ billingqueryapp.MonthlyTrendUseCaseInterface = (*scenarioStubBillingMonthlyTrendUseCase)(nil)
+var _ billingqueryapp.MonthDetailUseCaseInterface = (*scenarioStubBillingMonthDetailUseCase)(nil)
