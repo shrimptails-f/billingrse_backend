@@ -41,6 +41,15 @@ type EligibleItem struct {
 	Currency           string
 	BillingDate        *time.Time
 	PaymentCycle       string
+	LineItems          []LineItem
+}
+
+// LineItem is one billing detail row extracted under the same billing number.
+type LineItem struct {
+	ProductNameRaw     *string
+	ProductNameDisplay *string
+	Amount             *float64
+	Currency           *string
 }
 
 // IneligibleItem is a business-level non-eligible result with a stable reason code.

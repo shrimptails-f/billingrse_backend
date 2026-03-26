@@ -104,16 +104,41 @@ func (e *Email) AppendParsedEmail(parsed ParsedEmail) {
 // VendorName is a candidate extracted by AI and not a canonical Vendor.
 // ParsedEmail does not represent a final billing decision.
 type ParsedEmail struct {
-	ProductNameRaw     *string    `json:"productNameRaw"`
-	ProductNameDisplay *string    `json:"productNameDisplay"`
-	VendorName         *string    `json:"vendorName"`
-	BillingNumber      *string    `json:"billingNumber"`
-	InvoiceNumber      *string    `json:"invoiceNumber"`
-	Amount             *float64   `json:"amount"`
-	Currency           *string    `json:"currency"`
-	BillingDate        *time.Time `json:"billingDate"`
-	PaymentCycle       *string    `json:"paymentCycle"`
-	ExtractedAt        time.Time  `json:"extractedAt"`
+	ProductNameRaw     *string               `json:"productNameRaw"`
+	ProductNameDisplay *string               `json:"productNameDisplay"`
+	VendorName         *string               `json:"vendorName"`
+	BillingNumber      *string               `json:"billingNumber"`
+	InvoiceNumber      *string               `json:"invoiceNumber"`
+	Amount             *float64              `json:"amount"`
+	Currency           *string               `json:"currency"`
+	BillingDate        *time.Time            `json:"billingDate"`
+	PaymentCycle       *string               `json:"paymentCycle"`
+	LineItems          []ParsedEmailLineItem `json:"lineItems"`
+	ExtractedAt        time.Time             `json:"extractedAt"`
+}
+
+// ParsedEmailLineItem represents one product/detail row under a billing number.
+type ParsedEmailLineItem struct {
+	ProductNameRaw     *string  `json:"productNameRaw"`
+	ProductNameDisplay *string  `json:"productNameDisplay"`
+	Amount             *float64 `json:"amount"`
+	Currency           *string  `json:"currency"`
+}
+
+// Normalize trims optional strings and canonicalizes currency for one line-item.
+func (i ParsedEmailLineItem) Normalize() ParsedEmailLineItem {
+	i.ProductNameRaw = normalizeOptionalString(i.ProductNameRaw)
+	i.ProductNameDisplay = normalizeOptionalString(i.ProductNameDisplay)
+	i.Currency = normalizeOptionalUpperString(i.Currency)
+	return i
+}
+
+// IsEmpty reports whether a line-item has no extracted fields.
+func (i ParsedEmailLineItem) IsEmpty() bool {
+	return i.ProductNameRaw == nil &&
+		i.ProductNameDisplay == nil &&
+		i.Amount == nil &&
+		i.Currency == nil
 }
 
 // IsEmpty reports whether no parsed fields were extracted.
@@ -126,7 +151,8 @@ func (p ParsedEmail) IsEmpty() bool {
 		p.Amount == nil &&
 		p.Currency == nil &&
 		p.BillingDate == nil &&
-		p.PaymentCycle == nil
+		p.PaymentCycle == nil &&
+		len(p.LineItems) == 0
 }
 
 // Normalize trims optional strings, canonicalizes casing, and UTC-normalizes timestamps.
@@ -140,6 +166,7 @@ func (p ParsedEmail) Normalize() ParsedEmail {
 	p.Currency = normalizeOptionalUpperString(p.Currency)
 	p.PaymentCycle = normalizeOptionalPaymentCycle(p.PaymentCycle)
 	p.BillingDate = normalizeOptionalTime(p.BillingDate)
+	p.LineItems = normalizeParsedEmailLineItems(p.LineItems)
 	if !p.ExtractedAt.IsZero() {
 		p.ExtractedAt = p.ExtractedAt.UTC()
 	}
@@ -200,4 +227,25 @@ func normalizeOptionalTime(value *time.Time) *time.Time {
 
 	utc := value.UTC()
 	return &utc
+}
+
+func normalizeParsedEmailLineItems(items []ParsedEmailLineItem) []ParsedEmailLineItem {
+	if len(items) == 0 {
+		return nil
+	}
+
+	normalized := make([]ParsedEmailLineItem, 0, len(items))
+	for _, item := range items {
+		item = item.Normalize()
+		if item.IsEmpty() {
+			continue
+		}
+		normalized = append(normalized, item)
+	}
+
+	if len(normalized) == 0 {
+		return nil
+	}
+
+	return normalized
 }

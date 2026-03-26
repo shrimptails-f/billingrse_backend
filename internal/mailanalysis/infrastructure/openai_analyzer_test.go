@@ -22,7 +22,7 @@ func TestOpenAIAnalyzerAdapter_Analyze_Success(t *testing.T) {
 
 	adapter := NewOpenAIAnalyzerAdapter(&mockOpenAIClient{
 		chat: func(ctx context.Context, prompt string) (string, error) {
-			return "{\n  \"parsedEmails\": [\n    {\n      \"productNameRaw\": \" Example Product Full Name \",\n      \"productNameDisplay\": \" Example Product \",\n      \"vendorName\": \" Example Vendor \",\n      \"billingNumber\": \" INV-001 \",\n      \"invoiceNumber\": null,\n      \"amount\": 12.345,\n      \"currency\": \" jpy \",\n      \"billingDate\": \"2026-03-24T00:00:00Z\",\n      \"paymentCycle\": \"one time\"\n    }\n  ]\n}", nil
+			return "{\n  \"parsedEmails\": [\n    {\n      \"productNameRaw\": \" Example Product Full Name \",\n      \"productNameDisplay\": \" Example Product \",\n      \"vendorName\": \" Example Vendor \",\n      \"billingNumber\": \" INV-001 \",\n      \"invoiceNumber\": null,\n      \"amount\": 12.345,\n      \"currency\": \" jpy \",\n      \"billingDate\": \"2026-03-24T00:00:00Z\",\n      \"paymentCycle\": \"one time\",\n      \"lineItems\": [\n        {\n          \"productNameRaw\": \" Example Product Full Name \",\n          \"productNameDisplay\": \" Example Product \",\n          \"amount\": 12.345,\n          \"currency\": \" jpy \"\n        }\n      ]\n    }\n  ]\n}", nil
 		},
 	}, nil)
 
@@ -66,6 +66,15 @@ func TestOpenAIAnalyzerAdapter_Analyze_Success(t *testing.T) {
 	}
 	if parsed.BillingDate == nil || parsed.BillingDate.Format("2006-01-02") != "2026-03-24" {
 		t.Fatalf("unexpected billing date: %+v", parsed.BillingDate)
+	}
+	if len(parsed.LineItems) != 1 {
+		t.Fatalf("unexpected line items: %+v", parsed.LineItems)
+	}
+	if parsed.LineItems[0].ProductNameDisplay == nil || *parsed.LineItems[0].ProductNameDisplay != "Example Product" {
+		t.Fatalf("unexpected line item display name: %+v", parsed.LineItems[0])
+	}
+	if parsed.LineItems[0].Currency == nil || *parsed.LineItems[0].Currency != "JPY" {
+		t.Fatalf("unexpected line item currency: %+v", parsed.LineItems[0])
 	}
 	if !parsed.ExtractedAt.IsZero() {
 		t.Fatalf("expected zero extracted_at before save, got %+v", parsed.ExtractedAt)
@@ -115,7 +124,7 @@ func TestOpenAIAnalyzerAdapter_Analyze_UnknownFieldIsIgnored(t *testing.T) {
 
 	adapter := NewOpenAIAnalyzerAdapter(&mockOpenAIClient{
 		chat: func(ctx context.Context, prompt string) (string, error) {
-			return `{"parsedEmails":[{"product_name_raw":"Example Product"}]}`, nil
+			return `{"parsedEmails":[{"product_name_raw":"Example Product","lineItems":[]}]}`, nil
 		},
 	}, nil)
 
@@ -137,7 +146,7 @@ func TestOpenAIAnalyzerAdapter_Analyze_InvalidResponseCodeFence(t *testing.T) {
 
 	adapter := NewOpenAIAnalyzerAdapter(&mockOpenAIClient{
 		chat: func(ctx context.Context, prompt string) (string, error) {
-			return "```json\n{\"parsedEmails\":[{\"productNameRaw\":\"Example Product Full Name\"}]}\n```", nil
+			return "```json\n{\"parsedEmails\":[{\"productNameRaw\":\"Example Product Full Name\",\"lineItems\":[]}]}\n```", nil
 		},
 	}, nil)
 
@@ -156,7 +165,7 @@ func TestOpenAIAnalyzerAdapter_Analyze_InvalidResponsePrefixedText(t *testing.T)
 
 	adapter := NewOpenAIAnalyzerAdapter(&mockOpenAIClient{
 		chat: func(ctx context.Context, prompt string) (string, error) {
-			return "Here is the result:\n{\"parsedEmails\":[{\"productNameRaw\":\"Example Product Full Name\"}]}", nil
+			return "Here is the result:\n{\"parsedEmails\":[{\"productNameRaw\":\"Example Product Full Name\",\"lineItems\":[]}]}", nil
 		},
 	}, nil)
 
@@ -175,7 +184,7 @@ func TestOpenAIAnalyzerAdapter_Analyze_AllNullDraftsBecomeEmpty(t *testing.T) {
 
 	adapter := NewOpenAIAnalyzerAdapter(&mockOpenAIClient{
 		chat: func(ctx context.Context, prompt string) (string, error) {
-			return `{"parsedEmails":[{"productNameRaw":null,"productNameDisplay":null,"vendorName":null,"billingNumber":null,"invoiceNumber":null,"amount":null,"currency":null,"billingDate":null,"paymentCycle":null}]}`, nil
+			return `{"parsedEmails":[{"productNameRaw":null,"productNameDisplay":null,"vendorName":null,"billingNumber":null,"invoiceNumber":null,"amount":null,"currency":null,"billingDate":null,"paymentCycle":null,"lineItems":[{"productNameRaw":"  ","productNameDisplay":" ","amount":null,"currency":" "}] }]}`, nil
 		},
 	}, nil)
 

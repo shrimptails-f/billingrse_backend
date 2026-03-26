@@ -25,6 +25,9 @@ func TestDirectBillingEligibilityAdapter_Execute_ConvertsCommandAndResult(t *tes
 	invoiceNumber := "T1234567890123"
 	billingDate := time.Date(2026, 3, 24, 0, 0, 0, 0, time.UTC)
 	productNameDisplay := "Example Product"
+	lineItemName := "Example Product Full Name"
+	lineItemAmount := 1200.0
+	lineItemCurrency := "JPY"
 	adapter := NewDirectBillingEligibilityAdapter(&stubBillingEligibilityUseCase{
 		execute: func(ctx context.Context, cmd beapp.Command) (beapp.Result, error) {
 			if len(cmd.ResolvedItems) != 1 {
@@ -49,6 +52,13 @@ func TestDirectBillingEligibilityAdapter_Execute_ConvertsCommandAndResult(t *tes
 						Currency:           "JPY",
 						BillingDate:        &billingDate,
 						PaymentCycle:       "one_time",
+						LineItems: []bedomain.LineItem{
+							{
+								ProductNameRaw: &lineItemName,
+								Amount:         &lineItemAmount,
+								Currency:       &lineItemCurrency,
+							},
+						},
 					},
 				},
 				EligibleCount: 1,
@@ -106,6 +116,12 @@ func TestDirectBillingEligibilityAdapter_Execute_ConvertsCommandAndResult(t *tes
 	}
 	if result.EligibleItems[0].InvoiceNumber == nil || *result.EligibleItems[0].InvoiceNumber != invoiceNumber {
 		t.Fatalf("expected invoice number to be mapped, got %+v", result.EligibleItems[0])
+	}
+	if len(result.EligibleItems[0].LineItems) != 1 {
+		t.Fatalf("expected line items to be mapped, got %+v", result.EligibleItems[0])
+	}
+	if result.EligibleItems[0].LineItems[0].ProductNameRaw == nil || *result.EligibleItems[0].LineItems[0].ProductNameRaw != lineItemName {
+		t.Fatalf("expected line item product name to be mapped, got %+v", result.EligibleItems[0].LineItems[0])
 	}
 	if result.IneligibleCount != 1 || result.IneligibleItems[0].ReasonCode != bedomain.ReasonCodeCurrencyEmpty {
 		t.Fatalf("unexpected ineligible result: %+v", result)

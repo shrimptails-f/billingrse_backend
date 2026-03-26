@@ -3,6 +3,7 @@ package infrastructure
 import (
 	commondomain "business/internal/common/domain"
 	"business/internal/library/logger"
+	openailib "business/internal/library/openai"
 	maapp "business/internal/mailanalysis/application"
 	madomain "business/internal/mailanalysis/domain"
 	"context"
@@ -65,15 +66,23 @@ func (a *OpenAIAnalyzerAdapter) Analyze(ctx context.Context, email maapp.EmailFo
 }
 
 type parsedEmailResponse struct {
+	ProductNameRaw     *string                       `json:"productNameRaw"`
+	ProductNameDisplay *string                       `json:"productNameDisplay"`
+	VendorName         *string                       `json:"vendorName"`
+	BillingNumber      *string                       `json:"billingNumber"`
+	InvoiceNumber      *string                       `json:"invoiceNumber"`
+	Amount             *float64                      `json:"amount"`
+	Currency           *string                       `json:"currency"`
+	BillingDate        *string                       `json:"billingDate"`
+	PaymentCycle       *string                       `json:"paymentCycle"`
+	LineItems          []parsedEmailLineItemResponse `json:"lineItems"`
+}
+
+type parsedEmailLineItemResponse struct {
 	ProductNameRaw     *string  `json:"productNameRaw"`
 	ProductNameDisplay *string  `json:"productNameDisplay"`
-	VendorName         *string  `json:"vendorName"`
-	BillingNumber      *string  `json:"billingNumber"`
-	InvoiceNumber      *string  `json:"invoiceNumber"`
 	Amount             *float64 `json:"amount"`
 	Currency           *string  `json:"currency"`
-	BillingDate        *string  `json:"billingDate"`
-	PaymentCycle       *string  `json:"paymentCycle"`
 }
 
 type parsedEmailResponseEnvelope struct {
@@ -81,28 +90,7 @@ type parsedEmailResponseEnvelope struct {
 }
 
 func buildPrompt(email maapp.EmailForAnalysisTarget) string {
-	return fmt.Sprintf(`あなたはメール本文から請求関連の構造化情報を抽出するアシスタントです。
-
-出力規約:
-- JSONオブジェクトのみを返してください
-- トップレベルのキーは parsedEmails のみを使用してください
-- parsedEmails は配列にしてください
-- parsedEmails の各要素のキーは productNameRaw, productNameDisplay, vendorName, billingNumber, invoiceNumber, amount, currency, billingDate, paymentCycle のみを使用してください
-- 値が分からない場合は null を設定してください
-- billingDate は RFC3339 形式の文字列、または null にしてください
-- paymentCycle は one_time, recurring, null のいずれかにしてください
-- productNameRaw はメールに書かれている商品名/サービス名の全文、分からない場合は null にしてください
-- productNameDisplay は表示用の短い商品名です。単品なら商品名だけ、セット商品ならセット名、短縮できなければ productNameRaw と同じで構いません。分からない場合は null にしてください
-- amount は数値、複数請求があれば parsedEmails に複数要素を入れてください
-- 請求関連の情報が読み取れない場合は {"parsedEmails": []} を返してください
-- 推測で値を補完しないでください
-
-subject: %s
-from: %s
-receivedAt: %s
-body:
-%s
-`, email.Subject, email.From, email.ReceivedAt.UTC().Format(time.RFC3339), email.Body)
+	return openailib.BuildParsedEmailPrompt(email.Subject, email.From, email.ReceivedAt, email.Body)
 }
 
 func parseAnalysisResponse(raw string) ([]commondomain.ParsedEmail, error) {
@@ -123,6 +111,20 @@ func parseAnalysisResponse(raw string) ([]commondomain.ParsedEmail, error) {
 			return nil, err
 		}
 
+		lineItems := make([]commondomain.ParsedEmailLineItem, 0, len(item.LineItems))
+		for _, lineItem := range item.LineItems {
+			normalizedLineItem := commondomain.ParsedEmailLineItem{
+				ProductNameRaw:     lineItem.ProductNameRaw,
+				ProductNameDisplay: lineItem.ProductNameDisplay,
+				Amount:             lineItem.Amount,
+				Currency:           lineItem.Currency,
+			}.Normalize()
+			if normalizedLineItem.IsEmpty() {
+				continue
+			}
+			lineItems = append(lineItems, normalizedLineItem)
+		}
+
 		parsedEmail := commondomain.ParsedEmail{
 			ProductNameRaw:     item.ProductNameRaw,
 			ProductNameDisplay: item.ProductNameDisplay,
@@ -133,6 +135,7 @@ func parseAnalysisResponse(raw string) ([]commondomain.ParsedEmail, error) {
 			Currency:           item.Currency,
 			BillingDate:        billingDate,
 			PaymentCycle:       item.PaymentCycle,
+			LineItems:          lineItems,
 		}.Normalize()
 		if parsedEmail.IsEmpty() {
 			continue

@@ -19,7 +19,32 @@ type SaveResult struct {
 
 // BillingRepository persists billings idempotently by billing identity.
 type BillingRepository interface {
-	SaveIfAbsent(ctx context.Context, billing commondomain.Billing) (SaveResult, error)
+	SaveIfAbsent(ctx context.Context, billing commondomain.Billing, lineItems []CreationLineItem) (SaveResult, error)
+}
+
+// CreationLineItem is one billing detail row nested under a billing number.
+type CreationLineItem struct {
+	ProductNameRaw     *string
+	ProductNameDisplay *string
+	Amount             *float64
+	Currency           *string
+}
+
+// Normalize trims free-form values for one detail row.
+func (l CreationLineItem) Normalize() CreationLineItem {
+	l.ProductNameRaw = cloneString(l.ProductNameRaw)
+	l.ProductNameDisplay = cloneString(l.ProductNameDisplay)
+	l.Amount = cloneFloat64(l.Amount)
+	l.Currency = normalizeOptionalCurrency(l.Currency)
+	return l
+}
+
+// IsEmpty reports whether this detail row has no extracted fields.
+func (l CreationLineItem) IsEmpty() bool {
+	return l.ProductNameRaw == nil &&
+		l.ProductNameDisplay == nil &&
+		l.Amount == nil &&
+		l.Currency == nil
 }
 
 // CreationTarget is a billing-ready item received from billingeligibility.
@@ -37,6 +62,7 @@ type CreationTarget struct {
 	Currency           string
 	BillingDate        *time.Time
 	PaymentCycle       string
+	LineItems          []CreationLineItem
 }
 
 // Normalize trims free-form strings and clones optional pointer values.
@@ -50,6 +76,7 @@ func (t CreationTarget) Normalize() CreationTarget {
 	t.Currency = strings.TrimSpace(t.Currency)
 	t.PaymentCycle = strings.TrimSpace(t.PaymentCycle)
 	t.BillingDate = cloneTime(t.BillingDate)
+	t.LineItems = normalizeCreationLineItems(t.LineItems)
 	return t
 }
 
@@ -172,7 +199,8 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 			continue
 		}
 
-		saveResult, err := uc.repository.SaveIfAbsent(ctx, billing)
+		lineItems := resolveCreationLineItems(target, billing.Money.Currency)
+		saveResult, err := uc.repository.SaveIfAbsent(ctx, billing, lineItems)
 		if err != nil {
 			result.Failures = append(result.Failures, domain.Failure{
 				ParsedEmailID:     target.ParsedEmailID,
@@ -253,6 +281,65 @@ func cloneTime(value *time.Time) *time.Time {
 	}
 	cloned := value.UTC()
 	return &cloned
+}
+
+func cloneFloat64(value *float64) *float64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func normalizeOptionalCurrency(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return nil
+	}
+	upper := strings.ToUpper(trimmed)
+	return &upper
+}
+
+func normalizeCreationLineItems(items []CreationLineItem) []CreationLineItem {
+	if len(items) == 0 {
+		return nil
+	}
+
+	normalized := make([]CreationLineItem, 0, len(items))
+	for _, item := range items {
+		item = item.Normalize()
+		if item.IsEmpty() {
+			continue
+		}
+		normalized = append(normalized, item)
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func resolveCreationLineItems(target CreationTarget, billingCurrency string) []CreationLineItem {
+	lineItems := normalizeCreationLineItems(target.LineItems)
+	if len(lineItems) > 0 {
+		return lineItems
+	}
+
+	amount := target.Amount
+	currency := billingCurrency
+	fallback := CreationLineItem{
+		ProductNameDisplay: cloneString(target.ProductNameDisplay),
+		Amount:             &amount,
+		Currency:           normalizeOptionalCurrency(&currency),
+	}.Normalize()
+	if fallback.IsEmpty() {
+		return nil
+	}
+
+	return []CreationLineItem{fallback}
 }
 
 func messageForInvalidCreationTarget(target CreationTarget) string {

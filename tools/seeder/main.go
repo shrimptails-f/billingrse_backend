@@ -50,7 +50,7 @@ func main() {
 	err = Seed(tx)
 	if err != nil {
 		tx.Error = err
-		fmt.Printf("データ投入中にエラーが発生しました。\n")
+		fmt.Printf("データ投入中にエラーが発生しました: %v\n", err)
 		return
 	}
 

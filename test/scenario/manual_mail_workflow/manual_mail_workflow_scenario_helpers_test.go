@@ -29,7 +29,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -163,6 +162,7 @@ func newManualMailWorkflowScenarioEnv(
 		&model.Vendor{},
 		&model.VendorAlias{},
 		&model.Billing{},
+		&model.BillingLineItem{},
 		&model.ManualMailWorkflowHistory{},
 		&model.ManualMailWorkflowStageFailure{},
 	))
@@ -331,8 +331,6 @@ func (e *manualMailWorkflowScenarioEnv) mustCreateExistingBilling(userID, vendor
 		EmailID:            999999,
 		ProductNameDisplay: stringPtr("Seeded Existing Billing"),
 		BillingNumber:      strings.TrimSpace(billingNumber),
-		Amount:             decimal.RequireFromString("1290"),
-		Currency:           "JPY",
 		BillingSummaryDate: now,
 		PaymentCycle:       "recurring",
 		CreatedAt:          now,

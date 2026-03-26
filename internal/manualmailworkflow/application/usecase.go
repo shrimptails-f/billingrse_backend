@@ -168,6 +168,15 @@ type EligibleItem struct {
 	BillingDate        *time.Time
 	Currency           string
 	PaymentCycle       string
+	LineItems          []EligibleLineItem
+}
+
+// EligibleLineItem is one billing detail row under the same billing number.
+type EligibleLineItem struct {
+	ProductNameRaw     *string
+	ProductNameDisplay *string
+	Amount             *float64
+	Currency           *string
 }
 
 // IneligibleItem は billingeligibility stage の業務上の非成立結果。

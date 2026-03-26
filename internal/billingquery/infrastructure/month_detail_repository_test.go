@@ -197,7 +197,7 @@ func seedBillingMonthDetailFixtures(t *testing.T, db *gorm.DB) {
 	summaryDateAWSFallback := time.Date(2026, 3, 23, 10, 0, 0, 0, time.UTC)
 	summaryDateOtherUser := time.Date(2026, 3, 12, 0, 0, 0, 0, time.UTC)
 
-	billings := []billingRecord{
+	billings := []billingFixture{
 		{
 			ID:                 301,
 			UserID:             1,
@@ -353,7 +353,9 @@ func seedBillingMonthDetailFixtures(t *testing.T, db *gorm.DB) {
 			UpdatedAt:          now,
 		},
 	}
-	require.NoError(t, db.Create(&billings).Error)
+	billingRecords, lineItems := billingRecordsAndLineItemsFromFixtures(billings)
+	require.NoError(t, db.Create(&billingRecords).Error)
+	require.NoError(t, db.Create(&lineItems).Error)
 }
 
 func TestBillingQueryRepository_MonthDetail_AggregatesTotalsAndVendorBreakdown(t *testing.T) {

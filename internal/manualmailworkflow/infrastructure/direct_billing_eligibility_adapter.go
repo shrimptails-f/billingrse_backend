@@ -2,6 +2,7 @@ package infrastructure
 
 import (
 	beapp "business/internal/billingeligibility/application"
+	bedomain "business/internal/billingeligibility/domain"
 	manualapp "business/internal/manualmailworkflow/application"
 	"context"
 	"errors"
@@ -61,6 +62,7 @@ func (a *DirectBillingEligibilityAdapter) Execute(ctx context.Context, cmd manua
 			Currency:           item.Currency,
 			BillingDate:        cloneTime(item.BillingDate),
 			PaymentCycle:       item.PaymentCycle,
+			LineItems:          toEligibleLineItems(item.LineItems),
 		})
 	}
 
@@ -112,4 +114,29 @@ func cloneTime(value *time.Time) *time.Time {
 	}
 	cloned := *value
 	return &cloned
+}
+
+func cloneFloat64(value *float64) *float64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func toEligibleLineItems(items []bedomain.LineItem) []manualapp.EligibleLineItem {
+	if len(items) == 0 {
+		return nil
+	}
+
+	lineItems := make([]manualapp.EligibleLineItem, 0, len(items))
+	for _, item := range items {
+		lineItems = append(lineItems, manualapp.EligibleLineItem{
+			ProductNameRaw:     cloneString(item.ProductNameRaw),
+			ProductNameDisplay: cloneString(item.ProductNameDisplay),
+			Amount:             cloneFloat64(item.Amount),
+			Currency:           cloneString(item.Currency),
+		})
+	}
+	return lineItems
 }

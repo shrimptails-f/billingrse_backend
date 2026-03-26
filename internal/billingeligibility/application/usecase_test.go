@@ -31,6 +31,13 @@ func TestUseCaseExecute(t *testing.T) {
 		Currency:           &currency,
 		BillingDate:        &now,
 		PaymentCycle:       &paymentCycle,
+		LineItems: []commondomain.ParsedEmailLineItem{
+			{
+				ProductNameDisplay: &productNameDisplay,
+				Amount:             &amount,
+				Currency:           &currency,
+			},
+		},
 	}
 
 	missingCurrencyData := validData
@@ -115,6 +122,12 @@ func TestUseCaseExecute(t *testing.T) {
 	}
 	if first.ProductNameDisplay == nil || *first.ProductNameDisplay != "Example Product" {
 		t.Fatalf("expected product name display to be preserved, got %+v", first)
+	}
+	if len(first.LineItems) != 1 {
+		t.Fatalf("expected line items to be preserved, got %+v", first)
+	}
+	if first.LineItems[0].ProductNameDisplay == nil || *first.LineItems[0].ProductNameDisplay != "Example Product" {
+		t.Fatalf("expected line item display to be preserved, got %+v", first.LineItems[0])
 	}
 
 	second := result.EligibleItems[1]

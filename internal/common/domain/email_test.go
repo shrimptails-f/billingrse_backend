@@ -114,7 +114,18 @@ func TestParsedEmailNormalize(t *testing.T) {
 		Currency:           stringPtr(" jpy "),
 		BillingDate:        &billingDate,
 		PaymentCycle:       stringPtr(" One Time "),
-		ExtractedAt:        extractedAt,
+		LineItems: []ParsedEmailLineItem{
+			{
+				ProductNameRaw:     stringPtr(" Example Product Full Name "),
+				ProductNameDisplay: stringPtr(" Example Product "),
+				Amount:             float64Ptr(123.456),
+				Currency:           stringPtr(" jpy "),
+			},
+			{
+				ProductNameDisplay: stringPtr(" "),
+			},
+		},
+		ExtractedAt: extractedAt,
 	}.Normalize()
 
 	if got := *parsed.ProductNameRaw; got != "Example Product Full Name" {
@@ -138,6 +149,15 @@ func TestParsedEmailNormalize(t *testing.T) {
 	if got := *parsed.PaymentCycle; got != "one_time" {
 		t.Fatalf("unexpected payment cycle: %q", got)
 	}
+	if len(parsed.LineItems) != 1 {
+		t.Fatalf("unexpected line items: %+v", parsed.LineItems)
+	}
+	if parsed.LineItems[0].ProductNameDisplay == nil || *parsed.LineItems[0].ProductNameDisplay != "Example Product" {
+		t.Fatalf("unexpected line item display: %+v", parsed.LineItems[0])
+	}
+	if parsed.LineItems[0].Currency == nil || *parsed.LineItems[0].Currency != "JPY" {
+		t.Fatalf("unexpected line item currency: %+v", parsed.LineItems[0])
+	}
 	if parsed.BillingDate == nil || parsed.BillingDate.Location() != time.UTC {
 		t.Fatalf("expected UTC billing date, got %+v", parsed.BillingDate)
 	}
@@ -157,10 +177,29 @@ func TestParsedEmailNormalize_BlankOptionalValuesBecomeNil(t *testing.T) {
 		InvoiceNumber:      stringPtr(" "),
 		Currency:           stringPtr(" "),
 		PaymentCycle:       stringPtr(" "),
+		LineItems: []ParsedEmailLineItem{
+			{ProductNameDisplay: stringPtr(" ")},
+		},
 	}.Normalize()
 
 	if !parsed.IsEmpty() {
 		t.Fatalf("expected parsed email to become empty, got %+v", parsed)
+	}
+}
+
+func TestParsedEmailNormalize_LineItemsKeepParsedEmailNonEmpty(t *testing.T) {
+	t.Parallel()
+
+	parsed := ParsedEmail{
+		LineItems: []ParsedEmailLineItem{
+			{
+				ProductNameDisplay: stringPtr("Example Product"),
+			},
+		},
+	}.Normalize()
+
+	if parsed.IsEmpty() {
+		t.Fatalf("expected parsed email with line item to be non-empty: %+v", parsed)
 	}
 }
 

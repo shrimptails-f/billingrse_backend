@@ -1,6 +1,7 @@
 package infrastructure
 
 import (
+	billingapp "business/internal/billing/application"
 	commondomain "business/internal/common/domain"
 	"business/internal/library/logger"
 	"business/internal/library/mysql"
@@ -44,7 +45,7 @@ func newBillingRepoTestEnv(t *testing.T) *billingRepoTestEnv {
 		skipIfBillingRepoDBUnavailable(t, err)
 	}
 	require.NoError(t, err)
-	require.NoError(t, mysqlConn.DB.AutoMigrate(&billingSourceEmailRecord{}, &billingRecord{}))
+	require.NoError(t, mysqlConn.DB.AutoMigrate(&billingSourceEmailRecord{}, &billingRecord{}, &billingLineItemRecord{}))
 	nowUTC := time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)
 
 	return &billingRepoTestEnv{
@@ -100,12 +101,25 @@ func TestBillingRepository_SaveIfAbsent_CreatedAndDuplicate(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	first, err := env.repo.SaveIfAbsent(ctx, billing)
+	lineItems := []billingapp.CreationLineItem{
+		{
+			ProductNameRaw:     stringPtr("Example Product Full Name"),
+			ProductNameDisplay: stringPtr("Example Product"),
+			Amount:             float64Ptr(1200.5),
+			Currency:           stringPtr("jpy"),
+		},
+		{
+			ProductNameDisplay: stringPtr("Tax"),
+			Amount:             float64Ptr(100),
+			Currency:           stringPtr("JPY"),
+		},
+	}
+	first, err := env.repo.SaveIfAbsent(ctx, billing, lineItems)
 	require.NoError(t, err)
 	require.False(t, first.Duplicate)
 	require.NotZero(t, first.BillingID)
 
-	second, err := env.repo.SaveIfAbsent(ctx, billing)
+	second, err := env.repo.SaveIfAbsent(ctx, billing, lineItems)
 	require.NoError(t, err)
 	require.True(t, second.Duplicate)
 	require.Equal(t, first.BillingID, second.BillingID)
@@ -120,8 +134,6 @@ func TestBillingRepository_SaveIfAbsent_CreatedAndDuplicate(t *testing.T) {
 	require.Equal(t, "INV-001", stored.BillingNumber)
 	require.NotNil(t, stored.InvoiceNumber)
 	require.Equal(t, "T1234567890123", *stored.InvoiceNumber)
-	require.True(t, stored.Amount.Equal(decimal.RequireFromString("1200.5")))
-	require.Equal(t, "JPY", stored.Currency)
 	require.NotNil(t, stored.BillingDate)
 	require.True(t, stored.BillingDate.Equal(billingDate))
 	require.True(t, stored.BillingSummaryDate.Equal(billingDate))
@@ -132,6 +144,25 @@ func TestBillingRepository_SaveIfAbsent_CreatedAndDuplicate(t *testing.T) {
 	var count int64
 	require.NoError(t, env.db.WithContext(ctx).Model(&billingRecord{}).Count(&count).Error)
 	require.EqualValues(t, 1, count)
+
+	var storedLineItems []billingLineItemRecord
+	require.NoError(t, env.db.WithContext(ctx).Order("position asc").Find(&storedLineItems).Error)
+	require.Len(t, storedLineItems, 2)
+	require.Equal(t, first.BillingID, storedLineItems[0].BillingID)
+	require.Equal(t, uint(1), storedLineItems[0].UserID)
+	require.Equal(t, 0, storedLineItems[0].Position)
+	require.NotNil(t, storedLineItems[0].ProductNameDisplay)
+	require.Equal(t, "Example Product", *storedLineItems[0].ProductNameDisplay)
+	require.NotNil(t, storedLineItems[0].Amount)
+	require.True(t, storedLineItems[0].Amount.Equal(decimal.RequireFromString("1200.5")))
+	require.NotNil(t, storedLineItems[0].Currency)
+	require.Equal(t, "JPY", *storedLineItems[0].Currency)
+
+	require.Equal(t, 1, storedLineItems[1].Position)
+	require.NotNil(t, storedLineItems[1].ProductNameDisplay)
+	require.Equal(t, "Tax", *storedLineItems[1].ProductNameDisplay)
+	require.NotNil(t, storedLineItems[1].Amount)
+	require.True(t, storedLineItems[1].Amount.Equal(decimal.RequireFromString("100")))
 }
 
 func TestBillingRepository_SaveIfAbsent_ConcurrentDuplicate(t *testing.T) {
@@ -166,7 +197,13 @@ func TestBillingRepository_SaveIfAbsent_ConcurrentDuplicate(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			result, err := env.repo.SaveIfAbsent(context.Background(), billing)
+			result, err := env.repo.SaveIfAbsent(context.Background(), billing, []billingapp.CreationLineItem{
+				{
+					ProductNameDisplay: stringPtr("Concurrent Item"),
+					Amount:             float64Ptr(10),
+					Currency:           stringPtr("usd"),
+				},
+			})
 			if err != nil {
 				errorsCh <- err
 				return
@@ -203,4 +240,16 @@ func TestBillingRepository_SaveIfAbsent_ConcurrentDuplicate(t *testing.T) {
 	require.NoError(t, env.db.WithContext(context.Background()).First(&stored).Error)
 	require.Nil(t, stored.BillingDate)
 	require.True(t, stored.BillingSummaryDate.Equal(sourceReceivedAt))
+
+	var lineItemCount int64
+	require.NoError(t, env.db.WithContext(context.Background()).Model(&billingLineItemRecord{}).Count(&lineItemCount).Error)
+	require.EqualValues(t, 1, lineItemCount)
+}
+
+func stringPtr(value string) *string {
+	return &value
+}
+
+func float64Ptr(value float64) *float64 {
+	return &value
 }

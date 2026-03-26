@@ -39,6 +39,7 @@ func (a *DirectBillingAdapter) Execute(ctx context.Context, cmd manualapp.Billin
 			Currency:           item.Currency,
 			BillingDate:        cloneTime(item.BillingDate),
 			PaymentCycle:       item.PaymentCycle,
+			LineItems:          toCreationLineItems(item.LineItems),
 		})
 	}
 
@@ -97,4 +98,21 @@ func (a *DirectBillingAdapter) Execute(ctx context.Context, cmd manualapp.Billin
 		DuplicateCount: result.DuplicateCount,
 		Failures:       failures,
 	}, nil
+}
+
+func toCreationLineItems(items []manualapp.EligibleLineItem) []billingapp.CreationLineItem {
+	if len(items) == 0 {
+		return nil
+	}
+
+	lineItems := make([]billingapp.CreationLineItem, 0, len(items))
+	for _, item := range items {
+		lineItems = append(lineItems, billingapp.CreationLineItem{
+			ProductNameRaw:     cloneString(item.ProductNameRaw),
+			ProductNameDisplay: cloneString(item.ProductNameDisplay),
+			Amount:             cloneFloat64(item.Amount),
+			Currency:           cloneString(item.Currency),
+		})
+	}
+	return lineItems
 }
