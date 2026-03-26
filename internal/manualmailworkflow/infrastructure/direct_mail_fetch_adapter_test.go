@@ -24,7 +24,6 @@ func TestDirectManualMailFetchAdapter_Execute_MapsFailureMessages(t *testing.T) 
 	adapter := NewDirectManualMailFetchAdapter(&stubMailFetchUseCase{
 		execute: func(ctx context.Context, cmd mfapp.Command) (mfapp.Result, error) {
 			return mfapp.Result{
-				CreatedEmailIDs: []uint{101},
 				CreatedEmails: []mfapp.CreatedEmail{
 					{
 						EmailID:           101,

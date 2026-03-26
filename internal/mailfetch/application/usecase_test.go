@@ -167,9 +167,6 @@ func TestUseCaseExecute_CreatesAndReturnsExistingIDs(t *testing.T) {
 	if result.MatchedMessageCount != 3 {
 		t.Fatalf("expected matched count 3, got %d", result.MatchedMessageCount)
 	}
-	if len(result.CreatedEmailIDs) != 1 || result.CreatedEmailIDs[0] != 101 {
-		t.Fatalf("unexpected created ids: %+v", result.CreatedEmailIDs)
-	}
 	if len(result.CreatedEmails) != 1 {
 		t.Fatalf("unexpected created emails: %+v", result.CreatedEmails)
 	}
@@ -288,9 +285,6 @@ func TestUseCaseExecute_PartialFailuresContinue(t *testing.T) {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 
-	if len(result.CreatedEmailIDs) != 1 || result.CreatedEmailIDs[0] != 55 {
-		t.Fatalf("unexpected created ids: %+v", result.CreatedEmailIDs)
-	}
 	if len(result.CreatedEmails) != 1 || result.CreatedEmails[0].EmailID != 55 || result.CreatedEmails[0].Body != "body-1" {
 		t.Fatalf("unexpected created emails: %+v", result.CreatedEmails)
 	}
@@ -363,9 +357,6 @@ func TestUseCaseExecute_ZeroReceivedAtBecomesNormalizeFailure(t *testing.T) {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 
-	if len(result.CreatedEmailIDs) != 1 || result.CreatedEmailIDs[0] != 55 {
-		t.Fatalf("unexpected created ids: %+v", result.CreatedEmailIDs)
-	}
 	if len(result.CreatedEmails) != 1 || result.CreatedEmails[0].Body != "body-1" {
 		t.Fatalf("unexpected created emails: %+v", result.CreatedEmails)
 	}

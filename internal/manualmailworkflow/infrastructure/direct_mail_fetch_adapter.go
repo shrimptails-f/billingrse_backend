@@ -37,9 +37,6 @@ func (a *DirectManualMailFetchAdapter) Execute(ctx context.Context, cmd manualap
 		return manualapp.FetchResult{}, err
 	}
 
-	createdEmailIDs := make([]uint, 0, len(result.CreatedEmailIDs))
-	createdEmailIDs = append(createdEmailIDs, result.CreatedEmailIDs...)
-
 	createdEmails := make([]manualapp.CreatedEmail, 0, len(result.CreatedEmails))
 	for _, createdEmail := range result.CreatedEmails {
 		createdEmails = append(createdEmails, manualapp.CreatedEmail{
@@ -68,7 +65,6 @@ func (a *DirectManualMailFetchAdapter) Execute(ctx context.Context, cmd manualap
 	}
 
 	return manualapp.FetchResult{
-		CreatedEmailIDs:  createdEmailIDs,
 		CreatedEmails:    createdEmails,
 		ExistingEmailIDs: existingEmailIDs,
 		Failures:         failures,

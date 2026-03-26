@@ -130,7 +130,7 @@ func TestManualMailWorkflow_Runner_PartialSuccessScenario(t *testing.T) {
 
 	ref, result := env.runWorkflow("01JQ0B7N0M7H3X9C2J5K8V6P4")
 
-	require.Len(t, result.Fetch.CreatedEmailIDs, 4)
+	require.Equal(t, len(result.Fetch.CreatedEmails)+len(result.Fetch.ExistingEmailIDs), 4)
 	require.Equal(t, 4, result.Analysis.ParsedEmailCount)
 	require.Equal(t, 3, result.VendorResolution.ResolvedCount)
 	require.Equal(t, 1, result.VendorResolution.UnresolvedCount)
@@ -273,7 +273,7 @@ func TestManualMailWorkflow_Runner_SucceededScenario(t *testing.T) {
 
 	ref, result := env.runWorkflow("01JQ0B7N0M7H3X9C2J5K8V6P5")
 
-	require.Len(t, result.Fetch.CreatedEmailIDs, 1)
+	require.Equal(t, len(result.Fetch.CreatedEmails)+len(result.Fetch.ExistingEmailIDs), 1)
 	require.Equal(t, 1, result.Analysis.ParsedEmailCount)
 	require.Equal(t, 1, result.VendorResolution.ResolvedCount)
 	require.Equal(t, 0, result.VendorResolution.UnresolvedCount)

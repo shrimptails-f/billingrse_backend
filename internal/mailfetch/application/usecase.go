@@ -56,7 +56,6 @@ type Result struct {
 	Provider            string
 	AccountIdentifier   string
 	MatchedMessageCount int
-	CreatedEmailIDs     []uint
 	CreatedEmails       []CreatedEmail
 	ExistingEmailIDs    []uint
 	Failures            []mfdomain.MessageFailure
@@ -179,7 +178,6 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 	for _, saveResult := range saveResults {
 		switch saveResult.Status {
 		case mfdomain.SaveStatusCreated:
-			result.CreatedEmailIDs = append(result.CreatedEmailIDs, saveResult.EmailID)
 			dto, ok := saveTargetsByMessageID[saveResult.ExternalMessageID]
 			if !ok {
 				reqLog.Error("manual_mail_fetch_created_email_payload_missing",
@@ -219,7 +217,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 		logger.Uint("connection_id", cmd.ConnectionID),
 		logger.String("provider", result.Provider),
 		logger.Int("matched_message_count", result.MatchedMessageCount),
-		logger.Int("created_email_count", len(result.CreatedEmailIDs)),
+		logger.Int("created_email_count", len(result.CreatedEmails)),
 		logger.Int("existing_email_count", len(result.ExistingEmailIDs)),
 		logger.Int("failure_count", len(result.Failures)),
 	)

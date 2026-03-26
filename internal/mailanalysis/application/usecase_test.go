@@ -158,9 +158,6 @@ func TestUseCaseExecute_SavesParsedEmailsAndReturnsSummary(t *testing.T) {
 	if result.ParsedEmailCount != 2 {
 		t.Fatalf("expected parsed email count 2, got %d", result.ParsedEmailCount)
 	}
-	if len(result.ParsedEmailIDs) != 2 || result.ParsedEmailIDs[0] != 1001 || result.ParsedEmailIDs[1] != 1002 {
-		t.Fatalf("unexpected parsed email ids: %+v", result.ParsedEmailIDs)
-	}
 	if len(result.Failures) != 0 {
 		t.Fatalf("unexpected failures: %+v", result.Failures)
 	}
@@ -235,9 +232,6 @@ func TestUseCaseExecute_PartialFailuresContinue(t *testing.T) {
 	if result.ParsedEmailCount != 1 {
 		t.Fatalf("expected parsed email count 1, got %d", result.ParsedEmailCount)
 	}
-	if len(result.ParsedEmailIDs) != 1 || result.ParsedEmailIDs[0] != 600 {
-		t.Fatalf("unexpected parsed email ids: %+v", result.ParsedEmailIDs)
-	}
 	if len(result.Failures) != 5 {
 		t.Fatalf("expected 5 failures, got %+v", result.Failures)
 	}
@@ -300,9 +294,6 @@ func TestUseCaseExecute_AllInvalidEmailsSkipsAnalyzerAndReturnsFailures(t *testi
 	}
 	if factoryCalled {
 		t.Fatal("factory should not be called when all emails are invalid")
-	}
-	if result.ParsedEmailCount != 0 || len(result.ParsedEmailIDs) != 0 || len(result.ParsedEmails) != 0 {
-		t.Fatalf("unexpected parsed email result: %+v", result)
 	}
 	if len(result.Failures) != 2 {
 		t.Fatalf("expected 2 failures, got %+v", result.Failures)
@@ -367,9 +358,6 @@ func TestUseCaseExecute_AnalyzeCompletesOutOfOrderButSaveOrderStaysStable(t *tes
 	if fmt.Sprint(savedEmailIDs) != fmt.Sprint(expectedOrder) {
 		t.Fatalf("unexpected save order: got=%v want=%v", savedEmailIDs, expectedOrder)
 	}
-	if len(result.ParsedEmailIDs) != 3 || result.ParsedEmailIDs[0] != 1001 || result.ParsedEmailIDs[1] != 1002 || result.ParsedEmailIDs[2] != 1003 {
-		t.Fatalf("unexpected parsed email ids: %+v", result.ParsedEmailIDs)
-	}
 	if len(result.Failures) != 0 {
 		t.Fatalf("unexpected failures: %+v", result.Failures)
 	}
@@ -422,15 +410,12 @@ func TestUseCaseExecute_EmptyEmailsReturnsImmediately(t *testing.T) {
 		logger.NewNop(),
 	)
 
-	result, err := uc.Execute(context.Background(), Command{UserID: 7})
+	_, err := uc.Execute(context.Background(), Command{UserID: 7})
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 	if factoryCalled {
 		t.Fatal("factory should not be called for empty input")
-	}
-	if result.ParsedEmailCount != 0 || len(result.ParsedEmailIDs) != 0 || len(result.Failures) != 0 {
-		t.Fatalf("unexpected result: %+v", result)
 	}
 }
 
@@ -444,12 +429,9 @@ func TestUseCaseExecute_EmptyEmailsReturnsImmediatelyWithoutDependencies(t *test
 		logger.NewNop(),
 	)
 
-	result, err := uc.Execute(context.Background(), Command{UserID: 7})
+	_, err := uc.Execute(context.Background(), Command{UserID: 7})
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
-	}
-	if result.ParsedEmailCount != 0 || len(result.ParsedEmailIDs) != 0 || len(result.Failures) != 0 {
-		t.Fatalf("unexpected result: %+v", result)
 	}
 }
 

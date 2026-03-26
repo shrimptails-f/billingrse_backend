@@ -102,7 +102,6 @@ type ParsedEmailResultItem struct {
 
 // Result は mailanalysis stage の出力。
 type Result struct {
-	ParsedEmailIDs   []uint
 	ParsedEmails     []ParsedEmailResultItem
 	ParsedEmailCount int
 	Failures         []domain.MessageFailure
@@ -242,9 +241,6 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 			continue
 		}
 
-		for _, record := range records {
-			result.ParsedEmailIDs = append(result.ParsedEmailIDs, record.ID)
-		}
 		// SaveAll の返却順は analyzer の出力順と同じ前提で、保存済み ID を ParsedEmail にひも付ける。
 		for idx, record := range records {
 			if idx >= len(output.ParsedEmails) {

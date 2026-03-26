@@ -26,7 +26,6 @@ func TestDirectMailAnalysisAdapter_Execute_MapsFailureMessages(t *testing.T) {
 	adapter := NewDirectMailAnalysisAdapter(&stubMailAnalysisUseCase{
 		execute: func(ctx context.Context, cmd maapp.Command) (maapp.Result, error) {
 			return maapp.Result{
-				ParsedEmailIDs: []uint{9001},
 				ParsedEmails: []maapp.ParsedEmailResultItem{
 					{
 						ParsedEmailID:     9001,

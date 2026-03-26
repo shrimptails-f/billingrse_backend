@@ -156,7 +156,7 @@ func buildFetchStageProgress(historyID uint64, result FetchResult) StageProgress
 	return StageProgress{
 		HistoryID:             historyID,
 		Stage:                 workflowStageFetch,
-		SuccessCount:          len(result.CreatedEmailIDs) + len(result.ExistingEmailIDs),
+		SuccessCount:          len(result.CreatedEmails) + len(result.ExistingEmailIDs),
 		BusinessFailureCount:  0,
 		TechnicalFailureCount: len(failureRecords),
 		FailureRecords:        failureRecords,

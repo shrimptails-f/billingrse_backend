@@ -45,9 +45,6 @@ func (a *DirectMailAnalysisAdapter) Execute(ctx context.Context, cmd manualapp.A
 		return manualapp.AnalyzeResult{}, err
 	}
 
-	parsedEmailIDs := make([]uint, 0, len(result.ParsedEmailIDs))
-	parsedEmailIDs = append(parsedEmailIDs, result.ParsedEmailIDs...)
-
 	parsedEmails := make([]manualapp.ParsedEmail, 0, len(result.ParsedEmails))
 	for _, parsedEmail := range result.ParsedEmails {
 		parsedEmails = append(parsedEmails, manualapp.ParsedEmail{
@@ -74,7 +71,6 @@ func (a *DirectMailAnalysisAdapter) Execute(ctx context.Context, cmd manualapp.A
 	}
 
 	return manualapp.AnalyzeResult{
-		ParsedEmailIDs:   parsedEmailIDs,
 		ParsedEmails:     parsedEmails,
 		ParsedEmailCount: result.ParsedEmailCount,
 		Failures:         failures,
