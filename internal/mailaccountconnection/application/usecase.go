@@ -1,6 +1,7 @@
 package application
 
 import (
+	"business/internal/common"
 	"business/internal/library/logger"
 	"business/internal/library/timewrapper"
 	"business/internal/mailaccountconnection/domain"
@@ -16,7 +17,6 @@ import (
 )
 
 const (
-	oauthStateTTL   = 10 * time.Minute
 	oauthStateBytes = 32
 	credentialType  = "gmail"
 	defaultKeyVer   = int16(1)
@@ -128,7 +128,7 @@ func (uc *UseCase) Authorize(ctx context.Context, userID uint) (AuthorizeResult,
 	state := hex.EncodeToString(stateBytes)
 
 	now := uc.clock.Now()
-	expiresAt := now.Add(oauthStateTTL)
+	expiresAt := now.Add(common.GmailOAuthStateTTL)
 
 	ps := domain.OAuthPendingState{
 		UserID:    userID,

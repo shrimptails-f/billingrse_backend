@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"business/internal/library/logger"
+	"business/internal/library/ratelimit/config"
 	redisclient "business/internal/library/redis"
 	"business/internal/library/redis/script"
 
@@ -26,6 +27,18 @@ func TestLimiterWait_AllowsImmediately(t *testing.T) {
 	err := limiter.Wait(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, 1, client.rateLimitCalls)
+}
+
+func TestNewLimiterWithWindows_UsesExplicitWindows(t *testing.T) {
+	t.Parallel()
+
+	clock := &stubClock{now: time.Unix(0, 0)}
+	windows := []config.Window{{SizeSeconds: 1, Limit: 3}}
+
+	limiter := NewLimiterWithWindows(&mockRedisClient{}, clock, "gmail", windows, logger.NewNop())
+
+	assert.Equal(t, windows, limiter.windows)
+	assert.Equal(t, clock, limiter.clock)
 }
 
 func TestLimiterWait_WaitsUntilAllowed(t *testing.T) {

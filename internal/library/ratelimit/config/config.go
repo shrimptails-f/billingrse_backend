@@ -1,40 +1,10 @@
 package config
 
 import (
-	"os"
+	"business/internal/common"
 	"strconv"
 	"strings"
-	"sync"
 )
-
-const (
-	gmailEnvKey  = "GMAIL_API_REQUESTS_PER_SECOND"
-	openAIEnvKey = "OPENAI_API_REQUESTS_PER_SECOND"
-	defaultRPS   = 10
-)
-
-var (
-	envGetter   = os.Getenv
-	envGetterMu sync.RWMutex
-)
-
-// SetEnvGetter overrides the function used to retrieve environment variables.
-// Pass nil to reset to os.Getenv.
-func SetEnvGetter(getter func(string) string) {
-	envGetterMu.Lock()
-	defer envGetterMu.Unlock()
-	if getter == nil {
-		envGetter = os.Getenv
-		return
-	}
-	envGetter = getter
-}
-
-func readEnv(key string) string {
-	envGetterMu.RLock()
-	defer envGetterMu.RUnlock()
-	return envGetter(key)
-}
 
 // Window defines a sliding window configuration for rate limiting.
 type Window struct {
@@ -43,44 +13,19 @@ type Window struct {
 }
 
 // BaseRPS returns the base RPS for Redis rate limiting.
-// Reads from REDIS_RATE_LIMIT_RPS or falls back to GMAIL_API_REQUESTS_PER_SECOND / OPENAI_API_REQUESTS_PER_SECOND.
+// The value is fixed in code rather than configured via environment variables.
 func BaseRPS(namespace string) int {
-	if rpsStr := readEnv("REDIS_RATE_LIMIT_RPS"); rpsStr != "" {
-		if rps, err := strconv.Atoi(rpsStr); err == nil && rps > 0 {
-			return rps
-		}
-	}
-
-	// Fallback to namespace-specific RPS
-	var envKey string
-	if namespace == "gmail" {
-		envKey = gmailEnvKey
-	} else if namespace == "openai" {
-		envKey = openAIEnvKey
-	}
-
-	if envKey != "" {
-		if rpsStr := readEnv(envKey); rpsStr != "" {
-			if rps, err := strconv.Atoi(rpsStr); err == nil && rps > 0 {
-				return rps
-			}
-		}
-	}
-
-	return defaultRPS
+	return common.DefaultRedisRateLimitRPS
 }
 
 // Windows returns the window configurations for Redis rate limiting.
-// Reads from REDIS_RATE_LIMIT_WINDOW_CONFIG (format: "1:10,10:50,60:300") or generates defaults.
+// The value is fixed in code rather than configured via environment variables.
 func Windows(namespace string) []Window {
-	if config := readEnv("REDIS_RATE_LIMIT_WINDOW_CONFIG"); config != "" {
-		windows := ParseWindowConfig(config)
-		if len(windows) > 0 {
-			return windows
-		}
+	windows := ParseWindowConfig(common.DefaultRedisRateLimitWindowConfig)
+	if len(windows) > 0 {
+		return windows
 	}
 
-	// Default: generate windows based on RPS
 	rps := BaseRPS(namespace)
 	return []Window{
 		{SizeSeconds: 1, Limit: rps},

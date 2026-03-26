@@ -28,7 +28,7 @@ flowchart TB
     START[StartUseCase]
     DISPATCHER[WorkflowDispatcher]
     RUNNER[Runner]
-    STATUS[GetStatusUseCase]
+    LIST[ListUseCase]
     REPO[WorkflowStatusRepository]
   end
 
@@ -49,7 +49,7 @@ flowchart TB
   end
 
   CONTROLLER --> START
-  CONTROLLER --> STATUS
+  CONTROLLER --> LIST
   START --> REPO
   START --> DISPATCHER
   DISPATCHER --> RUNNER
@@ -59,7 +59,7 @@ flowchart TB
   RUNNER --> ELIGIBILITY
   RUNNER --> BILLING
   RUNNER --> REPO
-  STATUS --> REPO
+  LIST --> REPO
   FETCH --> EMAILS
   ANALYSIS --> PARSED
   BILLING --> BILLINGS
@@ -72,7 +72,7 @@ flowchart TB
 | 対象 | 役割 | やらないこと |
 | --- | --- | --- |
 | `internal/app/presentation/manualmailworkflow` | HTTP 入力の受け取り、application 入力 DTO への変換、HTTP ステータスとレスポンスへの変換 | stage 個別業務ロジック、DB 直接操作 |
-| `internal/manualmailworkflow` | workflow 受付、background dispatch、stage 実行順制御、履歴 read/write、状態取得 | Gmail/OpenAI/Gorm の直接利用、stage 個別判断 |
+| `internal/manualmailworkflow` | workflow 受付、background dispatch、stage 実行順制御、履歴 read/write、履歴一覧取得 | Gmail/OpenAI/Gorm の直接利用、stage 個別判断 |
 | `internal/mailfetch` | 取得条件検証、連携確認、provider 取得、`Email` 保存 | AI 解析、Vendor 解決、Billing 生成 |
 | `internal/mailanalysis` | AI 解析、`ParsedEmail` 保存、解析 payload 返却 | 外部メール取得、Vendor 解決、Billing 生成 |
 | `internal/vendorresolution` | canonical Vendor 解決、resolved / unresolved 返却 | 請求成立判定、Billing 保存 |

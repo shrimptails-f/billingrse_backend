@@ -13,7 +13,7 @@
 
 ### 背景
 - 既存実装では `POST /api/v1/manual-mail-workflows` により workflow を受け付け、`manual_mail_workflow_histories` と `manual_mail_workflow_stage_failures` に履歴を保存する。
-- `manualmailworkflow` 配下の設計では単体状態取得 API が想定されているが、履歴を複数件一覧する API は未提供である。
+- `GET /api/v1/manual-mail-workflows` は現行の履歴参照 API であり、`workflow_id` は一覧 item とログを結びつける相関 ID として扱う。
 - frontend では、workflow ごとの受付条件・進行状態・stage 件数・failure 明細を一覧画面で確認したい。
 
 ### 目的
@@ -136,7 +136,7 @@
 - `total_count`
   - filter 適用後の総件数
 - `workflow_id`
-  - API 参照用の一意な workflow 識別子
+  - 一覧 item とログを結びつける一意な workflow 識別子
 - `provider`
   - 実行時点のメールサービス種別
 - `account_identifier`
@@ -187,7 +187,7 @@
 ### 契約上の注意
 - JSON フィールド名は `lower_snake_case` とする。
 - コレクションレスポンスは `items` を基本キーとする。
-- stage summary の shape は将来の単体取得 API と揃える。
+- stage summary の shape は `manualmailworkflow` の履歴参照レスポンスで共通利用する。
 - v1 は `limit` / `offset` を採用するため、ページング中に新しい履歴が追加されるとページずれは起こり得る。
 
 ## 3. 機能要件

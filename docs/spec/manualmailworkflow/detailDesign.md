@@ -40,80 +40,51 @@ response:
 }
 ```
 
-### 1.2 状態取得 API
+### 1.2 履歴一覧 API
 
 - endpoint
-  - `GET /api/v1/manual-mail-workflows/:workflow_id`
+  - `GET /api/v1/manual-mail-workflows`
 - 役割
-  - workflow の現在状態を返す
-  - 完了済みなら stage ごとの件数と failure 理由を返す
+  - 認証済みユーザーの workflow 履歴を一覧返却する
+  - stage ごとの件数、failure 明細、top-level error message を返す
+  - `limit` / `offset` / `status` で絞り込みできるようにする
   - `manual_mail_workflow_histories` と `manual_mail_workflow_stage_failures` を読み出して DTO を組み立てる
+
+query:
+
+- `limit`
+- `offset`
+- `status`
 
 response:
 
 ```json
 {
-  "workflow_id": "01JQ0B7N0M7H3X9C2J5K8V6P4",
-  "status": "partial_success",
-  "current_stage": null,
-  "queued_at": "2026-03-25T17:00:00Z",
-  "finished_at": "2026-03-25T17:00:12Z",
-  "fetch": {
-    "success_count": 14,
-    "business_failure_count": 0,
-    "technical_failure_count": 1,
-    "failures": [
-      {
-        "external_message_id": "18c1f3...",
-        "reason_code": "provider_fetch_failed",
-        "message": "メールの取得に失敗しました。"
+  "items": [
+    {
+      "workflow_id": "01JQ0B7N0M7H3X9C2J5K8V6P4",
+      "status": "partial_success",
+      "current_stage": null,
+      "queued_at": "2026-03-25T17:00:00Z",
+      "finished_at": "2026-03-25T17:00:12Z",
+      "error_message": null,
+      "fetch": {
+        "success_count": 14,
+        "business_failure_count": 0,
+        "technical_failure_count": 1,
+        "failures": []
       }
-    ]
-  },
-  "analysis": {
-    "success_count": 14,
-    "business_failure_count": 0,
-    "technical_failure_count": 0,
-    "failures": []
-  },
-  "vendor_resolution": {
-    "success_count": 12,
-    "business_failure_count": 2,
-    "technical_failure_count": 0,
-    "failures": [
-      {
-        "external_message_id": "18c1fa...",
-        "reason_code": "vendor_unresolved",
-        "message": "支払先を特定できませんでした。"
-      }
-    ]
-  },
-  "billing_eligibility": {
-    "success_count": 10,
-    "business_failure_count": 2,
-    "technical_failure_count": 0,
-    "failures": [
-      {
-        "external_message_id": "18c1fb...",
-        "reason_code": "missing_billing_number",
-        "message": "請求番号が不足しているため請求を作成できませんでした。"
-      }
-    ]
-  },
-  "billing": {
-    "success_count": 8,
-    "business_failure_count": 2,
-    "technical_failure_count": 0,
-    "failures": [
-      {
-        "external_message_id": "18c1fc...",
-        "reason_code": "duplicate_billing",
-        "message": "同じ請求番号の請求が既に存在します。"
-      }
-    ]
-  }
+    }
+  ],
+  "total_count": 57
 }
 ```
+
+補足:
+
+- `workflow_id` は一覧 item とログの相関に使う stable ID とする
+- v1 では `GET /api/v1/manual-mail-workflows/:workflow_id` を公開しない
+- 一覧 API の詳細契約は `docs/spec/ManualMailWorkflowHistoryList.md` を正とする
 
 ### 1.3 状態値と stage 値
 
@@ -126,10 +97,10 @@ response:
 
 ### 2.1 workflow 受付と background 実行の分離
 
-現行実装では `application.Command` が開始入力と実行入力を兼ねているが、履歴保存を追加するにあたり責務を明確に分離する。
+workflow 開始入力は `Command`、background 実行入力は `DispatchJob` として分離する。
 
 ```go
-type StartCommand struct {
+type Command struct {
 	UserID       uint
 	ConnectionID uint
 	Condition    FetchCondition
@@ -153,7 +124,7 @@ type DispatchJob struct {
 
 ```go
 type StartUseCase interface {
-	Start(ctx context.Context, cmd StartCommand) (StartResult, error)
+	Start(ctx context.Context, cmd Command) (StartResult, error)
 }
 ```
 
@@ -168,11 +139,11 @@ type StartUseCase interface {
 
 ### 2.3 Runner
 
-workflow 実行本体は `manualmailworkflow` の runner が担う。既存の `UseCase.Execute` を runner として延長するか、新しい `RunnerUseCase` を導入してもよいが、責務は以下で固定する。
+workflow 実行本体は `manualmailworkflow` の `UseCase` が担う。
 
 ```go
-type RunnerUseCase interface {
-	Run(ctx context.Context, job DispatchJob) error
+type UseCase interface {
+	Execute(ctx context.Context, job DispatchJob) (Result, error)
 }
 ```
 
@@ -184,37 +155,56 @@ type RunnerUseCase interface {
 4. skip 条件を満たした stage は実行せず、次の状態判定へ進む。
 5. 全 stage 終了後に `succeeded` / `partial_success` / `failed` を確定する。
 
-### 2.4 状態取得 usecase
+### 2.4 履歴一覧 usecase
 
 ```go
-type GetStatusQuery struct {
-	UserID     uint
-	WorkflowID string
+type ListQuery struct {
+	UserID uint
+	Limit  int
+	Offset int
+	Status *string
 }
 
-type StageFailureMessage struct {
+type StageFailureView struct {
 	ExternalMessageID *string
 	ReasonCode        string
 	Message           string
+	CreatedAt         time.Time
 }
 
-type StageSummary struct {
-	SuccessCount int
-	FailureCount int
-	Failures     []StageFailureMessage
+type StageSummaryView struct {
+	SuccessCount          int
+	BusinessFailureCount  int
+	TechnicalFailureCount int
+	Failures              []StageFailureView
 }
 
-type GetStatusResult struct {
+type WorkflowHistoryListItem struct {
 	WorkflowID         string
+	Provider           string
+	AccountIdentifier  string
+	LabelName          string
+	Since              time.Time
+	Until              time.Time
 	Status             string
 	CurrentStage       *string
 	QueuedAt           time.Time
 	FinishedAt         *time.Time
-	Fetch              StageSummary
-	Analysis           StageSummary
-	VendorResolution   StageSummary
-	BillingEligibility StageSummary
-	Billing            StageSummary
+	ErrorMessage       *string
+	Fetch              StageSummaryView
+	Analysis           StageSummaryView
+	VendorResolution   StageSummaryView
+	BillingEligibility StageSummaryView
+	Billing            StageSummaryView
+}
+
+type ListResult struct {
+	Items      []WorkflowHistoryListItem
+	TotalCount int64
+}
+
+type ListUseCase interface {
+	List(ctx context.Context, query ListQuery) (ListResult, error)
 }
 ```
 
@@ -270,11 +260,12 @@ type StageFailureRecord struct {
 }
 
 type StageProgress struct {
-	HistoryID      uint64
-	Stage          string
-	SuccessCount   int
-	FailureCount   int
-	FailureRecords []StageFailureRecord
+	HistoryID             uint64
+	Stage                 string
+	SuccessCount          int
+	BusinessFailureCount  int
+	TechnicalFailureCount int
+	FailureRecords        []StageFailureRecord
 }
 
 type WorkflowStatusRepository interface {
@@ -283,7 +274,10 @@ type WorkflowStatusRepository interface {
 	SaveStageProgress(ctx context.Context, progress StageProgress) error
 	Complete(ctx context.Context, historyID uint64, status string, finishedAt time.Time) error
 	Fail(ctx context.Context, historyID uint64, currentStage string, finishedAt time.Time, errorMessage string) error
-	FindByWorkflowID(ctx context.Context, userID uint, workflowID string) (GetStatusResult, error)
+}
+
+type WorkflowHistoryListRepository interface {
+	List(ctx context.Context, query ListQuery) (ListResult, error)
 }
 ```
 
@@ -291,9 +285,9 @@ type WorkflowStatusRepository interface {
 
 - `SaveStageProgress` は header table の count 更新と failure row insert を同一 transaction で行う。
 - failure row は stage から返された明細をそのまま insert し、workflow 層では dedupe しない。
-- `FailureCount` と `FailureRecords` の整合は各 stage が保証する。
+- `BusinessFailureCount`、`TechnicalFailureCount`、`FailureRecords` の整合は各 stage が保証する。
 - `Fail` は途中までの count / failure rows を残したまま `failed` へ遷移させ、workflow header の `error_message` に top-level error を保存する。
-- `FindByWorkflowID` は header と failure rows から API 向け DTO を再構築する。
+- `List` は header と failure rows から一覧 API 向け DTO を再構築する。
 
 ### 3.2 `manual_mail_workflow_histories`
 
@@ -338,10 +332,10 @@ CREATE TABLE `manual_mail_workflow_histories` (
 
 補足:
 
-- `workflow_id` は API 参照用の一意キーとする。
+- `workflow_id` はレスポンスとログの相関に使う一意キーとする。
 - `provider` と `account_identifier` は workflow 受付時点のメール連携 snapshot を保持する。
 - `queued_at` は保持するが、`started_at` は持たない。
-- stage summary は一覧 API でも再利用できるよう header 側に持つ。
+- stage summary は一覧 API で再利用するため header 側に持つ。
 
 ### 3.3 `manual_mail_workflow_stage_failures`
 
@@ -517,8 +511,8 @@ type WorkflowDispatcher interface {
   - `CreateQueued`
   - `SaveStageProgress` の transaction 性
   - failure 明細を dedupe せず保存できること
-  - `FindByWorkflowID` の DTO 再構築
+  - `List` の DTO 再構築
 - `Controller`
   - `202 Accepted`
-  - 将来の `GET` 契約
+  - `GET /api/v1/manual-mail-workflows` 契約
   - failure `message` が安全な文言で返ること

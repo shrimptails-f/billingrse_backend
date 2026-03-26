@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"business/internal/common"
 	"errors"
 	"testing"
 	"time"
@@ -92,7 +93,7 @@ func TestMailAccountConnectionIsActive(t *testing.T) {
 	t.Run("returns true when expiry is sufficiently in the future", func(t *testing.T) {
 		t.Parallel()
 
-		expiresAt := now.Add(OAuthStateExpirySafetyOffset + time.Second)
+		expiresAt := now.Add(common.OAuthStateExpirySafetyOffset + time.Second)
 		conn := MailAccountConnection{UserID: 1, OAuthStateExpiresAt: &expiresAt}
 		if !conn.IsActiveAt(now) {
 			t.Fatalf("expected IsActive to be true")
@@ -102,7 +103,7 @@ func TestMailAccountConnectionIsActive(t *testing.T) {
 	t.Run("returns false when expiry is within safety offset", func(t *testing.T) {
 		t.Parallel()
 
-		expiresAt := now.Add(OAuthStateExpirySafetyOffset - time.Second)
+		expiresAt := now.Add(common.OAuthStateExpirySafetyOffset - time.Second)
 		conn := MailAccountConnection{UserID: 1, OAuthStateExpiresAt: &expiresAt}
 		if conn.IsActiveAt(now) {
 			t.Fatalf("expected IsActive to be false")
