@@ -35,13 +35,6 @@ cp .devcontainer/.env.sample .devcontainer/.env
 - `EMAIL_GMAIL_CLIENT_SECRET`: Google OAuth2設定で取得した クライアントシークレット（必須）
 - Gmail OAuth state の有効期限と refresh skew はコード定数（`internal/common/const.go`）で管理する
 
-### API レート制御
-- `REDIS_HOST`: Redis ホスト名（例: `redis`)
-- `REDIS_PORT`: Redis ポート（例: `6379`)
-- `REDIS_PASSWORD`: Redis パスワード（例: `redis_local_password`、未設定可）
-- `REDIS_DB`: Redis DB 番号（例: `0`)
-- レート制御の既定値はコード定数（`internal/common/const.go`）で管理する
-
 ### OpenAI API
 OPENAI_API_KEY=生成したOpenAiのAPIキーを記載
 
