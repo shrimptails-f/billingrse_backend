@@ -33,7 +33,6 @@ cp .devcontainer/.env.sample .devcontainer/.env
 - `EMAIL_TOKEN_SALT`: Digest 生成用のソルト（ランダムな文字列を推奨）
 - `EMAIL_GMAIL_CLIENT_ID`: Google OAuth2設定で取得した クライアントID（必須）
 - `EMAIL_GMAIL_CLIENT_SECRET`: Google OAuth2設定で取得した クライアントシークレット（必須）
-- Gmail OAuth state の有効期限と refresh skew はコード定数（`internal/common/const.go`）で管理する
 
 ### OpenAI API
 OPENAI_API_KEY=生成したOpenAiのAPIキーを記載
