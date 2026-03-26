@@ -25,9 +25,6 @@ jobs:
       APP: ci
       IS_HIDDEN_SQL: true
       IS_HIDDEN_TEST_SQL: true
-      # AI APIの暗号化キー素材
-      AGENT_TOKEN_KEY_V1: "9d64a1ec0d7bb5f1c4a7322ed1e4396b9d64a1ec0d7bb5f1c4a7322ed1e4396b" # 32バイト以上必須
-      AGENT_TOKEN_SALT: "ad7b2f3a9e5c41d28713ff9520c6e471"
       #
       EMAIL_TOKEN_KEY_V1: "your-32-byte-or-longer-email-key-here-change-this-in-production"
       EMAIL_TOKEN_SALT: "your-random-email-salt-value-here-change-this"
@@ -44,9 +41,8 @@ jobs:
       # JWT設定
       JWT_SECRET_KEY: your_jwt_secret_key_here
       # アプリケーション設定
-      APP_NAME: Gmail Auth App
+      APP_NAME: Billingrse
       GO_PORT: 8080
-      REMOTE_CONTAINER_PORT: 5994
       GO_DEBUG_PORT: 2345
     strategy:
       matrix:
