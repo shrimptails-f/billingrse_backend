@@ -56,6 +56,7 @@ classDiagram
   }
   namespace 集約_請求 {
     class Billing["請求（Billing）"]
+    class BillingLineItem["請求明細（BillingLineItem）"]
     class PaymentCycle["支払周期（PaymentCycle）"]
     class Money["金額（Money）"]
     class BillingNumber["請求番号（BillingNumber）"]
@@ -95,7 +96,9 @@ classDiagram
 
   Billing --> Vendor : 支払先
   Billing --> PaymentCycle : 支払周期
-  Billing *-- Money : 金額
+  Billing *-- Money : 請求総額
+  Billing *-- "1..*" BillingLineItem : 請求明細
+  BillingLineItem *-- Money : 明細金額
   Billing *-- BillingNumber : 請求番号
   Billing *-- InvoiceNumber : インボイス番号
   Billing ..> Email : 参照元
@@ -142,7 +145,8 @@ classDiagram
 ### 請求集約
 - ルート: 請求（Billing）
 - 参照: 支払先（Vendor）/ メール（Email）/ 支払周期（PaymentCycle）
-- 含む（値オブジェクト）: 金額（Money）/ 請求番号（BillingNumber）/ インボイス番号（InvoiceNumber）
+- 含む（エンティティ）: 請求明細（BillingLineItem）
+- 含む（値オブジェクト）: 請求総額（Money）/ 明細金額（Money）/ 請求番号（BillingNumber）/ インボイス番号（InvoiceNumber）
 
 ### 支払先集約
 - ルート: 支払先（Vendor）
@@ -205,6 +209,14 @@ classDiagram
 
 #### 請求（Billing）
 - 金額（Money）・支払先・請求番号（BillingNumber）・インボイス番号（InvoiceNumber）などが確定した支払いの事実
+- 1件以上の請求明細（BillingLineItem）を内包する集約ルート
+- `Billing.Money` は請求総額を表し、正本は請求明細の内訳とする
+
+#### 請求明細（BillingLineItem）
+- 1つの請求にぶら下がる明細行
+- 商品名・金額・通貨などの内訳を表す
+- 単独の集約にせず、Billing 配下で扱う
+- `BillingLineItem.Money` を正本として扱い、Billing の総額はその集約結果として扱う
 
 ### 概念 / ポリシー / 列挙
 
@@ -262,6 +274,8 @@ classDiagram
 - ParsedEmail は支払先解決の入力になる
 - BillingEligibility は ParsedEmail と支払先解決の結果を用いて成立判定する
 - Billing は Vendor を参照し、参照元として Email を持つ
+- Billing は 1件以上の BillingLineItem を内包する
+- Billing の総額は BillingLineItem の金額内訳を正本として扱う
 
 ## 依存関係（モデル）
 
@@ -273,7 +287,8 @@ classDiagram
 - ParsedEmail -> Email
 - VendorResolution（ポリシー） -> ParsedEmail, Vendor
 - BillingEligibility（ポリシー） -> ParsedEmail, VendorResolution の結果
-- Billing -> Vendor, PaymentCycle, Money, BillingNumber, InvoiceNumber, Email（参照元）
+- Billing -> Vendor, PaymentCycle, Money, BillingNumber, InvoiceNumber, BillingLineItem, Email（参照元）
+- BillingLineItem -> Money
 
 ## 請求生成フロー（シーケンス図）
 

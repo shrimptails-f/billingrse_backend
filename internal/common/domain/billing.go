@@ -14,6 +14,8 @@ var (
 	ErrBillingEmailIDEmpty = errors.New("billing email id is empty")
 	// ErrBillingDateInvalid is returned when a provided billing date is invalid.
 	ErrBillingDateInvalid = errors.New("billing date is invalid")
+	// ErrBillingLineItemsEmpty is returned when billing has no detail rows.
+	ErrBillingLineItemsEmpty = errors.New("billing line items are empty")
 )
 
 // Billing represents the aggregate root for billing.
@@ -28,6 +30,7 @@ type Billing struct {
 	Money              Money
 	BillingDate        *time.Time // BillingDate is optional when the source mail does not include it.
 	PaymentCycle       PaymentCycle
+	LineItems          []BillingLineItem
 }
 
 // NewBilling constructs a Billing with normalized values.
@@ -42,6 +45,7 @@ func NewBilling(
 	billingDate *time.Time,
 	cycle string,
 	productNameDisplay *string,
+	lineItems []BillingLineItemInput,
 ) (Billing, error) {
 	normalizedBillingNumber, err := NewBillingNumber(billingNumber)
 	if err != nil {
@@ -73,6 +77,7 @@ func NewBilling(
 		Money:              money,
 		BillingDate:        cloneBillingDate(billingDate),
 		PaymentCycle:       normalizedCycle,
+		LineItems:          resolveBillingLineItems(lineItems, productNameDisplay, amount, currency),
 	}
 
 	if err := billing.Validate(); err != nil {
@@ -109,7 +114,34 @@ func (b Billing) Validate() error {
 	if err := b.PaymentCycle.Validate(); err != nil {
 		return err
 	}
+	if len(normalizeBillingLineItems(b.LineItems)) == 0 {
+		return ErrBillingLineItemsEmpty
+	}
 	return nil
+}
+
+func resolveBillingLineItems(items []BillingLineItemInput, productNameDisplay *string, amount float64, currency string) []BillingLineItem {
+	normalizedInputs := normalizeBillingLineItemInputs(items)
+	if len(normalizedInputs) > 0 {
+		lineItems := make([]BillingLineItem, 0, len(normalizedInputs))
+		for _, item := range normalizedInputs {
+			lineItems = append(lineItems, item.ToBillingLineItem())
+		}
+		return lineItems
+	}
+
+	fallbackAmount := amount
+	fallbackCurrency := currency
+	fallback := BillingLineItemInput{
+		ProductNameDisplay: normalizeOptionalString(productNameDisplay),
+		Amount:             &fallbackAmount,
+		Currency:           normalizeOptionalUpperString(&fallbackCurrency),
+	}.Normalize()
+	if fallback.IsEmpty() {
+		return nil
+	}
+
+	return []BillingLineItem{fallback.ToBillingLineItem()}
 }
 
 func cloneBillingDate(value *time.Time) *time.Time {

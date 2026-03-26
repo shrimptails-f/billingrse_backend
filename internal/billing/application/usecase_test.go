@@ -12,11 +12,11 @@ import (
 )
 
 type stubBillingRepository struct {
-	saveIfAbsent func(ctx context.Context, billing commondomain.Billing, lineItems []CreationLineItem) (SaveResult, error)
+	saveIfAbsent func(ctx context.Context, billing commondomain.Billing) (SaveResult, error)
 }
 
-func (s *stubBillingRepository) SaveIfAbsent(ctx context.Context, billing commondomain.Billing, lineItems []CreationLineItem) (SaveResult, error) {
-	return s.saveIfAbsent(ctx, billing, lineItems)
+func (s *stubBillingRepository) SaveIfAbsent(ctx context.Context, billing commondomain.Billing) (SaveResult, error) {
+	return s.saveIfAbsent(ctx, billing)
 }
 
 func TestUseCaseExecute_CreatedDuplicateAndFailures(t *testing.T) {
@@ -27,7 +27,7 @@ func TestUseCaseExecute_CreatedDuplicateAndFailures(t *testing.T) {
 	productNameDisplay := " Example Product "
 
 	uc := NewUseCase(&stubBillingRepository{
-		saveIfAbsent: func(ctx context.Context, billing commondomain.Billing, lineItems []CreationLineItem) (SaveResult, error) {
+		saveIfAbsent: func(ctx context.Context, billing commondomain.Billing) (SaveResult, error) {
 			switch billing.BillingNumber.String() {
 			case "INV-100":
 				if billing.InvoiceNumber.String() != "T1234567890123" {
@@ -45,14 +45,17 @@ func TestUseCaseExecute_CreatedDuplicateAndFailures(t *testing.T) {
 				if billing.ProductNameDisplay == nil || *billing.ProductNameDisplay != "Example Product" {
 					t.Fatalf("expected normalized product name display, got %+v", billing)
 				}
-				if len(lineItems) != 1 {
-					t.Fatalf("expected one fallback line item, got %+v", lineItems)
+				if len(billing.LineItems) != 1 {
+					t.Fatalf("expected one explicit line item, got %+v", billing.LineItems)
 				}
-				if lineItems[0].ProductNameDisplay == nil || *lineItems[0].ProductNameDisplay != "Example Product" {
-					t.Fatalf("expected fallback line item display, got %+v", lineItems[0])
+				if billing.LineItems[0].ProductNameRaw == nil || *billing.LineItems[0].ProductNameRaw != "Example Product Full Name" {
+					t.Fatalf("expected explicit line item raw name, got %+v", billing.LineItems[0])
 				}
-				if lineItems[0].Amount == nil || *lineItems[0].Amount != 1200.5 {
-					t.Fatalf("expected fallback line item amount, got %+v", lineItems[0])
+				if billing.LineItems[0].ProductNameDisplay == nil || *billing.LineItems[0].ProductNameDisplay != "Example Product" {
+					t.Fatalf("expected explicit line item display, got %+v", billing.LineItems[0])
+				}
+				if billing.LineItems[0].Amount == nil || *billing.LineItems[0].Amount != 1200.5 {
+					t.Fatalf("expected explicit line item amount, got %+v", billing.LineItems[0])
 				}
 				return SaveResult{BillingID: 9001}, nil
 			case "INV-200":
@@ -197,13 +200,16 @@ func TestUseCaseExecute_AllowsNilBillingDate(t *testing.T) {
 
 	repositoryCalled := false
 	uc := NewUseCase(&stubBillingRepository{
-		saveIfAbsent: func(ctx context.Context, billing commondomain.Billing, lineItems []CreationLineItem) (SaveResult, error) {
+		saveIfAbsent: func(ctx context.Context, billing commondomain.Billing) (SaveResult, error) {
 			repositoryCalled = true
 			if billing.BillingDate != nil {
 				t.Fatalf("expected nil billing date, got %+v", billing)
 			}
-			if len(lineItems) != 1 {
-				t.Fatalf("expected one fallback line item, got %+v", lineItems)
+			if len(billing.LineItems) != 1 {
+				t.Fatalf("expected one fallback line item, got %+v", billing.LineItems)
+			}
+			if billing.LineItems[0].Amount == nil || *billing.LineItems[0].Amount != 100 {
+				t.Fatalf("expected fallback line item amount, got %+v", billing.LineItems[0])
 			}
 			return SaveResult{BillingID: 9010}, nil
 		},

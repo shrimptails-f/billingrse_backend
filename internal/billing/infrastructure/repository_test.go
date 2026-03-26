@@ -1,11 +1,11 @@
 package infrastructure
 
 import (
-	billingapp "business/internal/billing/application"
 	commondomain "business/internal/common/domain"
 	"business/internal/library/logger"
 	"business/internal/library/mysql"
 	"context"
+	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -98,28 +98,28 @@ func TestBillingRepository_SaveIfAbsent_CreatedAndDuplicate(t *testing.T) {
 		&billingDate,
 		" recurring ",
 		&productNameDisplay,
+		[]commondomain.BillingLineItemInput{
+			{
+				ProductNameRaw:     stringPtr("Example Product Full Name"),
+				ProductNameDisplay: stringPtr("Example Product"),
+				Amount:             float64Ptr(1200.5),
+				Currency:           stringPtr("jpy"),
+			},
+			{
+				ProductNameDisplay: stringPtr("Tax"),
+				Amount:             float64Ptr(100),
+				Currency:           stringPtr("JPY"),
+			},
+		},
 	)
 	require.NoError(t, err)
 
-	lineItems := []billingapp.CreationLineItem{
-		{
-			ProductNameRaw:     stringPtr("Example Product Full Name"),
-			ProductNameDisplay: stringPtr("Example Product"),
-			Amount:             float64Ptr(1200.5),
-			Currency:           stringPtr("jpy"),
-		},
-		{
-			ProductNameDisplay: stringPtr("Tax"),
-			Amount:             float64Ptr(100),
-			Currency:           stringPtr("JPY"),
-		},
-	}
-	first, err := env.repo.SaveIfAbsent(ctx, billing, lineItems)
+	first, err := env.repo.SaveIfAbsent(ctx, billing)
 	require.NoError(t, err)
 	require.False(t, first.Duplicate)
 	require.NotZero(t, first.BillingID)
 
-	second, err := env.repo.SaveIfAbsent(ctx, billing, lineItems)
+	second, err := env.repo.SaveIfAbsent(ctx, billing)
 	require.NoError(t, err)
 	require.True(t, second.Duplicate)
 	require.Equal(t, first.BillingID, second.BillingID)
@@ -185,6 +185,13 @@ func TestBillingRepository_SaveIfAbsent_ConcurrentDuplicate(t *testing.T) {
 		nil,
 		"one_time",
 		nil,
+		[]commondomain.BillingLineItemInput{
+			{
+				ProductNameDisplay: stringPtr("Concurrent Item"),
+				Amount:             float64Ptr(10),
+				Currency:           stringPtr("usd"),
+			},
+		},
 	)
 	require.NoError(t, err)
 
@@ -197,13 +204,7 @@ func TestBillingRepository_SaveIfAbsent_ConcurrentDuplicate(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			result, err := env.repo.SaveIfAbsent(context.Background(), billing, []billingapp.CreationLineItem{
-				{
-					ProductNameDisplay: stringPtr("Concurrent Item"),
-					Amount:             float64Ptr(10),
-					Currency:           stringPtr("usd"),
-				},
-			})
+			result, err := env.repo.SaveIfAbsent(context.Background(), billing)
 			if err != nil {
 				errorsCh <- err
 				return
@@ -244,6 +245,49 @@ func TestBillingRepository_SaveIfAbsent_ConcurrentDuplicate(t *testing.T) {
 	var lineItemCount int64
 	require.NoError(t, env.db.WithContext(context.Background()).Model(&billingLineItemRecord{}).Count(&lineItemCount).Error)
 	require.EqualValues(t, 1, lineItemCount)
+}
+
+func TestBillingRepository_SaveIfAbsent_RollsBackWhenLineItemCreateFails(t *testing.T) {
+	t.Parallel()
+
+	env := newBillingRepoTestEnv(t)
+	defer env.clean()
+
+	ctx := context.Background()
+	sourceReceivedAt := time.Date(2026, 3, 18, 9, 30, 0, 0, time.UTC)
+	seedBillingSourceEmail(t, env.db, 3, 1, sourceReceivedAt)
+
+	billing, err := commondomain.NewBilling(
+		1,
+		2,
+		3,
+		"INV-ERR",
+		nil,
+		10,
+		"JPY",
+		nil,
+		"one_time",
+		stringPtr("Broken Item"),
+		[]commondomain.BillingLineItemInput{
+			{
+				ProductNameDisplay: stringPtr("Broken Item"),
+				Amount:             float64Ptr(math.NaN()),
+				Currency:           stringPtr("JPY"),
+			},
+		},
+	)
+	require.NoError(t, err)
+
+	_, err = env.repo.SaveIfAbsent(ctx, billing)
+	require.Error(t, err)
+
+	var billingCount int64
+	require.NoError(t, env.db.WithContext(ctx).Model(&billingRecord{}).Count(&billingCount).Error)
+	require.EqualValues(t, 0, billingCount)
+
+	var lineItemCount int64
+	require.NoError(t, env.db.WithContext(ctx).Model(&billingLineItemRecord{}).Count(&lineItemCount).Error)
+	require.EqualValues(t, 0, lineItemCount)
 }
 
 func stringPtr(value string) *string {

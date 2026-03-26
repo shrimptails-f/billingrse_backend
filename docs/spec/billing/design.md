@@ -4,6 +4,7 @@
 - `billing` は `billingeligibility` の後段に置く独立 stage とする。
 - 入力は workflow payload の `eligible_items` をそのまま使い、`Billing` 生成に追加の `ParsedEmail` / `Email` 再読込は持ち込まない。
 - 生成は `internal/common/domain.NewBilling(...)` を使い、ドメイン不変条件は `common/domain` に寄せる。
+- `BillingLineItem` の正規化と fallback 明細生成も `NewBilling(...)` に寄せ、application では aggregate 初期化を分散させない。
 - duplicate 制御は application の事前 `Exists` チェックではなく、repository の idempotent 保存契約と DB 一意制約で守る。
 - duplicate は業務結果であり、unexpected error だけを `failure` として返す。
 
@@ -61,6 +62,14 @@ type CreationTarget struct {
 	Currency          string
 	BillingDate       *time.Time
 	PaymentCycle      string
+	LineItems         []CreationLineItem
+}
+
+type CreationLineItem struct {
+	ProductNameRaw     *string
+	ProductNameDisplay *string
+	Amount             *float64
+	Currency           *string
 }
 ```
 
@@ -69,6 +78,7 @@ type CreationTarget struct {
 - `billing` stage は保存責務に集中し、前段の判定責務へ逆流しない。
 - `VendorName` / `MatchedBy` は `Billing` aggregate には不要だが、workflow 結果やログの相関情報として維持する。
 - `ProductNameDisplay` は任意入力だが、`Billing` aggregate の表示用商品名として保持するため引き継ぐ。
+- `LineItems` は application 層の raw input として受け取り、`NewBilling(...)` 内で `BillingLineItem` に変換する。
 
 ## 4. `billing` application 設計
 
@@ -176,8 +186,8 @@ type BillingRepository interface {
   - `billing_number`
   - `currency`
   - `payment_cycle`
-5. `commondomain.NewBilling(...)` を呼び、`Billing` aggregate を生成する。
-6. repository の `SaveIfAbsent` を呼ぶ。
+5. `commondomain.NewBilling(...)` を呼び、raw line item input の変換・`BillingLineItem` の正規化・fallback 補完を含む `Billing` aggregate を生成する。
+6. repository の `SaveIfAbsent` を呼び、`Billing` とその `billing.LineItems` を同一作成操作で保存する。
 7. `Duplicate=false` なら `CreatedItem` に積む。
 8. `Duplicate=true` なら `DuplicateItem` に積む。
 9. 予期しない構築失敗や永続化失敗は `Failure` に積む。
