@@ -26,6 +26,13 @@ type seededEmail struct {
 	ExternalMessageID string
 }
 
+type seededBilling struct {
+	ID            uint
+	UserID        uint
+	VendorID      uint
+	BillingNumber string
+}
+
 type vendorSeed struct {
 	Name           string
 	NormalizedName string
@@ -277,6 +284,11 @@ func CreateBillingSamples(tx *gorm.DB) error {
 	if err != nil {
 		return err
 	}
+	seedEmailReceivedAtByKey := make(map[string]time.Time, len(emailSeeds))
+	for _, seed := range emailSeeds {
+		user := usersByEmail[seed.UserEmail]
+		seedEmailReceivedAtByKey[buildSeedEmailKey(user.ID, seed.ExternalMessageID)] = seed.ReceivedAt.UTC()
+	}
 
 	billingDateAWSPrimary := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 	billingDateGoogle := time.Date(2026, 3, 25, 0, 0, 0, 0, time.UTC)
@@ -366,7 +378,13 @@ func CreateBillingSamples(tx *gorm.DB) error {
 		},
 	}
 
-	billings := make([]model.Billing, 0, len(billingSeeds))
+	hasAmountColumn := tx.Migrator().HasColumn("billings", "amount")
+	hasCurrencyColumn := tx.Migrator().HasColumn("billings", "currency")
+	if hasAmountColumn != hasCurrencyColumn {
+		return fmt.Errorf("billings schema mismatch: amount and currency columns must be both present or both absent")
+	}
+
+	billingRows := make([]map[string]any, 0, len(billingSeeds))
 	for _, seed := range billingSeeds {
 		user, ok := usersByEmail[seed.UserEmail]
 		if !ok {
@@ -384,24 +402,76 @@ func CreateBillingSamples(tx *gorm.DB) error {
 			return fmt.Errorf("seed email not found: user=%s external_message_id=%s", seed.UserEmail, seed.EmailExternalID)
 		}
 
-		billings = append(billings, model.Billing{
+		row := map[string]any{
+			"user_id":              user.ID,
+			"vendor_id":            vendor.ID,
+			"email_id":             email.ID,
+			"product_name_display": cloneSeedString(seed.ProductNameDisplay),
+			"billing_number":       strings.TrimSpace(seed.BillingNumber),
+			"invoice_number":       cloneSeedString(seed.InvoiceNumber),
+			"billing_date":         cloneSeedTime(seed.BillingDate),
+			"billing_summary_date": resolveSeedBillingSummaryDate(seed.BillingDate, seedEmailReceivedAtByKey[emailKey]),
+			"payment_cycle":        strings.TrimSpace(seed.PaymentCycle),
+			"created_at":           now,
+			"updated_at":           now,
+		}
+		if hasAmountColumn {
+			amountDecimal, err := decimal.NewFromString(strings.TrimSpace(seed.Amount))
+			if err != nil {
+				return fmt.Errorf("invalid seed amount for billing_number=%s: %w", seed.BillingNumber, err)
+			}
+			currency := strings.TrimSpace(strings.ToUpper(seed.Currency))
+			row["amount"] = amountDecimal
+			row["currency"] = currency
+		}
+
+		billingRows = append(billingRows, row)
+	}
+
+	if err := tx.Table("billings").Clauses(clause.Insert{Modifier: "IGNORE"}).Create(&billingRows).Error; err != nil {
+		return fmt.Errorf("failed to create billings: %w", err)
+	}
+
+	billingsByKey, err := loadSeedBillingsByIdentity(tx, billingSeeds, usersByEmail, vendorsByNormalizedName)
+	if err != nil {
+		return err
+	}
+
+	lineItems := make([]model.BillingLineItem, 0, len(billingSeeds))
+	for _, seed := range billingSeeds {
+		user := usersByEmail[seed.UserEmail]
+		vendor := vendorsByNormalizedName[seed.VendorNormalized]
+		billingKey := buildSeedBillingKey(user.ID, vendor.ID, seed.BillingNumber)
+		billing, ok := billingsByKey[billingKey]
+		if !ok {
+			return fmt.Errorf("seed billing not found for line item: user=%s vendor=%s billing_number=%s", seed.UserEmail, seed.VendorNormalized, seed.BillingNumber)
+		}
+
+		amountDecimal, err := decimal.NewFromString(strings.TrimSpace(seed.Amount))
+		if err != nil {
+			return fmt.Errorf("invalid seed amount for billing_number=%s: %w", seed.BillingNumber, err)
+		}
+
+		lineItems = append(lineItems, model.BillingLineItem{
+			BillingID:          billing.ID,
 			UserID:             user.ID,
-			VendorID:           vendor.ID,
-			EmailID:            email.ID,
+			Position:           0,
 			ProductNameDisplay: cloneSeedString(seed.ProductNameDisplay),
-			BillingNumber:      seed.BillingNumber,
-			InvoiceNumber:      cloneSeedString(seed.InvoiceNumber),
-			Amount:             decimal.RequireFromString(seed.Amount),
-			Currency:           seed.Currency,
-			BillingDate:        cloneSeedTime(seed.BillingDate),
-			PaymentCycle:       seed.PaymentCycle,
+			Amount:             float64Ptr(amountDecimal.InexactFloat64()),
+			Currency:           normalizeSeedCurrency(seed.Currency),
 			CreatedAt:          now,
 			UpdatedAt:          now,
 		})
 	}
 
-	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&billings).Error; err != nil {
-		return fmt.Errorf("failed to create billings: %w", err)
+	if err := tx.Clauses(clause.OnConflict{
+		Columns: []clause.Column{
+			{Name: "billing_id"},
+			{Name: "position"},
+		},
+		DoNothing: true,
+	}).Create(&lineItems).Error; err != nil {
+		return fmt.Errorf("failed to create billing line items: %w", err)
 	}
 
 	return nil
@@ -490,8 +560,61 @@ func loadSeedEmailsByUserAndExternalID(
 	return emailsByKey, nil
 }
 
+func loadSeedBillingsByIdentity(
+	tx *gorm.DB,
+	seeds []billingSeed,
+	usersByEmail map[string]seededUser,
+	vendorsByNormalizedName map[string]model.Vendor,
+) (map[string]seededBilling, error) {
+	userIDs := make([]uint, 0, len(usersByEmail))
+	for _, user := range usersByEmail {
+		userIDs = append(userIDs, user.ID)
+	}
+
+	vendorIDs := make([]uint, 0, len(vendorsByNormalizedName))
+	for _, vendor := range vendorsByNormalizedName {
+		vendorIDs = append(vendorIDs, vendor.ID)
+	}
+
+	billingNumbers := make([]string, 0, len(seeds))
+	for _, seed := range seeds {
+		billingNumbers = append(billingNumbers, strings.TrimSpace(seed.BillingNumber))
+	}
+
+	var billings []seededBilling
+	if err := tx.Table("billings").
+		Select("id", "user_id", "vendor_id", "billing_number").
+		Where("user_id IN ?", userIDs).
+		Where("vendor_id IN ?", vendorIDs).
+		Where("billing_number IN ?", billingNumbers).
+		Find(&billings).Error; err != nil {
+		return nil, fmt.Errorf("failed to load seed billings: %w", err)
+	}
+
+	billingsByKey := make(map[string]seededBilling, len(billings))
+	for _, billing := range billings {
+		key := buildSeedBillingKey(billing.UserID, billing.VendorID, billing.BillingNumber)
+		billingsByKey[key] = billing
+	}
+
+	for _, seed := range seeds {
+		user := usersByEmail[seed.UserEmail]
+		vendor := vendorsByNormalizedName[seed.VendorNormalized]
+		key := buildSeedBillingKey(user.ID, vendor.ID, seed.BillingNumber)
+		if _, ok := billingsByKey[key]; !ok {
+			return nil, fmt.Errorf("required seed billing not found: user=%s vendor=%s billing_number=%s", seed.UserEmail, seed.VendorNormalized, seed.BillingNumber)
+		}
+	}
+
+	return billingsByKey, nil
+}
+
 func buildSeedEmailKey(userID uint, externalMessageID string) string {
 	return fmt.Sprintf("%d:%s", userID, strings.TrimSpace(externalMessageID))
+}
+
+func buildSeedBillingKey(userID uint, vendorID uint, billingNumber string) string {
+	return fmt.Sprintf("%d:%d:%s", userID, vendorID, strings.TrimSpace(billingNumber))
 }
 
 func marshalSeedRecipients(recipients []string) (string, error) {
@@ -515,6 +638,10 @@ func stringPtr(value string) *string {
 	return &value
 }
 
+func float64Ptr(value float64) *float64 {
+	return &value
+}
+
 func cloneSeedString(value *string) *string {
 	if value == nil {
 		return nil
@@ -531,4 +658,20 @@ func cloneSeedTime(value *time.Time) *time.Time {
 
 	cloned := value.UTC()
 	return &cloned
+}
+
+func resolveSeedBillingSummaryDate(billingDate *time.Time, fallbackReceivedAt time.Time) time.Time {
+	if billingDate != nil {
+		return billingDate.UTC()
+	}
+	return fallbackReceivedAt.UTC()
+}
+
+func normalizeSeedCurrency(value string) *string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	upper := strings.ToUpper(trimmed)
+	return &upper
 }

@@ -138,6 +138,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 				Currency:           stringValue(target.Data.Currency),
 				BillingDate:        cloneTime(target.Data.BillingDate),
 				PaymentCycle:       stringValue(target.Data.PaymentCycle),
+				LineItems:          toLineItems(target.Data.LineItems, stringValue(target.Data.Currency)),
 			})
 			continue
 		}
@@ -291,4 +292,59 @@ func cloneTime(value *time.Time) *time.Time {
 	}
 	cloned := *value
 	return &cloned
+}
+
+func cloneFloat64(value *float64) *float64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func normalizeCurrencyPtr(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return nil
+	}
+	upper := strings.ToUpper(trimmed)
+	return &upper
+}
+
+func toLineItems(items []commondomain.ParsedEmailLineItem, fallbackCurrency string) []domain.LineItem {
+	if len(items) == 0 {
+		return nil
+	}
+
+	fallbackCurrency = strings.TrimSpace(strings.ToUpper(fallbackCurrency))
+	lineItems := make([]domain.LineItem, 0, len(items))
+	for _, item := range items {
+		normalized := item.Normalize()
+		currency := normalizeCurrencyPtr(normalized.Currency)
+		if currency == nil && fallbackCurrency != "" {
+			currency = cloneString(&fallbackCurrency)
+		}
+
+		lineItem := domain.LineItem{
+			ProductNameRaw:     cloneString(normalized.ProductNameRaw),
+			ProductNameDisplay: cloneString(normalized.ProductNameDisplay),
+			Amount:             cloneFloat64(normalized.Amount),
+			Currency:           currency,
+		}
+		if lineItem.ProductNameRaw == nil &&
+			lineItem.ProductNameDisplay == nil &&
+			lineItem.Amount == nil &&
+			lineItem.Currency == nil {
+			continue
+		}
+		lineItems = append(lineItems, lineItem)
+	}
+
+	if len(lineItems) == 0 {
+		return nil
+	}
+	return lineItems
 }

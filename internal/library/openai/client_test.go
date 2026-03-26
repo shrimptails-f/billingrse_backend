@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"business/internal/library/logger"
 )
@@ -19,7 +20,7 @@ func TestChat_Integration(t *testing.T) {
 		t.Fatal("OPENAI_API_KEY is not set")
 	}
 	limiter := &noOpLimiter{}
-	prompt := buildParsedEmailPrompt(getEmailBody())
+	prompt := BuildParsedEmailPrompt("請求メール", "billing@example.com", time.Now().UTC(), getEmailBody())
 
 	c := New(apiKey, limiter, logger.NewNop())
 
@@ -51,26 +52,6 @@ func getEmailBody() string {
 ■面談:WEB1回(上位同席）)
 ■リモート リモート可 週３回
 ■備考:`
-}
-
-func buildParsedEmailPrompt(body string) string {
-	return fmt.Sprintf(`以下は請求に関するメール本文です。本文を読み取り、JSONオブジェクトのみを出力してください。
-
-ルール:
-- 出力はJSONオブジェクトのみ（前後に説明文を入れない）
-- トップレベルのキーは parsedEmails のみ
-- parsedEmails は配列
-- parsedEmails の各要素のキーは productNameRaw, productNameDisplay, vendorName, billingNumber, invoiceNumber, amount, currency, billingDate, paymentCycle のみ
-- productNameRaw はメール内の全文
-- productNameDisplay は表示用の短い名前。単品なら商品名だけ、セット商品ならセット名
-- 不明な値は null をセット
-- billingDate は RFC3339 形式の文字列
-- amount は小数第3位までの数値
-- invoiceNumber は 14 文字以内
-- 複数の請求が含まれる場合は parsedEmails に複数要素を入れる
-
-本文:
-%s`, body)
 }
 
 type noOpLimiter struct{}

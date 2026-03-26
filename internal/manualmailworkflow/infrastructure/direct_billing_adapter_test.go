@@ -23,6 +23,7 @@ func TestDirectBillingAdapter_Execute_ConvertsCommandAndResult(t *testing.T) {
 	invoiceNumber := "T1234567890123"
 	billingDate := time.Date(2026, 3, 25, 0, 0, 0, 0, time.UTC)
 	productNameDisplay := "Example Product"
+	lineItemName := "Example Product Full Name"
 	adapter := NewDirectBillingAdapter(&stubBillingUseCase{
 		execute: func(ctx context.Context, cmd billingapp.Command) (billingapp.Result, error) {
 			if len(cmd.EligibleItems) != 1 {
@@ -36,6 +37,12 @@ func TestDirectBillingAdapter_Execute_ConvertsCommandAndResult(t *testing.T) {
 			}
 			if cmd.EligibleItems[0].ProductNameDisplay == nil || *cmd.EligibleItems[0].ProductNameDisplay != productNameDisplay {
 				t.Fatalf("expected product name display in target, got %+v", cmd.EligibleItems[0])
+			}
+			if len(cmd.EligibleItems[0].LineItems) != 1 {
+				t.Fatalf("expected line items in target, got %+v", cmd.EligibleItems[0])
+			}
+			if cmd.EligibleItems[0].LineItems[0].ProductNameRaw == nil || *cmd.EligibleItems[0].LineItems[0].ProductNameRaw != lineItemName {
+				t.Fatalf("expected line item product name in target, got %+v", cmd.EligibleItems[0].LineItems[0])
 			}
 			return billingapp.Result{
 				CreatedItems: []billingdomain.CreatedItem{
@@ -95,6 +102,13 @@ func TestDirectBillingAdapter_Execute_ConvertsCommandAndResult(t *testing.T) {
 				Currency:           "JPY",
 				BillingDate:        &billingDate,
 				PaymentCycle:       "one_time",
+				LineItems: []manualapp.EligibleLineItem{
+					{
+						ProductNameRaw: &lineItemName,
+						Amount:         localFloat64Ptr(1200),
+						Currency:       localStringPtr("JPY"),
+					},
+				},
 			},
 		},
 	})
@@ -126,4 +140,12 @@ func TestDirectBillingAdapter_Execute_ConvertsCommandAndResult(t *testing.T) {
 	if result.Failures[0].Message != "msg-3 の請求保存に失敗しました。" {
 		t.Fatalf("expected failure message to be mapped, got %+v", result.Failures[0])
 	}
+}
+
+func localStringPtr(value string) *string {
+	return &value
+}
+
+func localFloat64Ptr(value float64) *float64 {
+	return &value
 }

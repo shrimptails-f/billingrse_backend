@@ -40,19 +40,21 @@ func (r *BillingQueryRepository) MonthlyTrend(
 	}
 
 	const billingSummaryDateExpr = "billings.billing_summary_date"
+	const lineItemAmountExpr = "COALESCE(billing_line_items.amount, 0)"
 
 	var rows []billingMonthlyTrendRow
 	if err := r.db.WithContext(ctx).
 		Table("billings").
+		Joins("INNER JOIN billing_line_items ON billing_line_items.billing_id = billings.id AND billing_line_items.user_id = billings.user_id").
 		Select([]string{
 			"YEAR(" + billingSummaryDateExpr + ") AS year",
 			"MONTH(" + billingSummaryDateExpr + ") AS month",
-			"SUM(billings.amount) AS total_amount",
-			"COUNT(*) AS billing_count",
-			"SUM(CASE WHEN billings.billing_date IS NULL THEN 1 ELSE 0 END) AS fallback_billing_count",
+			"SUM(" + lineItemAmountExpr + ") AS total_amount",
+			"COUNT(DISTINCT billings.id) AS billing_count",
+			"COUNT(DISTINCT CASE WHEN billings.billing_date IS NULL THEN billings.id END) AS fallback_billing_count",
 		}).
 		Where("billings.user_id = ?", query.UserID).
-		Where("billings.currency = ?", query.Currency).
+		Where("billing_line_items.currency = ?", query.Currency).
 		Where(billingSummaryDateExpr+" >= ?", query.WindowStartAt()).
 		Where(billingSummaryDateExpr+" < ?", query.WindowEndAtExclusive()).
 		Group("YEAR(" + billingSummaryDateExpr + "), MONTH(" + billingSummaryDateExpr + ")").

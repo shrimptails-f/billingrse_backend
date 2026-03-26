@@ -6,7 +6,9 @@ import (
 	"business/internal/library/retry"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"time"
 
 	openaisdk "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -22,6 +24,35 @@ const (
 const (
 	parsedEmailResponseSchemaName = "parsed_email_analysis_results"
 )
+
+// BuildParsedEmailPrompt builds the extraction prompt for one email body.
+// The output contract is a billing header with nested line-items.
+func BuildParsedEmailPrompt(subject, from string, receivedAt time.Time, body string) string {
+	return fmt.Sprintf(`あなたはメール本文から請求関連の構造化情報を抽出するアシスタントです。
+
+出力規約:
+- JSONオブジェクトのみを返してください
+- トップレベルのキーは parsedEmails のみを使用してください
+- parsedEmails は配列にしてください
+- parsedEmails の各要素は「請求ヘッダ」を表し、同一請求番号の複数商品は lineItems の子要素として返してください
+- parsedEmails の各要素のキーは productNameRaw, productNameDisplay, vendorName, billingNumber, invoiceNumber, amount, currency, billingDate, paymentCycle, lineItems のみを使用してください
+- lineItems は配列にしてください
+- lineItems の各要素のキーは productNameRaw, productNameDisplay, amount, currency のみを使用してください
+- 値が分からない場合は null を設定してください
+- billingDate は RFC3339 形式の文字列、または null にしてください
+- paymentCycle は one_time, recurring, null のいずれかにしてください
+- amount は請求ヘッダの合計金額として数値で返してください
+- lineItems.amount は明細行ごとの金額を数値で返してください
+- 請求関連の情報が読み取れない場合は {"parsedEmails": []} を返してください
+- 推測で値を補完しないでください
+
+subject: %s
+from: %s
+receivedAt: %s
+body:
+%s
+`, strings.TrimSpace(subject), strings.TrimSpace(from), receivedAt.UTC().Format(time.RFC3339), strings.TrimSpace(body))
+}
 
 type Client struct {
 	sdk     *openaisdk.Client
@@ -155,18 +186,37 @@ func parsedEmailResponseSchema() map[string]any {
 					"type":                 "object",
 					"additionalProperties": false,
 					"properties": map[string]any{
-						"productNameRaw":     nullableStringSchema("Full product or service name as it appears in the email, or null when unknown."),
-						"productNameDisplay": nullableStringSchema("Short display name. Use only the product name, or the set name for bundled products, or null when unknown."),
+						"productNameRaw":     nullableStringSchema("Representative full product/service name for this billing header, or null when unknown."),
+						"productNameDisplay": nullableStringSchema("Representative short display name for this billing header, or null when unknown."),
 						"vendorName":         nullableStringSchema("Candidate vendor name extracted from the email, or null when unknown."),
-						"billingNumber":      nullableStringSchema("Billing number extracted from the email, or null when unknown."),
+						"billingNumber":      nullableStringSchema("Billing number extracted from the email. Multiple products under the same number must be nested in lineItems."),
 						"invoiceNumber":      nullableStringSchema("Qualified invoice number extracted from the email, or null when unknown."),
-						"amount":             nullableNumberSchema("Billing amount extracted from the email, or null when unknown."),
+						"amount":             nullableNumberSchema("Billing total amount extracted from the email, or null when unknown."),
 						"currency":           nullableStringSchema("ISO 4217 currency code, or null when unknown."),
 						"billingDate":        nullableStringSchema("RFC3339 billing date string, or null when unknown."),
 						"paymentCycle": map[string]any{
 							"type":        []string{"string", "null"},
 							"description": "Billing cycle. Use one_time, recurring.",
 							"enum":        []any{"one_time", "recurring"},
+						},
+						"lineItems": map[string]any{
+							"type": "array",
+							"items": map[string]any{
+								"type":                 "object",
+								"additionalProperties": false,
+								"properties": map[string]any{
+									"productNameRaw":     nullableStringSchema("Full product/service name for one billing line item, or null when unknown."),
+									"productNameDisplay": nullableStringSchema("Short display name for one billing line item, or null when unknown."),
+									"amount":             nullableNumberSchema("Line-item amount, or null when unknown."),
+									"currency":           nullableStringSchema("Line-item currency in ISO 4217, or null when unknown."),
+								},
+								"required": []string{
+									"productNameRaw",
+									"productNameDisplay",
+									"amount",
+									"currency",
+								},
+							},
 						},
 					},
 					"required": []string{
@@ -179,6 +229,7 @@ func parsedEmailResponseSchema() map[string]any {
 						"currency",
 						"billingDate",
 						"paymentCycle",
+						"lineItems",
 					},
 				},
 			},

@@ -13,14 +13,14 @@ import (
 )
 
 type billingListRow struct {
-	EmailID            uint            `gorm:"column:email_id"`
-	ExternalMessageID  string          `gorm:"column:external_message_id"`
-	VendorName         string          `gorm:"column:vendor_name"`
-	ReceivedAt         time.Time       `gorm:"column:received_at"`
-	BillingDate        *time.Time      `gorm:"column:billing_date"`
-	ProductNameDisplay *string         `gorm:"column:product_name_display"`
-	Amount             decimal.Decimal `gorm:"column:amount"`
-	Currency           string          `gorm:"column:currency"`
+	EmailID            uint             `gorm:"column:email_id"`
+	ExternalMessageID  string           `gorm:"column:external_message_id"`
+	VendorName         string           `gorm:"column:vendor_name"`
+	ReceivedAt         time.Time        `gorm:"column:received_at"`
+	BillingDate        *time.Time       `gorm:"column:billing_date"`
+	ProductNameDisplay *string          `gorm:"column:product_name_display"`
+	Amount             *decimal.Decimal `gorm:"column:amount"`
+	Currency           *string          `gorm:"column:currency"`
 }
 
 type billingListEmailRecord struct {
@@ -75,7 +75,7 @@ func (r *BillingQueryRepository) List(ctx context.Context, query billingqueryapp
 
 	var totalCount int64
 	countQuery := r.buildListBaseQuery(ctx, query)
-	if err := countQuery.Count(&totalCount).Error; err != nil {
+	if err := countQuery.Distinct("billings.id").Count(&totalCount).Error; err != nil {
 		reqLog.Error("db_query_failed",
 			logger.String("db_system", "mysql"),
 			logger.String("table", "billings"),
@@ -94,8 +94,8 @@ func (r *BillingQueryRepository) List(ctx context.Context, query billingqueryapp
 			"emails.received_at AS received_at",
 			"billings.billing_date AS billing_date",
 			"billings.product_name_display AS product_name_display",
-			"billings.amount AS amount",
-			"billings.currency AS currency",
+			"line_item_summary.amount AS amount",
+			"line_item_summary.currency AS currency",
 		}).
 		Limit(*query.Limit).
 		Offset(*query.Offset)
@@ -113,6 +113,15 @@ func (r *BillingQueryRepository) List(ctx context.Context, query billingqueryapp
 
 	items := make([]billingqueryapp.ListItem, 0, len(rows))
 	for _, row := range rows {
+		amount := 0.0
+		if row.Amount != nil {
+			amount = row.Amount.InexactFloat64()
+		}
+		currency := ""
+		if row.Currency != nil {
+			currency = strings.TrimSpace(*row.Currency)
+		}
+
 		items = append(items, billingqueryapp.ListItem{
 			EmailID:            row.EmailID,
 			ExternalMessageID:  strings.TrimSpace(row.ExternalMessageID),
@@ -120,8 +129,8 @@ func (r *BillingQueryRepository) List(ctx context.Context, query billingqueryapp
 			ReceivedAt:         row.ReceivedAt.UTC(),
 			BillingDate:        cloneBillingDate(row.BillingDate),
 			ProductNameDisplay: cloneOptionalString(row.ProductNameDisplay),
-			Amount:             row.Amount.InexactFloat64(),
-			Currency:           strings.TrimSpace(row.Currency),
+			Amount:             amount,
+			Currency:           currency,
 		})
 	}
 
@@ -138,6 +147,7 @@ func (r *BillingQueryRepository) buildListBaseQuery(ctx context.Context, query b
 		Table("billings").
 		Joins("INNER JOIN vendors ON vendors.id = billings.vendor_id").
 		Joins("INNER JOIN emails ON emails.id = billings.email_id AND emails.user_id = billings.user_id").
+		Joins("LEFT JOIN "+billingListLineItemSummarySubQuery()+" ON line_item_summary.billing_id = billings.id").
 		Where("billings.user_id = ?", query.UserID)
 
 	if query.EmailID != nil {
@@ -168,6 +178,25 @@ func (r *BillingQueryRepository) buildListBaseQuery(ctx context.Context, query b
 	}
 
 	return tx
+}
+
+func billingListLineItemSummarySubQuery() string {
+	return `(
+SELECT
+	billing_id,
+	CASE
+		WHEN COUNT(DISTINCT CASE WHEN currency IS NOT NULL AND TRIM(currency) <> '' THEN UPPER(TRIM(currency)) END) = 1
+			THEN SUM(CASE WHEN amount IS NOT NULL THEN amount ELSE 0 END)
+		ELSE NULL
+	END AS amount,
+	CASE
+		WHEN COUNT(DISTINCT CASE WHEN currency IS NOT NULL AND TRIM(currency) <> '' THEN UPPER(TRIM(currency)) END) = 1
+			THEN MAX(CASE WHEN currency IS NOT NULL AND TRIM(currency) <> '' THEN UPPER(TRIM(currency)) END)
+		ELSE NULL
+	END AS currency
+FROM billing_line_items
+GROUP BY billing_id
+) AS line_item_summary`
 }
 
 func applyBillingListOrder(tx *gorm.DB, query billingqueryapp.ListQuery) *gorm.DB {

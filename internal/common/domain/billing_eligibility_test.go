@@ -57,6 +57,21 @@ func TestBillingEligibility(t *testing.T) {
 		t.Fatalf("expected raw product name fallback, got %+v", resolvedProductName)
 	}
 
+	lineItemProduct := "Netflix Addon"
+	parsedFallbackLineItemProduct := parsed
+	parsedFallbackLineItemProduct.ProductNameDisplay = nil
+	parsedFallbackLineItemProduct.ProductNameRaw = nil
+	parsedFallbackLineItemProduct.LineItems = []ParsedEmailLineItem{
+		{ProductNameDisplay: &lineItemProduct},
+	}
+	if err := eligibility.Evaluate(parsedFallbackLineItemProduct, resolution); err != nil {
+		t.Fatalf("expected line-item product name to be accepted as fallback, got %v", err)
+	}
+	resolvedLineItemProduct := eligibility.ResolvedProductNameDisplay(parsedFallbackLineItemProduct)
+	if resolvedLineItemProduct == nil || *resolvedLineItemProduct != "Netflix Addon" {
+		t.Fatalf("expected line-item product fallback, got %+v", resolvedLineItemProduct)
+	}
+
 	if err := eligibility.Evaluate(parsed, VendorResolution{}); !errors.Is(err, ErrBillingEligibilityVendorUnresolved) {
 		t.Fatalf("expected ErrBillingEligibilityVendorUnresolved, got %v", err)
 	}

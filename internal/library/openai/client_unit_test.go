@@ -88,9 +88,36 @@ func TestBuildChatCompletionParams_UsesGPT5MiniStructuredOutputs(t *testing.T) {
 		"currency",
 		"billingDate",
 		"paymentCycle",
+		"lineItems",
 	} {
 		if _, exists := itemProperties[key]; !exists {
 			t.Fatalf("expected property %q to exist", key)
+		}
+	}
+
+	lineItems, ok := itemProperties["lineItems"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected lineItems type: %T", itemProperties["lineItems"])
+	}
+	if got := lineItems["type"]; got != "array" {
+		t.Fatalf("unexpected lineItems type: %#v", got)
+	}
+	lineItemObject, ok := lineItems["items"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected lineItems.items type: %T", lineItems["items"])
+	}
+	lineItemProperties, ok := lineItemObject["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected line item properties type: %T", lineItemObject["properties"])
+	}
+	for _, key := range []string{
+		"productNameRaw",
+		"productNameDisplay",
+		"amount",
+		"currency",
+	} {
+		if _, exists := lineItemProperties[key]; !exists {
+			t.Fatalf("expected line item property %q to exist", key)
 		}
 	}
 }

@@ -17,6 +17,7 @@ const (
 	parsedEmailPaymentCycleMaxBytes           = 32
 	parsedEmailAmountScale                    = 3
 	parsedEmailAmountMaxAbs           float64 = 999999999999999.999
+	parsedEmailLineItemMaxCount               = 200
 )
 
 // AnalysisOutput is the analyzer result returned to the application layer.
@@ -133,6 +134,23 @@ func validateParsedEmailBounds(parsed commondomain.ParsedEmail) error {
 	}
 	if err := validateOptionalAmount(parsed.Amount); err != nil {
 		return err
+	}
+	if len(parsed.LineItems) > parsedEmailLineItemMaxCount {
+		return fmt.Errorf("line_items exceeds max count %d", parsedEmailLineItemMaxCount)
+	}
+	for idx, lineItem := range parsed.LineItems {
+		if err := validateOptionalStringBytes("line_items.product_name_raw", lineItem.ProductNameRaw, parsedEmailTextMaxBytes); err != nil {
+			return fmt.Errorf("line_items[%d]: %w", idx, err)
+		}
+		if err := validateOptionalStringBytes("line_items.product_name_display", lineItem.ProductNameDisplay, parsedEmailProductDisplayMaxBytes); err != nil {
+			return fmt.Errorf("line_items[%d]: %w", idx, err)
+		}
+		if err := validateOptionalAmount(lineItem.Amount); err != nil {
+			return fmt.Errorf("line_items[%d]: %w", idx, err)
+		}
+		if err := validateOptionalStringBytes("line_items.currency", lineItem.Currency, parsedEmailCurrencyMaxBytes); err != nil {
+			return fmt.Errorf("line_items[%d]: %w", idx, err)
+		}
 	}
 
 	return nil

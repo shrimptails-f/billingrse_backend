@@ -149,7 +149,7 @@ func seedBillingMonthlyTrendFixtures(t *testing.T, db *gorm.DB) {
 	productAWS := "AWS Support"
 	productGoogle := "Google Workspace"
 
-	billings := []billingRecord{
+	billings := []billingFixture{
 		{
 			ID:                 201,
 			UserID:             1,
@@ -271,7 +271,9 @@ func seedBillingMonthlyTrendFixtures(t *testing.T, db *gorm.DB) {
 			UpdatedAt:          now,
 		},
 	}
-	require.NoError(t, db.Create(&billings).Error)
+	billingRecords, lineItems := billingRecordsAndLineItemsFromFixtures(billings)
+	require.NoError(t, db.Create(&billingRecords).Error)
+	require.NoError(t, db.Create(&lineItems).Error)
 }
 
 func TestBillingQueryRepository_MonthlyTrend_AggregatesByMonth(t *testing.T) {

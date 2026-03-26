@@ -36,7 +36,18 @@ func (BillingEligibility) ResolvedProductNameDisplay(parsed ParsedEmail) *string
 	if normalized.ProductNameDisplay != nil {
 		return cloneOptionalString(normalized.ProductNameDisplay)
 	}
-	return cloneOptionalString(normalized.ProductNameRaw)
+	if normalized.ProductNameRaw != nil {
+		return cloneOptionalString(normalized.ProductNameRaw)
+	}
+	for _, lineItem := range normalized.LineItems {
+		if lineItem.ProductNameDisplay != nil {
+			return cloneOptionalString(lineItem.ProductNameDisplay)
+		}
+		if lineItem.ProductNameRaw != nil {
+			return cloneOptionalString(lineItem.ProductNameRaw)
+		}
+	}
+	return nil
 }
 
 // Evaluate checks whether the parsed email and vendor resolution satisfy the

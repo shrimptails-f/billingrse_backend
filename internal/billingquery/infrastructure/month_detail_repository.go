@@ -53,9 +53,9 @@ func (r *BillingQueryRepository) MonthDetail(ctx context.Context, query billingq
 	var totals billingMonthDetailTotalsRow
 	if err := baseQuery.
 		Select([]string{
-			"COALESCE(SUM(billings.amount), 0) AS total_amount",
-			"COUNT(*) AS billing_count",
-			"COALESCE(SUM(CASE WHEN billings.billing_date IS NULL THEN 1 ELSE 0 END), 0) AS fallback_billing_count",
+			"COALESCE(SUM(COALESCE(billing_line_items.amount, 0)), 0) AS total_amount",
+			"COUNT(DISTINCT billings.id) AS billing_count",
+			"COUNT(DISTINCT CASE WHEN billings.billing_date IS NULL THEN billings.id END) AS fallback_billing_count",
 		}).
 		Scan(&totals).Error; err != nil {
 		reqLog.Error("db_query_failed",
@@ -72,11 +72,11 @@ func (r *BillingQueryRepository) MonthDetail(ctx context.Context, query billingq
 		Joins("INNER JOIN vendors ON vendors.id = billings.vendor_id").
 		Select([]string{
 			"vendors.name AS vendor_name",
-			"SUM(billings.amount) AS total_amount",
-			"COUNT(*) AS billing_count",
+			"SUM(COALESCE(billing_line_items.amount, 0)) AS total_amount",
+			"COUNT(DISTINCT billings.id) AS billing_count",
 		}).
 		Group("vendors.id, vendors.name").
-		Order("SUM(billings.amount) DESC").
+		Order("SUM(COALESCE(billing_line_items.amount, 0)) DESC").
 		Order("vendors.name ASC").
 		Scan(&rows).Error; err != nil {
 		reqLog.Error("db_query_failed",
@@ -113,8 +113,9 @@ func (r *BillingQueryRepository) buildMonthDetailBaseQuery(
 ) *gorm.DB {
 	return r.db.WithContext(ctx).
 		Table("billings").
+		Joins("INNER JOIN billing_line_items ON billing_line_items.billing_id = billings.id AND billing_line_items.user_id = billings.user_id").
 		Where("billings.user_id = ?", query.UserID).
-		Where("billings.currency = ?", query.Currency).
+		Where("billing_line_items.currency = ?", query.Currency).
 		Where("billings.billing_summary_date >= ?", monthStart).
 		Where("billings.billing_summary_date < ?", monthEnd)
 }

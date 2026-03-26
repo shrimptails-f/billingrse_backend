@@ -31,6 +31,7 @@ func newBillingListRepoTestEnv(t *testing.T) *billingListRepoTestEnv {
 		&billingListVendorRecord{},
 		&billingListEmailRecord{},
 		&billingRecord{},
+		&billingLineItemRecord{},
 	))
 
 	return &billingListRepoTestEnv{
@@ -133,7 +134,7 @@ func seedBillingListFixtures(t *testing.T, db *gorm.DB) {
 	productGoogle1 := "Google Workspace Business"
 	productGoogle2 := "Google Workspace Enterprise"
 
-	billings := []billingRecord{
+	billings := []billingFixture{
 		{
 			ID:                 201,
 			UserID:             1,
@@ -210,7 +211,9 @@ func seedBillingListFixtures(t *testing.T, db *gorm.DB) {
 			UpdatedAt:          now,
 		},
 	}
-	require.NoError(t, db.Create(&billings).Error)
+	billingRecords, lineItems := billingRecordsAndLineItemsFromFixtures(billings)
+	require.NoError(t, db.Create(&billingRecords).Error)
+	require.NoError(t, db.Create(&lineItems).Error)
 }
 
 func TestBillingQueryRepository_List_AppliesUserScopeAndFilters(t *testing.T) {

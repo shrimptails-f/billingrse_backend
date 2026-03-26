@@ -20,6 +20,13 @@ func TestAnalysisOutputNormalize_NormalizesAndFiltersEmptyParsedEmails(t *testin
 				InvoiceNumber:      stringPtr(" inv-001 "),
 				Currency:           stringPtr(" jpy "),
 				PaymentCycle:       stringPtr(" one time "),
+				LineItems: []commondomain.ParsedEmailLineItem{
+					{
+						ProductNameDisplay: stringPtr(" Example Product "),
+						Amount:             float64Ptr(123.456),
+						Currency:           stringPtr(" jpy "),
+					},
+				},
 			},
 			{
 				ProductNameDisplay: stringPtr(" "),
@@ -56,6 +63,12 @@ func TestAnalysisOutputNormalize_NormalizesAndFiltersEmptyParsedEmails(t *testin
 	}
 	if got := *parsed.PaymentCycle; got != "one_time" {
 		t.Fatalf("unexpected payment cycle: %q", got)
+	}
+	if len(parsed.LineItems) != 1 {
+		t.Fatalf("unexpected line items: %+v", parsed.LineItems)
+	}
+	if parsed.LineItems[0].Currency == nil || *parsed.LineItems[0].Currency != "JPY" {
+		t.Fatalf("unexpected line item currency: %+v", parsed.LineItems[0])
 	}
 }
 
