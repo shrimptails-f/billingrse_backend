@@ -212,7 +212,7 @@ func newManualMailWorkflowScenarioEnv(
 	)
 	billingEligibilityUseCase := beapp.NewUseCase(log)
 	billingUseCase := billingapp.NewUseCase(
-		billinginfra.NewGormBillingRepository(env.db, clock, log),
+		billinginfra.NewBillingRepository(env.db, clock, log),
 		log,
 	)
 
@@ -333,6 +333,7 @@ func (e *manualMailWorkflowScenarioEnv) mustCreateExistingBilling(userID, vendor
 		BillingNumber:      strings.TrimSpace(billingNumber),
 		Amount:             decimal.RequireFromString("1290"),
 		Currency:           "JPY",
+		BillingSummaryDate: now,
 		PaymentCycle:       "recurring",
 		CreatedAt:          now,
 		UpdatedAt:          now,

@@ -11,7 +11,7 @@ import (
 	macpresentation "business/internal/app/presentation/mailaccountconnection"
 	manualpresentation "business/internal/app/presentation/manualmailworkflow"
 	"business/internal/auth/domain"
-	billingapp "business/internal/billing/application"
+	billingqueryapp "business/internal/billingquery/application"
 	"business/internal/library/logger"
 	macapp "business/internal/mailaccountconnection/application"
 	macdomain "business/internal/mailaccountconnection/domain"
@@ -113,8 +113,20 @@ func (s *stubManualMailWorkflowListUseCase) List(ctx context.Context, query manu
 
 type stubBillingListUseCase struct{}
 
-func (s *stubBillingListUseCase) List(ctx context.Context, query billingapp.ListQuery) (billingapp.ListResult, error) {
-	return billingapp.ListResult{Items: []billingapp.ListItem{}}, nil
+func (s *stubBillingListUseCase) List(ctx context.Context, query billingqueryapp.ListQuery) (billingqueryapp.ListResult, error) {
+	return billingqueryapp.ListResult{Items: []billingqueryapp.ListItem{}}, nil
+}
+
+type stubBillingMonthlyTrendUseCase struct{}
+
+func (s *stubBillingMonthlyTrendUseCase) Get(ctx context.Context, query billingqueryapp.MonthlyTrendQuery) (billingqueryapp.MonthlyTrendResult, error) {
+	return billingqueryapp.MonthlyTrendResult{Items: []billingqueryapp.MonthlyTrendItem{}}, nil
+}
+
+type stubBillingMonthDetailUseCase struct{}
+
+func (s *stubBillingMonthDetailUseCase) Get(ctx context.Context, query billingqueryapp.MonthDetailQuery) (billingqueryapp.MonthDetailResult, error) {
+	return billingqueryapp.MonthDetailResult{VendorItems: []billingqueryapp.MonthDetailVendorItem{}}, nil
 }
 
 func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
@@ -146,7 +158,12 @@ func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	err = container.Provide(func() *billingpresentation.Controller {
-		return billingpresentation.NewController(&stubBillingListUseCase{}, log)
+		return billingpresentation.NewController(
+			&stubBillingListUseCase{},
+			&stubBillingMonthlyTrendUseCase{},
+			&stubBillingMonthDetailUseCase{},
+			log,
+		)
 	})
 	assert.NoError(t, err)
 
@@ -176,6 +193,8 @@ func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 		"GET /api/v1/manual-mail-workflows",
 		"POST /api/v1/manual-mail-workflows",
 		"GET /api/v1/billings",
+		"GET /api/v1/billings/summary/monthly-trend",
+		"GET /api/v1/billings/summary/monthly-detail/:year_month",
 	}
 	for _, route := range expectedRoutes {
 		assert.Contains(t, routes, route)

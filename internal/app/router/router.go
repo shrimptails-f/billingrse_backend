@@ -85,6 +85,8 @@ func Router(g *gin.Engine, container *dig.Container, log logger.Interface, allow
 	}
 	registerBillingRoutes := func(group *gin.RouterGroup) {
 		group.GET("", authMiddleware.Authenticate(), billingController.List)
+		group.GET("/summary/monthly-trend", authMiddleware.Authenticate(), billingController.MonthlyTrend)
+		group.GET("/summary/monthly-detail/:year_month", authMiddleware.Authenticate(), billingController.MonthDetail)
 	}
 	registerBillingRoutes(g.Group("/api/v1/billings"))
 
