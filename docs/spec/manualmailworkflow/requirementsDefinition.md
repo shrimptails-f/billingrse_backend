@@ -17,7 +17,7 @@
 ## 解決したい課題
 
 - 手動メール取得 API の応答時間を短くし、`POST` は受付だけを返すようにしたい。
-- workflow 1 回分の進行状態と最終結果を、`workflow_id` をキーに参照できるようにしたい。
+- workflow 1 回分の進行状態と最終結果を、履歴一覧から特定できるようにしたい。`workflow_id` は相関 ID として扱う。
 - technical failure と業務上の未解決・不成立・重複を分けつつ、ユーザー向けには stage ごとの failure として見せたい。
 - stage 途中で失敗や panic が起きても、それまでの部分結果を履歴から確認できるようにしたい。
 
@@ -26,13 +26,13 @@
 - `POST /api/v1/manual-mail-workflows` は短時間で `202 Accepted` を返す。
 - 実処理は background workflow として順次実行する。
 - `workflow_id` ごとに受付条件、状態、stage ごとの成功件数・失敗件数・失敗理由を DB に残す。
-- 将来の状態取得 API から workflow の進行状態または最終結果を参照できるようにする。
+- 認証済みユーザーが `GET /api/v1/manual-mail-workflows` で workflow 履歴一覧を参照できるようにする。
 
 ## 対象範囲
 
 - 手動メール取得 API の非同期受付化
 - workflow 履歴保存方式の定義
-- workflow 開始 API と将来の状態取得 API の責務定義
+- workflow 開始 API と履歴一覧 API の責務定義
 - background runner による stage 実行順序の定義
 - stage ごとの件数集約と failure 集約の方針
 - package 間の責務境界と依存方向の整理
@@ -59,7 +59,7 @@ flowchart LR
   VENDOR --> ELIGIBILITY[billingeligibility]
   ELIGIBILITY --> BILLING[billing]
   RUNNER --> HISTORY[workflow 履歴を逐次更新]
-  FE --> GET[GET /api/v1/manual-mail-workflows/:workflow_id]
+  FE --> GET[GET /api/v1/manual-mail-workflows]
   GET --> HISTORY
 ```
 
@@ -80,7 +80,7 @@ flowchart LR
 - `FR-7`
   - stage top-level error や panic が起きても、それまでに保存済みの件数と failure reason は失わず、workflow header に top-level error message を残す。
 - `FR-8`
-  - 将来の状態取得 API は `workflow_id` を受け取り、workflow の現在状態または最終結果を返せるようにする。
+  - 履歴一覧 API は認証済みユーザーの workflow 履歴を返し、各 item から `workflow_id`、現在状態または最終結果を参照できるようにする。
 - `FR-9`
   - stage 間のデータ受け渡しは workflow payload を優先し、不要な再読込は増やさない。
 - `FR-10`
@@ -104,7 +104,7 @@ flowchart LR
 ## 制約・前提
 
 - workflow 履歴は `Email`、`ParsedEmail`、`Billing` の業務データを置き換えない。あくまで workflow のサマリと失敗理由を保持する。
-- 履歴ヘッダの主キーは数値 `id` とし、`workflow_id` は API 参照用の一意キーとして扱う。
+- 履歴ヘッダの主キーは数値 `id` とし、`workflow_id` はレスポンスとログの相関に使う一意キーとして扱う。
 - 手動 workflow では `queued_at` は保持するが、`started_at` は持たない。
 - `emails.created_run_id` や `parsed_emails.analysis_run_id` は workflow 相関キーとして利用しない。
 - `Billing` の参照元は `Email` であり、`ParsedEmail` は参照元として保持しない。
@@ -128,7 +128,7 @@ stateDiagram-v2
 
 - 手動メール取得 API が短時間で `202 Accepted` を返せる。
 - workflow が background で stage 順に実行される。
-- `workflow_id` を相関 ID として扱い、履歴から進行状態または最終結果を取得できる。
+- `workflow_id` を相関 ID として扱い、履歴一覧から対象 workflow の進行状態または最終結果を確認できる。
 - `queued` / `running` / `succeeded` / `partial_success` / `failed` の状態遷移が DB に残る。
 - stage 途中で失敗や panic が起きても、その時点までの部分結果を履歴から確認できる。
 - 各 package の責務境界を崩さず、既存 stage 実装を流用できる。
