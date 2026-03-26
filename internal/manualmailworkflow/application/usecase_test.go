@@ -377,7 +377,7 @@ func TestUseCaseExecute_SkipsAnalyzeWhenNoCreatedEmails(t *testing.T) {
 	if fetchProgress.FailureRecords[0].ReasonCode != reasonCodeExistingEmailsSkipped {
 		t.Fatalf("unexpected fetch reason code: %+v", fetchProgress.FailureRecords[0])
 	}
-	if fetchProgress.FailureRecords[0].Message != "対象メールはすでに取得済みだったため、後続の処理をスキップしました。" {
+	if fetchProgress.FailureRecords[0].Message != "取得したメールは全て取得済みのため、後続の処理をスキップしました。" {
 		t.Fatalf("unexpected fetch message: %+v", fetchProgress.FailureRecords[0])
 	}
 	if completedStatus != WorkflowStatusSucceeded {

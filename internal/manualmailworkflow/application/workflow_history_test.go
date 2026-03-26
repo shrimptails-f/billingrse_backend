@@ -99,7 +99,7 @@ func TestBuildFetchStageProgress_ExistingEmailsOnlyAddsSkipRecord(t *testing.T) 
 	if progress.FailureRecords[0].ReasonCode != reasonCodeExistingEmailsSkipped {
 		t.Fatalf("unexpected reason code: %+v", progress.FailureRecords[0])
 	}
-	if progress.FailureRecords[0].Message != "対象メールはすでに取得済みだったため、後続の処理をスキップしました。" {
+	if progress.FailureRecords[0].Message != "取得したメールは全て取得済みのため、後続の処理をスキップしました。" {
 		t.Fatalf("unexpected message: %+v", progress.FailureRecords[0])
 	}
 }
