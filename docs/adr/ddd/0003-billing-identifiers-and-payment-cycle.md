@@ -31,8 +31,9 @@ InvoiceNumber の意味が曖昧だった。インボイス番号を持たない
   - 任意（nil/空は許容）。
 - 請求成立の必須項目は「Vendor + 金額（通貨含む） + 請求日 + 支払周期 + 請求番号」とする。
 - 支払いの分類は PaymentType ではなく PaymentCycle（単発/定期）を採用する。
+- Billing は aggregate 内に1件以上の BillingLineItem を持つ。
 - ParsedEmail の推定項目は以下に整理する。
-  - productNameRaw, productNameDisplay, vendorName, billingNumber, invoiceNumber, amount, currency, billingDate, paymentCycle
+  - productNameRaw, productNameDisplay, vendorName, billingNumber, invoiceNumber, amount, currency, billingDate, paymentCycle, lineItems
   - extractedAt は推定項目ではなく、保存時にシステム側で付与する metadata とする。
   - amount は小数第3位までの数値を許容する。
 - Money は float ではなく decimal を採用し、小数第3位までのスケールを保証する。
@@ -45,3 +46,4 @@ InvoiceNumber の意味が曖昧だった。インボイス番号を持たない
 - InvoiceNumber の検証は "T" + 13桁に限定されるため、他形式は BillingNumber に格納する。
 - Money の永続化・集計・比較は decimal 前提となるため、DB/DTO/集計処理の型整合が必要になる。
 - 通貨は当面 JPY / USD に限定されるため、他通貨の追加時は ADR 更新と検証ロジック拡張が必要になる。
+- 請求明細が抽出されない場合でも、Billing 生成時に header 情報から最低1件の fallback 明細を補完する必要がある。

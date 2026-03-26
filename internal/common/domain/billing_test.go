@@ -26,6 +26,13 @@ func TestBillingValidate(t *testing.T) {
 		Money:         money,
 		BillingDate:   timePtr(time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC)),
 		PaymentCycle:  PaymentCycleRecurring,
+		LineItems: []BillingLineItem{
+			{
+				ProductNameDisplay: stringPtr("Example Product"),
+				Amount:             float64Ptr(1200),
+				Currency:           stringPtr("JPY"),
+			},
+		},
 	}
 
 	if err := base.Validate(); err != nil {
@@ -109,6 +116,14 @@ func TestBillingValidate(t *testing.T) {
 			},
 			err: ErrInvoiceNumberInvalidFormat,
 		},
+		{
+			name: "missing line items",
+			mutate: func(b Billing) Billing {
+				b.LineItems = nil
+				return b
+			},
+			err: ErrBillingLineItemsEmpty,
+		},
 	}
 
 	for _, tc := range cases {
@@ -138,6 +153,7 @@ func TestNewBilling(t *testing.T) {
 		timePtr(time.Date(2025, 1, 5, 12, 30, 15, 0, time.UTC)),
 		"recurring",
 		nil,
+		nil,
 	)
 	assert.ErrorIs(t, err, ErrBillingNumberEmpty)
 
@@ -155,6 +171,14 @@ func TestNewBilling(t *testing.T) {
 		timePtr(time.Date(2025, 1, 5, 12, 30, 0, 0, time.UTC)),
 		"one_time",
 		&productNameDisplay,
+		[]BillingLineItemInput{
+			{
+				ProductNameRaw:     stringPtr(" Example Product Full Name "),
+				ProductNameDisplay: stringPtr(" Example Product "),
+				Amount:             float64Ptr(10),
+				Currency:           stringPtr(" jpy "),
+			},
+		},
 	)
 	if err != nil {
 		t.Fatalf("NewBilling returned error: %v", err)
@@ -167,6 +191,15 @@ func TestNewBilling(t *testing.T) {
 	}
 	if billing.ProductNameDisplay == nil || *billing.ProductNameDisplay != "Example Product" {
 		t.Fatalf("expected product name display to be normalized, got %+v", billing.ProductNameDisplay)
+	}
+	if len(billing.LineItems) != 1 {
+		t.Fatalf("expected explicit line item to be preserved, got %+v", billing.LineItems)
+	}
+	if billing.LineItems[0].ProductNameRaw == nil || *billing.LineItems[0].ProductNameRaw != "Example Product Full Name" {
+		t.Fatalf("expected explicit line item raw name to be normalized, got %+v", billing.LineItems[0])
+	}
+	if billing.LineItems[0].Currency == nil || *billing.LineItems[0].Currency != "JPY" {
+		t.Fatalf("expected explicit line item currency to be normalized, got %+v", billing.LineItems[0])
 	}
 
 	empty := "  "
@@ -181,6 +214,7 @@ func TestNewBilling(t *testing.T) {
 		nil,
 		"one_time",
 		nil,
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("NewBilling returned error: %v", err)
@@ -190,6 +224,15 @@ func TestNewBilling(t *testing.T) {
 	}
 	if billing.BillingDate != nil {
 		t.Fatalf("expected billing date to be optional, got %+v", billing.BillingDate)
+	}
+	if len(billing.LineItems) != 1 {
+		t.Fatalf("expected fallback line item to be created, got %+v", billing.LineItems)
+	}
+	if billing.LineItems[0].Amount == nil || *billing.LineItems[0].Amount != 10 {
+		t.Fatalf("expected fallback line item amount, got %+v", billing.LineItems[0])
+	}
+	if billing.LineItems[0].Currency == nil || *billing.LineItems[0].Currency != "JPY" {
+		t.Fatalf("expected fallback line item currency, got %+v", billing.LineItems[0])
 	}
 }
 

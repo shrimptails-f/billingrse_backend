@@ -9,10 +9,19 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 )
+
+const maxGmailDetailFetchWorkers = 8
 
 type gmailClientBuilder interface {
 	Build(ctx context.Context, connectionID, userID uint) (gmailMessageClient, error)
+}
+
+type gmailDetailFetchResult struct {
+	messageID string
+	dto       cd.FetchedEmailDTO
+	err       error
 }
 
 // GmailMailFetcherAdapter fetches Gmail messages for a single mail-account connection.
@@ -55,26 +64,27 @@ func (f *GmailMailFetcherAdapter) Fetch(ctx context.Context, cond mfdomain.Fetch
 
 	fetched := make([]cd.FetchedEmailDTO, 0, len(messageIDs))
 	failures := make([]mfdomain.MessageFailure, 0)
+	detailResults := fetchGmailDetailsConcurrently(ctx, client, messageIDs)
 
-	for _, messageID := range messageIDs {
-		dto, detailErr := client.GetGmailDetail(ctx, messageID)
-		if detailErr != nil {
+	for _, detailResult := range detailResults {
+		if detailResult.err != nil {
 			failures = append(failures, mfdomain.MessageFailure{
-				ExternalMessageID: messageID,
+				ExternalMessageID: detailResult.messageID,
 				Stage:             mfdomain.FailureStageFetchDetail,
 				Code:              mfdomain.FailureCodeFetchDetailFailed,
-				Message:           fetchDetailFailureMessage(messageID),
+				Message:           fetchDetailFailureMessage(detailResult.messageID),
 			})
 			continue
 		}
 
+		dto := detailResult.dto
 		dto.ID = strings.TrimSpace(dto.ID)
 		if dto.ID == "" || dto.Date.IsZero() {
 			failures = append(failures, mfdomain.MessageFailure{
-				ExternalMessageID: fallbackExternalMessageID(dto.ID, messageID),
+				ExternalMessageID: fallbackExternalMessageID(dto.ID, detailResult.messageID),
 				Stage:             mfdomain.FailureStageNormalize,
 				Code:              mfdomain.FailureCodeInvalidFetchedEmail,
-				Message:           normalizeFetchedEmailFailureMessage(fallbackExternalMessageID(dto.ID, messageID), dto.Date.IsZero()),
+				Message:           normalizeFetchedEmailFailureMessage(fallbackExternalMessageID(dto.ID, detailResult.messageID), dto.Date.IsZero()),
 			})
 			continue
 		}
@@ -87,6 +97,44 @@ func (f *GmailMailFetcherAdapter) Fetch(ctx context.Context, cond mfdomain.Fetch
 	}
 
 	return fetched, failures, nil
+}
+
+func fetchGmailDetailsConcurrently(ctx context.Context, client gmailMessageClient, messageIDs []string) []gmailDetailFetchResult {
+	if len(messageIDs) == 0 {
+		return nil
+	}
+
+	results := make([]gmailDetailFetchResult, len(messageIDs))
+	workerCount := len(messageIDs)
+	if workerCount > maxGmailDetailFetchWorkers {
+		workerCount = maxGmailDetailFetchWorkers
+	}
+
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	wg.Add(workerCount)
+	for range workerCount {
+		go func() {
+			defer wg.Done()
+			for idx := range jobs {
+				messageID := messageIDs[idx]
+				dto, err := client.GetGmailDetail(ctx, messageID)
+				results[idx] = gmailDetailFetchResult{
+					messageID: messageID,
+					dto:       dto,
+					err:       err,
+				}
+			}
+		}()
+	}
+
+	for idx := range messageIDs {
+		jobs <- idx
+	}
+	close(jobs)
+	wg.Wait()
+
+	return results
 }
 
 func fallbackExternalMessageID(preferred string, fallback string) string {

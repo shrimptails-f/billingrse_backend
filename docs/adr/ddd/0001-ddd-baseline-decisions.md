@@ -20,6 +20,7 @@ Date: 2026-01-25
   - メール解析結果（ParsedEmail）
   - 請求成立判定（BillingEligibility）
   - 請求（Billing）
+  - 請求明細（BillingLineItem）
   - 支払先（Vendor）
 - メール取得（MailFetch）は概念であり、実装上の実体を持たない
 - メール取得バッチ（MailFetchBatch）は独立集約とする
@@ -32,6 +33,8 @@ Date: 2026-01-25
 - 請求の同一性は「ユーザー + Vendor + 請求番号」で判定する
 - 同一請求番号の請求は作成しない
 - 請求成立の必須項目は「請求番号 + Vendor + 金額」
+- 請求明細（BillingLineItem）は Billing 集約の内部要素として扱い、独立集約にしない
+- Billing は少なくとも1件の BillingLineItem を持つ
 - 請求は支払い済みかどうかを表さない
 - 参照元メールは1請求につき1件のみ
 - 連携失効時はメール取得を失敗扱いとし、エラー記録を行う

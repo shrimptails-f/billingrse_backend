@@ -87,7 +87,6 @@ type AnalysisFailure struct {
 
 // FetchResult は fetch stage の正規化済み出力。
 type FetchResult struct {
-	CreatedEmailIDs  []uint
 	CreatedEmails    []CreatedEmail
 	ExistingEmailIDs []uint
 	Failures         []FetchFailure
@@ -95,7 +94,6 @@ type FetchResult struct {
 
 // AnalyzeResult は analysis stage の正規化済み出力。
 type AnalyzeResult struct {
-	ParsedEmailIDs   []uint
 	ParsedEmails     []ParsedEmail
 	ParsedEmailCount int
 	Failures         []AnalysisFailure
@@ -423,7 +421,7 @@ func (uc *useCase) Execute(ctx context.Context, job DispatchJob) (result Result,
 			logger.Uint("connection_id", job.ConnectionID),
 			logger.String("workflow_id", job.WorkflowID),
 			logger.String("status", finalStatus),
-			logger.Int("created_email_count", len(fetchResult.CreatedEmailIDs)),
+			logger.Int("created_email_count", len(fetchResult.CreatedEmails)),
 			logger.Int("parsed_email_count", 0),
 			logger.Int("resolved_vendor_count", 0),
 			logger.Int("unresolved_vendor_count", 0),
@@ -527,8 +525,8 @@ func (uc *useCase) Execute(ctx context.Context, job DispatchJob) (result Result,
 		logger.Uint("connection_id", job.ConnectionID),
 		logger.String("workflow_id", job.WorkflowID),
 		logger.String("status", finalStatus),
-		logger.Int("created_email_count", len(fetchResult.CreatedEmailIDs)),
-		logger.Int("parsed_email_count", len(analysisResult.ParsedEmailIDs)),
+		logger.Int("created_email_count", len(fetchResult.CreatedEmails)),
+		logger.Int("parsed_email_count", len(analysisResult.ParsedEmails)),
 		logger.Int("resolved_vendor_count", result.VendorResolution.ResolvedCount),
 		logger.Int("unresolved_vendor_count", result.VendorResolution.UnresolvedCount),
 		logger.Int("eligible_billing_count", result.BillingEligibility.EligibleCount),

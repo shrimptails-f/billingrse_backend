@@ -39,7 +39,7 @@ func (a *DirectBillingAdapter) Execute(ctx context.Context, cmd manualapp.Billin
 			Currency:           item.Currency,
 			BillingDate:        cloneTime(item.BillingDate),
 			PaymentCycle:       item.PaymentCycle,
-			LineItems:          toCreationLineItems(item.LineItems),
+			LineItems:          toBillingLineItems(item.LineItems),
 		})
 	}
 
@@ -100,7 +100,7 @@ func (a *DirectBillingAdapter) Execute(ctx context.Context, cmd manualapp.Billin
 	}, nil
 }
 
-func toCreationLineItems(items []manualapp.EligibleLineItem) []billingapp.CreationLineItem {
+func toBillingLineItems(items []manualapp.EligibleLineItem) []billingapp.CreationLineItem {
 	if len(items) == 0 {
 		return nil
 	}

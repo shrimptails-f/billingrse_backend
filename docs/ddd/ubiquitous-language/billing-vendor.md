@@ -49,11 +49,27 @@
 ### ルール
 - 請求は必ず Vendor を持つ
 - 請求は必ず Email を参照元として持つ
+- 請求は 1 件以上の請求明細（BillingLineItem）を内包する
 - 請求は「支払われたかどうか」を表さない
 - 請求の同一性は「ユーザー + Vendor + 請求番号」で判定する
 - Billing に設定される Vendor は VendorResolution 済みの canonical な Vendor である
 - ParsedEmail は請求成立判定の根拠として保存されるが、Billing の参照元属性には含めない
-- 金額 / 請求番号 / インボイス番号は Billing 集約に内包される値オブジェクト
+- Billing の総額（Money）は請求明細の金額内訳を集約した結果として扱う
+- 請求番号 / インボイス番号は Billing 集約に内包される値オブジェクト
+
+## 請求明細（BillingLineItem）
+
+### 定義
+- 1 つの請求にぶら下がる明細行
+
+### 主な属性
+- 商品名
+- 金額（Money）
+
+### ルール
+- BillingLineItem は Billing 配下でのみ存在する
+- BillingLineItem の金額（Money）を正本として扱う
+- Billing の総額は BillingLineItem の合計と整合している必要がある
 
 ## 支払周期（PaymentCycle）
 
@@ -76,6 +92,10 @@
 - 金額は小数第3位までを許容
 - 通貨は ISO 4217 の3文字コード
 - 初期スコープでは JPY / USD のみを許容する
+
+### 用途
+- Billing では請求総額を表す
+- BillingLineItem では各明細の金額を表す
 
 ## 請求番号（BillingNumber）
 

@@ -74,7 +74,6 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 					t.Fatalf("unexpected label: %q", cmd.Condition.LabelName)
 				}
 				return FetchResult{
-					CreatedEmailIDs: []uint{101},
 					CreatedEmails: []CreatedEmail{
 						{
 							EmailID:           101,
@@ -107,7 +106,6 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 					t.Fatalf("unexpected analyze body digest: %+v", cmd.Emails)
 				}
 				return AnalyzeResult{
-					ParsedEmailIDs: []uint{9001, 9002},
 					ParsedEmails: []ParsedEmail{
 						{
 							ParsedEmailID:     9001,
@@ -272,12 +270,6 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 	if billingCalls != 1 {
 		t.Fatalf("expected 1 billing call, got %d", billingCalls)
 	}
-	if len(result.Fetch.CreatedEmailIDs) != 1 {
-		t.Fatalf("unexpected fetch result: %+v", result.Fetch)
-	}
-	if len(result.Analysis.ParsedEmailIDs) != 2 {
-		t.Fatalf("unexpected analysis result: %+v", result.Analysis)
-	}
 	if result.VendorResolution.ResolvedCount != 1 || result.VendorResolution.UnresolvedCount != 1 {
 		t.Fatalf("unexpected vendor resolution result: %+v", result.VendorResolution)
 	}
@@ -296,6 +288,8 @@ func TestUseCaseExecute_SkipsAnalyzeWhenNoCreatedEmails(t *testing.T) {
 	vendorResolutionCalled := false
 	billingEligibilityCalled := false
 	billingCalled := false
+	var fetchProgress StageProgress
+	completedStatus := ""
 	uc := NewUseCase(
 		&stubFetchStage{
 			execute: func(ctx context.Context, cmd FetchCommand) (FetchResult, error) {
@@ -328,12 +322,23 @@ func TestUseCaseExecute_SkipsAnalyzeWhenNoCreatedEmails(t *testing.T) {
 				return BillingResult{}, nil
 			},
 		},
-		&stubWorkflowStatusRepository{},
+		&stubWorkflowStatusRepository{
+			saveStage: func(ctx context.Context, progress StageProgress) error {
+				if progress.Stage == workflowStageFetch {
+					fetchProgress = progress
+				}
+				return nil
+			},
+			complete: func(ctx context.Context, historyID uint64, status string, finishedAt time.Time) error {
+				completedStatus = status
+				return nil
+			},
+		},
 		&fixedClock{now: time.Date(2026, 3, 25, 12, 30, 0, 0, time.UTC)},
 		logger.NewNop(),
 	)
 
-	result, err := uc.Execute(context.Background(), DispatchJob{
+	_, err := uc.Execute(context.Background(), DispatchJob{
 		HistoryID:    1,
 		WorkflowID:   "wf-1",
 		UserID:       1,
@@ -360,8 +365,23 @@ func TestUseCaseExecute_SkipsAnalyzeWhenNoCreatedEmails(t *testing.T) {
 	if billingCalled {
 		t.Fatal("billing stage should not be called when there are no created emails")
 	}
-	if len(result.Analysis.ParsedEmailIDs) != 0 || result.Analysis.ParsedEmailCount != 0 {
-		t.Fatalf("unexpected analysis result: %+v", result.Analysis)
+	if fetchProgress.Stage != workflowStageFetch {
+		t.Fatalf("fetch progress was not saved: %+v", fetchProgress)
+	}
+	if fetchProgress.BusinessFailureCount != 0 {
+		t.Fatalf("expected zero fetch business failures, got %+v", fetchProgress)
+	}
+	if len(fetchProgress.FailureRecords) != 1 {
+		t.Fatalf("expected one fetch failure record, got %+v", fetchProgress)
+	}
+	if fetchProgress.FailureRecords[0].ReasonCode != reasonCodeExistingEmailsSkipped {
+		t.Fatalf("unexpected fetch reason code: %+v", fetchProgress.FailureRecords[0])
+	}
+	if fetchProgress.FailureRecords[0].Message != "取得したメールは全て取得済みのため、後続の処理をスキップしました。" {
+		t.Fatalf("unexpected fetch message: %+v", fetchProgress.FailureRecords[0])
+	}
+	if completedStatus != WorkflowStatusSucceeded {
+		t.Fatalf("unexpected completed status: %s", completedStatus)
 	}
 }
 
@@ -375,7 +395,6 @@ func TestUseCaseExecute_SkipsVendorResolutionWhenNoParsedEmails(t *testing.T) {
 		&stubFetchStage{
 			execute: func(ctx context.Context, cmd FetchCommand) (FetchResult, error) {
 				return FetchResult{
-					CreatedEmailIDs: []uint{101},
 					CreatedEmails: []CreatedEmail{
 						{
 							EmailID:           101,
@@ -458,7 +477,6 @@ func TestUseCaseExecute_SkipsBillingEligibilityWhenNoResolvedItems(t *testing.T)
 		&stubFetchStage{
 			execute: func(ctx context.Context, cmd FetchCommand) (FetchResult, error) {
 				return FetchResult{
-					CreatedEmailIDs: []uint{101},
 					CreatedEmails: []CreatedEmail{
 						{
 							EmailID:           101,
@@ -482,7 +500,6 @@ func TestUseCaseExecute_SkipsBillingEligibilityWhenNoResolvedItems(t *testing.T)
 							ExternalMessageID: "msg-1",
 						},
 					},
-					ParsedEmailIDs: []uint{9001},
 				}, nil
 			},
 		},
@@ -545,7 +562,6 @@ func TestUseCaseExecute_SkipsBillingWhenNoEligibleItems(t *testing.T) {
 		&stubFetchStage{
 			execute: func(ctx context.Context, cmd FetchCommand) (FetchResult, error) {
 				return FetchResult{
-					CreatedEmailIDs: []uint{101},
 					CreatedEmails: []CreatedEmail{
 						{
 							EmailID:           101,
@@ -569,7 +585,6 @@ func TestUseCaseExecute_SkipsBillingWhenNoEligibleItems(t *testing.T) {
 							ExternalMessageID: "msg-1",
 						},
 					},
-					ParsedEmailIDs: []uint{9001},
 				}, nil
 			},
 		},
@@ -700,7 +715,6 @@ func TestUseCaseExecute_SavesProgressAndCompletesPartialSuccess(t *testing.T) {
 		&stubFetchStage{
 			execute: func(ctx context.Context, cmd FetchCommand) (FetchResult, error) {
 				return FetchResult{
-					CreatedEmailIDs: []uint{101},
 					CreatedEmails: []CreatedEmail{
 						{
 							EmailID:           101,
@@ -723,7 +737,6 @@ func TestUseCaseExecute_SavesProgressAndCompletesPartialSuccess(t *testing.T) {
 		&stubAnalyzeStage{
 			execute: func(ctx context.Context, cmd AnalyzeCommand) (AnalyzeResult, error) {
 				return AnalyzeResult{
-					ParsedEmailIDs:   []uint{9001},
 					ParsedEmails:     []ParsedEmail{{ParsedEmailID: 9001, EmailID: 101, ExternalMessageID: "msg-1"}},
 					ParsedEmailCount: 1,
 				}, nil

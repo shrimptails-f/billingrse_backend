@@ -190,7 +190,7 @@ func (r *GormWorkflowStatusRepository) SaveStageProgress(ctx context.Context, pr
 		return err
 	}
 	totalFailureCount := progress.BusinessFailureCount + progress.TechnicalFailureCount
-	if len(progress.FailureRecords) != totalFailureCount {
+	if countedFailureRecordCount(progress.FailureRecords) != totalFailureCount {
 		return fmt.Errorf("failure records count mismatch: stage=%s records=%d business=%d technical=%d",
 			progress.Stage,
 			len(progress.FailureRecords),
@@ -240,6 +240,17 @@ func (r *GormWorkflowStatusRepository) SaveStageProgress(ctx context.Context, pr
 	}
 
 	return nil
+}
+
+func countedFailureRecordCount(records []manualapp.StageFailureRecord) int {
+	count := 0
+	for _, record := range records {
+		if record.ReasonCode == "existing_emails_skipped" {
+			continue
+		}
+		count++
+	}
+	return count
 }
 
 // List loads one page of workflow histories and their stage failure details.

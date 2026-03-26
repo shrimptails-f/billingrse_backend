@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
+	mysqlDriver "github.com/go-sql-driver/mysql"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 type billingRecord struct {
@@ -96,7 +96,6 @@ func NewBillingRepository(
 func (r *BillingRepository) SaveIfAbsent(
 	ctx context.Context,
 	billing commondomain.Billing,
-	lineItems []billingapp.CreationLineItem,
 ) (billingapp.SaveResult, error) {
 	if ctx == nil {
 		return billingapp.SaveResult{}, logger.ErrNilContext
@@ -113,86 +112,96 @@ func (r *BillingRepository) SaveIfAbsent(
 		reqLog = withContext
 	}
 
-	billingSummaryDate, err := r.resolveBillingSummaryDate(ctx, billing)
-	if err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			reqLog.Error("db_query_failed",
-				logger.String("db_system", "mysql"),
-				logger.String("table", "emails"),
-				logger.String("operation", "find_source_email_for_billing"),
-				logger.Err(err),
-			)
-		}
-		return billingapp.SaveResult{}, fmt.Errorf("failed to resolve billing summary date: %w", err)
-	}
-
 	now := r.clock.Now().UTC()
-	record := billingRecord{
-		UserID:             billing.UserID,
-		VendorID:           billing.VendorID,
-		EmailID:            billing.EmailID,
-		ProductNameDisplay: cloneOptionalString(billing.ProductNameDisplay),
-		BillingNumber:      billing.BillingNumber.String(),
-		InvoiceNumber:      invoiceNumberPtr(billing.InvoiceNumber),
-		BillingDate:        cloneBillingDate(billing.BillingDate),
-		BillingSummaryDate: billingSummaryDate,
-		PaymentCycle:       billing.PaymentCycle.String(),
-		CreatedAt:          now,
-		UpdatedAt:          now,
-	}
+	result := billingapp.SaveResult{}
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		billingSummaryDate, err := r.resolveBillingSummaryDate(tx, billing)
+		if err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				reqLog.Error("db_query_failed",
+					logger.String("db_system", "mysql"),
+					logger.String("table", "emails"),
+					logger.String("operation", "find_source_email_for_billing"),
+					logger.Err(err),
+				)
+			}
+			return fmt.Errorf("failed to resolve billing summary date: %w", err)
+		}
 
-	createResult := r.db.WithContext(ctx).
-		Clauses(clause.Insert{Modifier: "IGNORE"}).
-		Create(&record)
-	if err := createResult.Error; err != nil {
-		reqLog.Error("db_query_failed",
-			logger.String("db_system", "mysql"),
-			logger.String("table", "billings"),
-			logger.String("operation", "create"),
-			logger.Err(err),
-		)
-		return billingapp.SaveResult{}, fmt.Errorf("failed to create billing: %w", err)
-	}
-	existing, err := r.findByIdentity(ctx, billing.UserID, billing.VendorID, billing.BillingNumber.String())
-	if err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
+		record := billingRecord{
+			UserID:             billing.UserID,
+			VendorID:           billing.VendorID,
+			EmailID:            billing.EmailID,
+			ProductNameDisplay: cloneOptionalString(billing.ProductNameDisplay),
+			BillingNumber:      billing.BillingNumber.String(),
+			InvoiceNumber:      invoiceNumberPtr(billing.InvoiceNumber),
+			BillingDate:        cloneBillingDate(billing.BillingDate),
+			BillingSummaryDate: billingSummaryDate,
+			PaymentCycle:       billing.PaymentCycle.String(),
+			CreatedAt:          now,
+			UpdatedAt:          now,
+		}
+
+		if err := tx.Create(&record).Error; err != nil {
+			if isDuplicatedKeyError(err) {
+				return gorm.ErrDuplicatedKey
+			}
 			reqLog.Error("db_query_failed",
 				logger.String("db_system", "mysql"),
 				logger.String("table", "billings"),
-				logger.String("operation", "find_by_identity"),
+				logger.String("operation", "create"),
 				logger.Err(err),
 			)
+			return fmt.Errorf("failed to create billing: %w", err)
 		}
-		return billingapp.SaveResult{}, fmt.Errorf("failed to find billing by identity: %w", err)
-	}
 
-	if createResult.RowsAffected > 0 {
-		if err := r.saveLineItems(ctx, existing.ID, billing.UserID, lineItems, now); err != nil {
+		result = billingapp.SaveResult{
+			BillingID: record.ID,
+			Duplicate: false,
+		}
+
+		if err := r.saveLineItems(tx, record.ID, billing.UserID, billing.LineItems, now); err != nil {
 			reqLog.Error("db_query_failed",
 				logger.String("db_system", "mysql"),
 				logger.String("table", "billing_line_items"),
 				logger.String("operation", "create"),
 				logger.Err(err),
 			)
-			return billingapp.SaveResult{}, fmt.Errorf("failed to create billing line items: %w", err)
+			return fmt.Errorf("failed to create billing line items: %w", err)
 		}
-		return billingapp.SaveResult{
-			BillingID: existing.ID,
-			Duplicate: false,
-		}, nil
+
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			existing, findErr := r.findByIdentity(r.db.WithContext(ctx), billing.UserID, billing.VendorID, billing.BillingNumber.String())
+			if findErr != nil {
+				if !errors.Is(findErr, gorm.ErrRecordNotFound) {
+					reqLog.Error("db_query_failed",
+						logger.String("db_system", "mysql"),
+						logger.String("table", "billings"),
+						logger.String("operation", "find_by_identity"),
+						logger.Err(findErr),
+					)
+				}
+				return billingapp.SaveResult{}, fmt.Errorf("failed to find billing by identity: %w", findErr)
+			}
+			return billingapp.SaveResult{
+				BillingID: existing.ID,
+				Duplicate: true,
+			}, nil
+		}
+		return billingapp.SaveResult{}, err
 	}
 
-	return billingapp.SaveResult{
-		BillingID: existing.ID,
-		Duplicate: true,
-	}, nil
+	return result, nil
 }
 
 func (r *BillingRepository) saveLineItems(
-	ctx context.Context,
+	tx *gorm.DB,
 	billingID uint,
 	userID uint,
-	lineItems []billingapp.CreationLineItem,
+	lineItems []commondomain.BillingLineItem,
 	now time.Time,
 ) error {
 	if len(lineItems) == 0 {
@@ -201,6 +210,10 @@ func (r *BillingRepository) saveLineItems(
 
 	records := make([]billingLineItemRecord, 0, len(lineItems))
 	for idx, item := range lineItems {
+		item = item.Normalize()
+		if item.IsEmpty() {
+			continue
+		}
 		amount, err := decimalPtr(item.Amount)
 		if err != nil {
 			return fmt.Errorf("line_items[%d].amount: %w", idx, err)
@@ -222,22 +235,16 @@ func (r *BillingRepository) saveLineItems(
 		return nil
 	}
 
-	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns: []clause.Column{
-			{Name: "billing_id"},
-			{Name: "position"},
-		},
-		DoNothing: true,
-	}).Create(&records).Error
+	return tx.Create(&records).Error
 }
 
-func (r *BillingRepository) resolveBillingSummaryDate(ctx context.Context, billing commondomain.Billing) (time.Time, error) {
+func (r *BillingRepository) resolveBillingSummaryDate(tx *gorm.DB, billing commondomain.Billing) (time.Time, error) {
 	if billing.BillingDate != nil {
 		return billing.BillingDate.UTC(), nil
 	}
 
 	var sourceEmail billingSourceEmailRecord
-	err := r.db.WithContext(ctx).
+	err := tx.
 		Select("id", "user_id", "received_at").
 		Where("id = ? AND user_id = ?", billing.EmailID, billing.UserID).
 		Take(&sourceEmail).
@@ -249,9 +256,9 @@ func (r *BillingRepository) resolveBillingSummaryDate(ctx context.Context, billi
 	return sourceEmail.ReceivedAt.UTC(), nil
 }
 
-func (r *BillingRepository) findByIdentity(ctx context.Context, userID, vendorID uint, billingNumber string) (billingRecord, error) {
+func (r *BillingRepository) findByIdentity(tx *gorm.DB, userID, vendorID uint, billingNumber string) (billingRecord, error) {
 	var record billingRecord
-	err := r.db.WithContext(ctx).
+	err := tx.
 		Where("user_id = ? AND vendor_id = ? AND billing_number = ?", userID, vendorID, billingNumber).
 		Take(&record).
 		Error
@@ -313,4 +320,13 @@ func decimalPtr(value *float64) (*decimal.Decimal, error) {
 		return nil, fmt.Errorf("amount must be a decimal number: %w", err)
 	}
 	return &parsed, nil
+}
+
+func isDuplicatedKeyError(err error) bool {
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return true
+	}
+
+	var mysqlErr *mysqlDriver.MySQLError
+	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1062
 }

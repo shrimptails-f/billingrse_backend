@@ -2,7 +2,7 @@
 
 ## 背景
 - 現行実装では `mailfetch`・`mailanalysis`・`vendorresolution`・`billingeligibility`・`billing` が実装済みで、`manualmailworkflow` も `fetch -> analysis -> vendorresolution -> billingeligibility -> billing` まで接続済みである。
-- `internal/common/domain` には `Billing`, `Money`, `BillingNumber`, `InvoiceNumber`, `PaymentCycle` が既に存在し、DDD 上の請求不変条件も整理済みである。
+- `internal/common/domain` には `Billing`, `BillingLineItem`, `Money`, `BillingNumber`, `InvoiceNumber`, `PaymentCycle` が既に存在し、DDD 上の請求不変条件も整理済みである。
 - DDD では請求の同一性を `user + vendor + billing_number` で判定し、`billing_date` は任意 (`nil` 許容) としている。
 - 本ドキュメントでは、`billingeligibility` で成立した対象をどの契約で `Billing` に変換し、どう重複保存を防ぐかを明文化する。
 
@@ -26,7 +26,10 @@
   - `currency`
   - `billing_date`
   - `payment_cycle`
+  - `line_items`
 - 各入力について `common/domain.NewBilling(...)` 相当のドメイン検証を通したうえで `Billing` を生成できること。
+- 生成される `Billing` は少なくとも1件の `BillingLineItem` を含むこと。
+- `line_items` が空でも、header の `product_name_display + amount + currency` から fallback 明細を生成できること。
 - 請求の同一性は `user + vendor + billing_number` で判定すること。
 - duplicate は異常終了ではなく業務結果として返せること。
 - 結果として少なくとも以下を返却できること。
@@ -53,6 +56,7 @@
 - `Billing` の参照元は `Email` であり、`ParsedEmail` を参照元として保持しない。
 - `billing_date` は任意であり、メールに存在しないケースを許容する。
 - duplicate 判定を `Exists + Save` の 2 段階に分けると競合時に race するため、保存契約は idempotent に設計する。
+- `BillingLineItem` は `Billing` aggregate の子要素であり、application 層で別管理しない。
 
 ## 確定事項
 - package は `internal/billing` とする。
