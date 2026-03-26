@@ -18,6 +18,7 @@ type Billing struct {
 	Amount             decimal.Decimal `gorm:"type:decimal(18,3);not null"`
 	Currency           string          `gorm:"type:char(3);not null"`
 	BillingDate        *time.Time
+	BillingSummaryDate time.Time `gorm:"column:billing_summary_date;not null"`
 	PaymentCycle       string `gorm:"size:32;not null"`
 	CreatedAt          time.Time
 	UpdatedAt          time.Time

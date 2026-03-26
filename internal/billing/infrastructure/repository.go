@@ -128,7 +128,8 @@ func (r *BillingRepository) SaveIfAbsent(ctx context.Context, billing commondoma
 		},
 		DoNothing: true,
 	})
-	if err := tx.Create(&record).Error; err != nil {
+	createTx := tx.Create(&record)
+	if err := createTx.Error; err != nil {
 		reqLog.Error("db_query_failed",
 			logger.String("db_system", "mysql"),
 			logger.String("table", "billings"),
@@ -138,9 +139,26 @@ func (r *BillingRepository) SaveIfAbsent(ctx context.Context, billing commondoma
 		return billingapp.SaveResult{}, fmt.Errorf("failed to create billing: %w", err)
 	}
 
-	if record.ID != 0 {
+	if createTx.RowsAffected > 0 {
+		createdID := record.ID
+		if createdID == 0 {
+			created, err := r.findByIdentity(ctx, billing.UserID, billing.VendorID, billing.BillingNumber.String())
+			if err != nil {
+				if !errors.Is(err, gorm.ErrRecordNotFound) {
+					reqLog.Error("db_query_failed",
+						logger.String("db_system", "mysql"),
+						logger.String("table", "billings"),
+						logger.String("operation", "find_created_by_identity"),
+						logger.Err(err),
+					)
+				}
+				return billingapp.SaveResult{}, fmt.Errorf("failed to find created billing by identity: %w", err)
+			}
+			createdID = created.ID
+		}
+
 		return billingapp.SaveResult{
-			BillingID: record.ID,
+			BillingID: createdID,
 			Duplicate: false,
 		}, nil
 	}
