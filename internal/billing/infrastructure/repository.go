@@ -127,34 +127,23 @@ func (r *BillingRepository) SaveIfAbsent(
 	}
 
 	now := r.clock.Now().UTC()
-	hasAmountColumn := r.db.Migrator().HasColumn("billings", "amount")
-	hasCurrencyColumn := r.db.Migrator().HasColumn("billings", "currency")
-	if hasAmountColumn != hasCurrencyColumn {
-		return billingapp.SaveResult{}, fmt.Errorf("billings schema mismatch: amount and currency columns must be both present or both absent")
-	}
-
-	recordValues := map[string]any{
-		"user_id":              billing.UserID,
-		"vendor_id":            billing.VendorID,
-		"email_id":             billing.EmailID,
-		"product_name_display": cloneOptionalString(billing.ProductNameDisplay),
-		"billing_number":       billing.BillingNumber.String(),
-		"invoice_number":       invoiceNumberPtr(billing.InvoiceNumber),
-		"billing_date":         cloneBillingDate(billing.BillingDate),
-		"billing_summary_date": billingSummaryDate,
-		"payment_cycle":        billing.PaymentCycle.String(),
-		"created_at":           now,
-		"updated_at":           now,
-	}
-	if hasAmountColumn {
-		recordValues["amount"] = billing.Money.Amount
-		recordValues["currency"] = billing.Money.Currency
+	record := billingRecord{
+		UserID:             billing.UserID,
+		VendorID:           billing.VendorID,
+		EmailID:            billing.EmailID,
+		ProductNameDisplay: cloneOptionalString(billing.ProductNameDisplay),
+		BillingNumber:      billing.BillingNumber.String(),
+		InvoiceNumber:      invoiceNumberPtr(billing.InvoiceNumber),
+		BillingDate:        cloneBillingDate(billing.BillingDate),
+		BillingSummaryDate: billingSummaryDate,
+		PaymentCycle:       billing.PaymentCycle.String(),
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 
 	createResult := r.db.WithContext(ctx).
-		Table("billings").
 		Clauses(clause.Insert{Modifier: "IGNORE"}).
-		Create(recordValues)
+		Create(&record)
 	if err := createResult.Error; err != nil {
 		reqLog.Error("db_query_failed",
 			logger.String("db_system", "mysql"),
@@ -164,7 +153,6 @@ func (r *BillingRepository) SaveIfAbsent(
 		)
 		return billingapp.SaveResult{}, fmt.Errorf("failed to create billing: %w", err)
 	}
-
 	existing, err := r.findByIdentity(ctx, billing.UserID, billing.VendorID, billing.BillingNumber.String())
 	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
