@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"business/internal/common"
 	"business/internal/library/timewrapper"
 	"errors"
 	"strings"
@@ -54,5 +55,5 @@ func (c MailAccountConnection) IsActiveAt(now time.Time) bool {
 	if c.OAuthStateExpiresAt == nil {
 		return false
 	}
-	return now.Add(OAuthStateExpirySafetyOffset).Before(*c.OAuthStateExpiresAt)
+	return now.Add(common.OAuthStateExpirySafetyOffset).Before(*c.OAuthStateExpiresAt)
 }

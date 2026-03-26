@@ -30,12 +30,29 @@ func NewLimiter(
 	namespace string,
 	log logger.Interface,
 ) *Limiter {
+	return NewLimiterWithWindows(client, clock, namespace, nil, log)
+}
+
+// NewLimiterWithWindows creates a new Redis-backed rate limiter with explicit window settings.
+// When windows is empty, the package default configuration is used.
+func NewLimiterWithWindows(
+	client redisclient.ClientInterface,
+	clock timewrapper.ClockInterface,
+	namespace string,
+	windows []config.Window,
+	log logger.Interface,
+) *Limiter {
+	if clock == nil {
+		clock = timewrapper.NewClock()
+	}
 	if log == nil {
 		log = logger.NewNop()
 	}
 	log = log.With(logger.String("component", "redis_limiter"))
 
-	windows := config.Windows(namespace)
+	if len(windows) == 0 {
+		windows = config.Windows(namespace)
+	}
 
 	return &Limiter{
 		client:    client,

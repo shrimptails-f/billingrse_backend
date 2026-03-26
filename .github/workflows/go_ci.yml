@@ -45,7 +45,6 @@ jobs:
       JWT_SECRET_KEY: your_jwt_secret_key_here
       # アプリケーション設定
       APP_NAME: Gmail Auth App
-      LOG_LEVEL: info
       GO_PORT: 8080
       REMOTE_CONTAINER_PORT: 5994
       GO_DEBUG_PORT: 2345
