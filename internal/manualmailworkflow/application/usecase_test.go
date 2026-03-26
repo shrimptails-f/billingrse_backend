@@ -288,6 +288,8 @@ func TestUseCaseExecute_SkipsAnalyzeWhenNoCreatedEmails(t *testing.T) {
 	vendorResolutionCalled := false
 	billingEligibilityCalled := false
 	billingCalled := false
+	var fetchProgress StageProgress
+	completedStatus := ""
 	uc := NewUseCase(
 		&stubFetchStage{
 			execute: func(ctx context.Context, cmd FetchCommand) (FetchResult, error) {
@@ -320,7 +322,18 @@ func TestUseCaseExecute_SkipsAnalyzeWhenNoCreatedEmails(t *testing.T) {
 				return BillingResult{}, nil
 			},
 		},
-		&stubWorkflowStatusRepository{},
+		&stubWorkflowStatusRepository{
+			saveStage: func(ctx context.Context, progress StageProgress) error {
+				if progress.Stage == workflowStageFetch {
+					fetchProgress = progress
+				}
+				return nil
+			},
+			complete: func(ctx context.Context, historyID uint64, status string, finishedAt time.Time) error {
+				completedStatus = status
+				return nil
+			},
+		},
 		&fixedClock{now: time.Date(2026, 3, 25, 12, 30, 0, 0, time.UTC)},
 		logger.NewNop(),
 	)
@@ -351,6 +364,24 @@ func TestUseCaseExecute_SkipsAnalyzeWhenNoCreatedEmails(t *testing.T) {
 	}
 	if billingCalled {
 		t.Fatal("billing stage should not be called when there are no created emails")
+	}
+	if fetchProgress.Stage != workflowStageFetch {
+		t.Fatalf("fetch progress was not saved: %+v", fetchProgress)
+	}
+	if fetchProgress.BusinessFailureCount != 0 {
+		t.Fatalf("expected zero fetch business failures, got %+v", fetchProgress)
+	}
+	if len(fetchProgress.FailureRecords) != 1 {
+		t.Fatalf("expected one fetch failure record, got %+v", fetchProgress)
+	}
+	if fetchProgress.FailureRecords[0].ReasonCode != reasonCodeExistingEmailsSkipped {
+		t.Fatalf("unexpected fetch reason code: %+v", fetchProgress.FailureRecords[0])
+	}
+	if fetchProgress.FailureRecords[0].Message != "対象メールはすでに取得済みだったため、後続の処理をスキップしました。" {
+		t.Fatalf("unexpected fetch message: %+v", fetchProgress.FailureRecords[0])
+	}
+	if completedStatus != WorkflowStatusSucceeded {
+		t.Fatalf("unexpected completed status: %s", completedStatus)
 	}
 }
 

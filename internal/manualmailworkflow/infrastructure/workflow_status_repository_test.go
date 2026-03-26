@@ -147,6 +147,60 @@ func TestGormWorkflowStatusRepository_CreateSaveProgressAndComplete(t *testing.T
 	require.True(t, failures[0].CreatedAt.Equal(env.nowUTC))
 }
 
+func TestGormWorkflowStatusRepository_SaveStageProgress_AllowsNonCountedSkipRecord(t *testing.T) {
+	t.Parallel()
+
+	env := newWorkflowStatusRepoTestEnv(t)
+	defer env.clean()
+
+	ctx := context.Background()
+	mustCreateCredentialSnapshot(t, env.db, emailCredentialSnapshotRecord{
+		ID:           22,
+		UserID:       12,
+		Type:         "gmail",
+		GmailAddress: "skip@example.com",
+	})
+	ref, err := env.repo.CreateQueued(ctx, manualapp.QueuedWorkflowHistory{
+		WorkflowID:   "01JQ0B7N0M7H3X9C2J5K8V6P7",
+		UserID:       12,
+		ConnectionID: 22,
+		LabelName:    "billing",
+		SinceAt:      time.Date(2026, 3, 24, 0, 0, 0, 0, time.UTC),
+		UntilAt:      time.Date(2026, 3, 25, 0, 0, 0, 0, time.UTC),
+		QueuedAt:     time.Date(2026, 3, 25, 14, 56, 0, 0, time.UTC),
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, env.repo.SaveStageProgress(ctx, manualapp.StageProgress{
+		HistoryID:             ref.HistoryID,
+		Stage:                 "fetch",
+		SuccessCount:          2,
+		BusinessFailureCount:  0,
+		TechnicalFailureCount: 0,
+		FailureRecords: []manualapp.StageFailureRecord{
+			{
+				Stage:      "fetch",
+				ReasonCode: "existing_emails_skipped",
+				Message:    "対象メールはすでに取得済みだったため、後続の処理をスキップしました。",
+			},
+		},
+	}))
+
+	var history manualMailWorkflowHistoryRecord
+	require.NoError(t, env.db.WithContext(ctx).First(&history, ref.HistoryID).Error)
+	require.Equal(t, 2, history.FetchSuccessCount)
+	require.Equal(t, 0, history.FetchBusinessFailureCount)
+	require.Equal(t, 0, history.FetchTechnicalFailureCount)
+
+	var failures []manualMailWorkflowStageFailureRecord
+	require.NoError(t, env.db.WithContext(ctx).
+		Where("workflow_history_id = ?", ref.HistoryID).
+		Find(&failures).Error)
+	require.Len(t, failures, 1)
+	require.Equal(t, "existing_emails_skipped", failures[0].ReasonCode)
+	require.Equal(t, "対象メールはすでに取得済みだったため、後続の処理をスキップしました。", failures[0].Message)
+}
+
 func TestGormWorkflowStatusRepository_Fail(t *testing.T) {
 	t.Parallel()
 

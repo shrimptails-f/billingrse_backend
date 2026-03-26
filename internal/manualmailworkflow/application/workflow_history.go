@@ -28,8 +28,9 @@ const (
 	workflowStageBillingEligibility = "billingeligibility"
 	workflowStageBilling            = "billing"
 
-	reasonCodeVendorUnresolved = "vendor_unresolved"
-	reasonCodeDuplicateBilling = "duplicate_billing"
+	reasonCodeVendorUnresolved      = "vendor_unresolved"
+	reasonCodeDuplicateBilling      = "duplicate_billing"
+	reasonCodeExistingEmailsSkipped = "existing_emails_skipped"
 )
 
 // WorkflowHistoryRef identifies a persisted workflow header row.
@@ -143,7 +144,15 @@ func localizedGmailSessionBuildErrorMessage(raw string) string {
 }
 
 func buildFetchStageProgress(historyID uint64, result FetchResult) StageProgress {
-	failureRecords := make([]StageFailureRecord, 0, len(result.Failures))
+	failureRecords := make([]StageFailureRecord, 0, len(result.Failures)+1)
+	if len(result.CreatedEmails) == 0 && len(result.ExistingEmailIDs) > 0 {
+		failureRecords = append(failureRecords, stageFailureRecord(
+			workflowStageFetch,
+			"",
+			reasonCodeExistingEmailsSkipped,
+			messageForFetchFailure(reasonCodeExistingEmailsSkipped),
+		))
+	}
 	for _, failure := range result.Failures {
 		failureRecords = append(failureRecords, stageFailureRecord(
 			workflowStageFetch,
@@ -158,7 +167,7 @@ func buildFetchStageProgress(historyID uint64, result FetchResult) StageProgress
 		Stage:                 workflowStageFetch,
 		SuccessCount:          len(result.CreatedEmails) + len(result.ExistingEmailIDs),
 		BusinessFailureCount:  0,
-		TechnicalFailureCount: len(failureRecords),
+		TechnicalFailureCount: len(result.Failures),
 		FailureRecords:        failureRecords,
 	}
 }
@@ -364,6 +373,8 @@ func externalMessageIDText(externalMessageID string) string {
 
 func messageForFetchFailure(code string) string {
 	switch code {
+	case reasonCodeExistingEmailsSkipped:
+		return "取得したメールは全て取得済みのため、後続の処理をスキップしました。"
 	case "fetch_detail_failed":
 		return "メールの取得に失敗しました。"
 	case "invalid_fetched_email":

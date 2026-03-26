@@ -77,6 +77,33 @@ func TestBuildStageProgress_PrefersStageProvidedMessages(t *testing.T) {
 	}
 }
 
+func TestBuildFetchStageProgress_ExistingEmailsOnlyAddsSkipRecord(t *testing.T) {
+	t.Parallel()
+
+	progress := buildFetchStageProgress(1, FetchResult{
+		ExistingEmailIDs: []uint{10, 11},
+	})
+
+	if progress.SuccessCount != 2 {
+		t.Fatalf("unexpected success count: %+v", progress)
+	}
+	if progress.BusinessFailureCount != 0 {
+		t.Fatalf("expected zero business failures, got %+v", progress)
+	}
+	if progress.TechnicalFailureCount != 0 {
+		t.Fatalf("expected no technical failures, got %+v", progress)
+	}
+	if len(progress.FailureRecords) != 1 {
+		t.Fatalf("expected one failure record, got %+v", progress)
+	}
+	if progress.FailureRecords[0].ReasonCode != reasonCodeExistingEmailsSkipped {
+		t.Fatalf("unexpected reason code: %+v", progress.FailureRecords[0])
+	}
+	if progress.FailureRecords[0].Message != "対象メールはすでに取得済みだったため、後続の処理をスキップしました。" {
+		t.Fatalf("unexpected message: %+v", progress.FailureRecords[0])
+	}
+}
+
 func TestBuildVendorResolutionStageProgress_InferredUnresolvedMessageIncludesContext(t *testing.T) {
 	t.Parallel()
 
