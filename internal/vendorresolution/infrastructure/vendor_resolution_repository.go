@@ -36,20 +36,23 @@ func (r *VendorResolutionRepository) FetchFacts(ctx context.Context, plan domain
 	if r.db == nil {
 		return domain.VendorResolutionFacts{}, fmt.Errorf("gorm db is not configured")
 	}
+	if plan.UserID == 0 {
+		return domain.VendorResolutionFacts{}, fmt.Errorf("user_id is required")
+	}
 
-	nameExactCandidates, err := r.fetchExactAliasCandidates(ctx, domain.MatchedByNameExact, plan.NameExactValue)
+	nameExactCandidates, err := r.fetchExactAliasCandidates(ctx, plan.UserID, domain.MatchedByNameExact, plan.NameExactValue)
 	if err != nil {
 		return domain.VendorResolutionFacts{}, err
 	}
-	senderDomainCandidates, err := r.fetchExactAliasCandidates(ctx, domain.MatchedBySenderDomain, plan.SenderDomainValue)
+	senderDomainCandidates, err := r.fetchExactAliasCandidates(ctx, plan.UserID, domain.MatchedBySenderDomain, plan.SenderDomainValue)
 	if err != nil {
 		return domain.VendorResolutionFacts{}, err
 	}
-	senderNameCandidates, err := r.fetchExactAliasCandidates(ctx, domain.MatchedBySenderName, plan.SenderNameValue)
+	senderNameCandidates, err := r.fetchExactAliasCandidates(ctx, plan.UserID, domain.MatchedBySenderName, plan.SenderNameValue)
 	if err != nil {
 		return domain.VendorResolutionFacts{}, err
 	}
-	subjectKeywordCandidates, err := r.fetchSubjectKeywordCandidates(ctx, plan.SubjectValue)
+	subjectKeywordCandidates, err := r.fetchSubjectKeywordCandidates(ctx, plan.UserID, plan.SubjectValue)
 	if err != nil {
 		return domain.VendorResolutionFacts{}, err
 	}
@@ -63,13 +66,13 @@ func (r *VendorResolutionRepository) FetchFacts(ctx context.Context, plan domain
 }
 
 // fetchExactAliasCandidates は exact 系 alias の候補群を取得する。
-func (r *VendorResolutionRepository) fetchExactAliasCandidates(ctx context.Context, aliasType, normalizedValue string) ([]commondomain.VendorAliasCandidate, error) {
+func (r *VendorResolutionRepository) fetchExactAliasCandidates(ctx context.Context, userID uint, aliasType, normalizedValue string) ([]commondomain.VendorAliasCandidate, error) {
 	if normalizedValue == "" {
 		return nil, nil
 	}
 
 	var records []resolvedAliasRecord
-	err := r.baseAliasQuery(ctx).
+	err := r.baseAliasQuery(ctx, userID).
 		Where("vendor_aliases.alias_type = ? AND vendor_aliases.normalized_value = ?", aliasType, normalizedValue).
 		Order("vendor_aliases.created_at DESC").
 		Order("vendor_aliases.id DESC").
@@ -83,13 +86,13 @@ func (r *VendorResolutionRepository) fetchExactAliasCandidates(ctx context.Conte
 }
 
 // fetchSubjectKeywordCandidates は subject に含まれる keyword alias 候補群を取得する。
-func (r *VendorResolutionRepository) fetchSubjectKeywordCandidates(ctx context.Context, normalizedSubject string) ([]commondomain.VendorAliasCandidate, error) {
+func (r *VendorResolutionRepository) fetchSubjectKeywordCandidates(ctx context.Context, userID uint, normalizedSubject string) ([]commondomain.VendorAliasCandidate, error) {
 	if normalizedSubject == "" {
 		return nil, nil
 	}
 
 	var records []resolvedAliasRecord
-	err := r.baseAliasQuery(ctx).
+	err := r.baseAliasQuery(ctx, userID).
 		Where(
 			"vendor_aliases.alias_type = ? AND vendor_aliases.normalized_value <> '' AND ? LIKE CONCAT('%', vendor_aliases.normalized_value, '%')",
 			domain.MatchedBySubjectKeyword,
@@ -107,18 +110,20 @@ func (r *VendorResolutionRepository) fetchSubjectKeywordCandidates(ctx context.C
 	return toAliasCandidates(records, domain.MatchedBySubjectKeyword), nil
 }
 
-func (r *VendorResolutionRepository) baseAliasQuery(ctx context.Context) *gorm.DB {
+func (r *VendorResolutionRepository) baseAliasQuery(ctx context.Context, userID uint) *gorm.DB {
 	return r.db.WithContext(ctx).
 		Table("vendor_aliases").
 		Select(
-			"vendor_aliases.id AS alias_id, " +
-				"vendor_aliases.vendor_id AS vendor_id, " +
-				"vendor_aliases.alias_value AS alias_value, " +
-				"vendor_aliases.normalized_value AS normalized_value, " +
-				"vendor_aliases.created_at AS alias_created_at, " +
+			"vendor_aliases.id AS alias_id, "+
+				"vendor_aliases.vendor_id AS vendor_id, "+
+				"vendor_aliases.alias_value AS alias_value, "+
+				"vendor_aliases.normalized_value AS normalized_value, "+
+				"vendor_aliases.created_at AS alias_created_at, "+
+				"vendors.user_id AS vendor_user_id, "+
 				"vendors.name AS vendor_name",
 		).
-		Joins("JOIN vendors ON vendors.id = vendor_aliases.vendor_id")
+		Joins("JOIN vendors ON vendors.id = vendor_aliases.vendor_id AND vendors.user_id = vendor_aliases.user_id").
+		Where("vendor_aliases.user_id = ?", userID)
 }
 
 func toAliasCandidates(records []resolvedAliasRecord, aliasType string) []commondomain.VendorAliasCandidate {
@@ -131,8 +136,9 @@ func toAliasCandidates(records []resolvedAliasRecord, aliasType string) []common
 			NormalizedValue: record.NormalizedValue,
 			AliasCreatedAt:  record.AliasCreatedAt,
 			Vendor: commondomain.Vendor{
-				ID:   record.VendorID,
-				Name: record.VendorName,
+				ID:     record.VendorID,
+				UserID: record.VendorUserID,
+				Name:   record.VendorName,
 			},
 		})
 	}

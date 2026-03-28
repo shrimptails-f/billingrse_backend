@@ -38,6 +38,7 @@ type VendorResolutionInput struct {
 
 // VendorResolutionFetchPlan は repository が DB から集めるべき検索条件を表す。
 type VendorResolutionFetchPlan struct {
+	UserID            uint
 	NameExactValue    string
 	SenderDomainValue string
 	SenderNameValue   string
@@ -71,6 +72,7 @@ type VendorRegistrationAlias struct {
 
 // VendorRegistrationPlan は unresolved 時に補完登録すべき内容を表す。
 type VendorRegistrationPlan struct {
+	UserID               uint
 	VendorName           string
 	NormalizedVendorName string
 	Aliases              []VendorRegistrationAlias

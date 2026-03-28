@@ -17,14 +17,15 @@ func seedBillingMonthDetailFixtures(t *testing.T, db *gorm.DB) {
 	now := time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)
 
 	vendors := []billingListVendorRecord{
-		{ID: 1, Name: "AWS", NormalizedName: "aws", CreatedAt: now, UpdatedAt: now},
-		{ID: 2, Name: "Google Workspace", NormalizedName: "google workspace", CreatedAt: now, UpdatedAt: now},
-		{ID: 3, Name: "OpenAI", NormalizedName: "openai", CreatedAt: now, UpdatedAt: now},
-		{ID: 4, Name: "Notion", NormalizedName: "notion", CreatedAt: now, UpdatedAt: now},
-		{ID: 5, Name: "GitHub", NormalizedName: "github", CreatedAt: now, UpdatedAt: now},
-		{ID: 6, Name: "Slack", NormalizedName: "slack", CreatedAt: now, UpdatedAt: now},
-		{ID: 7, Name: "Zoom", NormalizedName: "zoom", CreatedAt: now, UpdatedAt: now},
-		{ID: 8, Name: "Dropbox", NormalizedName: "dropbox", CreatedAt: now, UpdatedAt: now},
+		{ID: 1, UserID: 1, Name: "AWS", NormalizedName: "aws", CreatedAt: now, UpdatedAt: now},
+		{ID: 2, UserID: 1, Name: "Google Workspace", NormalizedName: "google workspace", CreatedAt: now, UpdatedAt: now},
+		{ID: 3, UserID: 1, Name: "OpenAI", NormalizedName: "openai", CreatedAt: now, UpdatedAt: now},
+		{ID: 4, UserID: 1, Name: "Notion", NormalizedName: "notion", CreatedAt: now, UpdatedAt: now},
+		{ID: 5, UserID: 1, Name: "GitHub", NormalizedName: "github", CreatedAt: now, UpdatedAt: now},
+		{ID: 6, UserID: 1, Name: "Slack", NormalizedName: "slack", CreatedAt: now, UpdatedAt: now},
+		{ID: 7, UserID: 1, Name: "Zoom", NormalizedName: "zoom", CreatedAt: now, UpdatedAt: now},
+		{ID: 8, UserID: 1, Name: "Dropbox", NormalizedName: "dropbox", CreatedAt: now, UpdatedAt: now},
+		{ID: 9, UserID: 2, Name: "AWS", NormalizedName: "aws", CreatedAt: now, UpdatedAt: now},
 	}
 	require.NoError(t, db.Create(&vendors).Error)
 
@@ -341,7 +342,7 @@ func seedBillingMonthDetailFixtures(t *testing.T, db *gorm.DB) {
 		{
 			ID:                 311,
 			UserID:             2,
-			VendorID:           1,
+			VendorID:           9,
 			EmailID:            211,
 			BillingNumber:      "INV-OTHER-001",
 			Amount:             decimal.RequireFromString("5000.000"),

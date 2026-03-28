@@ -20,6 +20,7 @@ func (uc *useCase) ensureVendorByCandidateName(
 	if plan == nil {
 		return decision, nil
 	}
+	plan.UserID = userID
 
 	vendor, err := uc.registrationRepository.EnsureByPlan(ctx, *plan)
 	if err != nil {

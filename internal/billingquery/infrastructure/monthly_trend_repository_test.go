@@ -17,8 +17,9 @@ func seedBillingMonthlyTrendFixtures(t *testing.T, db *gorm.DB) {
 	now := time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)
 
 	vendors := []billingListVendorRecord{
-		{ID: 1, Name: "AWS", NormalizedName: "aws", CreatedAt: now, UpdatedAt: now},
-		{ID: 2, Name: "Google Workspace", NormalizedName: "google workspace", CreatedAt: now, UpdatedAt: now},
+		{ID: 1, UserID: 1, Name: "AWS", NormalizedName: "aws", CreatedAt: now, UpdatedAt: now},
+		{ID: 2, UserID: 1, Name: "Google Workspace", NormalizedName: "google workspace", CreatedAt: now, UpdatedAt: now},
+		{ID: 3, UserID: 2, Name: "AWS", NormalizedName: "aws", CreatedAt: now, UpdatedAt: now},
 	}
 	require.NoError(t, db.Create(&vendors).Error)
 
@@ -243,7 +244,7 @@ func seedBillingMonthlyTrendFixtures(t *testing.T, db *gorm.DB) {
 		{
 			ID:                 207,
 			UserID:             2,
-			VendorID:           1,
+			VendorID:           3,
 			EmailID:            107,
 			ProductNameDisplay: &productAWS,
 			BillingNumber:      "INV-OTHER-USER",

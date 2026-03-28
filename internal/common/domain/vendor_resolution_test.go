@@ -15,7 +15,7 @@ func TestVendorResolutionValidate(t *testing.T) {
 		t.Parallel()
 
 		resolution := VendorResolution{
-			ResolvedVendor: &Vendor{Name: "AWS"},
+			ResolvedVendor: &Vendor{UserID: 1, Name: "AWS"},
 		}
 
 		if !resolution.IsResolved() {
@@ -42,7 +42,7 @@ func TestVendorResolutionValidate(t *testing.T) {
 		t.Parallel()
 
 		resolution := VendorResolution{
-			ResolvedVendor: &Vendor{Name: "  "},
+			ResolvedVendor: &Vendor{UserID: 1, Name: "  "},
 		}
 
 		if err := resolution.Validate(); !errors.Is(err, ErrVendorNameEmpty) {
@@ -88,11 +88,11 @@ func TestVendorResolutionPolicyResolve_PrefersHigherPriorityAndLatestAlias(t *te
 	policy := VendorResolutionPolicy{}
 	decision := policy.Resolve(VendorResolutionFacts{
 		NameExactCandidates: []VendorAliasCandidate{
-			aliasCandidate(1, MatchedByNameExact, "acme", Vendor{ID: 10, Name: "Acme Old"}, testTime(9, 0)),
-			aliasCandidate(2, MatchedByNameExact, "acme", Vendor{ID: 20, Name: "Acme New"}, testTime(9, 10)),
+			aliasCandidate(1, MatchedByNameExact, "acme", Vendor{ID: 10, UserID: 1, Name: "Acme Old"}, testTime(9, 0)),
+			aliasCandidate(2, MatchedByNameExact, "acme", Vendor{ID: 20, UserID: 1, Name: "Acme New"}, testTime(9, 10)),
 		},
 		SenderDomainCandidates: []VendorAliasCandidate{
-			aliasCandidate(3, MatchedBySenderDomain, "acme.example.com", Vendor{ID: 30, Name: "Domain Vendor"}, testTime(9, 20)),
+			aliasCandidate(3, MatchedBySenderDomain, "acme.example.com", Vendor{ID: 30, UserID: 1, Name: "Domain Vendor"}, testTime(9, 20)),
 		},
 	})
 
@@ -120,8 +120,8 @@ func TestVendorResolutionPolicyResolve_SubjectKeywordRules(t *testing.T) {
 
 		decision := policy.Resolve(VendorResolutionFacts{
 			SubjectKeywordCandidates: []VendorAliasCandidate{
-				aliasCandidate(1, MatchedBySubjectKeyword, "invoice", Vendor{ID: 10, Name: "Short"}, testTime(9, 0)),
-				aliasCandidate(2, MatchedBySubjectKeyword, "acme cloud invoice", Vendor{ID: 20, Name: "Long"}, testTime(9, 10)),
+				aliasCandidate(1, MatchedBySubjectKeyword, "invoice", Vendor{ID: 10, UserID: 1, Name: "Short"}, testTime(9, 0)),
+				aliasCandidate(2, MatchedBySubjectKeyword, "acme cloud invoice", Vendor{ID: 20, UserID: 1, Name: "Long"}, testTime(9, 10)),
 			},
 		})
 
@@ -138,8 +138,8 @@ func TestVendorResolutionPolicyResolve_SubjectKeywordRules(t *testing.T) {
 
 		decision := policy.Resolve(VendorResolutionFacts{
 			SubjectKeywordCandidates: []VendorAliasCandidate{
-				aliasCandidate(1, MatchedBySubjectKeyword, "invoice ready", Vendor{ID: 10, Name: "A"}, testTime(9, 0)),
-				aliasCandidate(2, MatchedBySubjectKeyword, "invoice ready", Vendor{ID: 20, Name: "B"}, testTime(9, 10)),
+				aliasCandidate(1, MatchedBySubjectKeyword, "invoice ready", Vendor{ID: 10, UserID: 1, Name: "A"}, testTime(9, 0)),
+				aliasCandidate(2, MatchedBySubjectKeyword, "invoice ready", Vendor{ID: 20, UserID: 2, Name: "B"}, testTime(9, 10)),
 			},
 		})
 
@@ -177,7 +177,7 @@ func TestVendorResolutionPolicyBuildRegistrationPlan(t *testing.T) {
 		t.Fatalf("unexpected aliases: %+v", plan.Aliases)
 	}
 
-	resolvedPlan := policy.BuildRegistrationPlan(input, policy.ResolveRegisteredVendor(Vendor{ID: 1, Name: "Amazon"}))
+	resolvedPlan := policy.BuildRegistrationPlan(input, policy.ResolveRegisteredVendor(Vendor{ID: 1, UserID: 1, Name: "Amazon"}))
 	if resolvedPlan != nil {
 		t.Fatalf("expected no registration plan for resolved decision: %+v", resolvedPlan)
 	}

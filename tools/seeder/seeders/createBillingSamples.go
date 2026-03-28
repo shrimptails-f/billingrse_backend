@@ -77,11 +77,13 @@ func CreateBillingSamples(tx *gorm.DB) error {
 	}
 
 	now := seedReferenceTime()
-	usersByEmail, err := loadSeedUsersByEmail(tx, []string{
+	seedUserEmails := []string{
 		"admin@example.com",
 		"test@example.com",
 		"user@example.com",
-	})
+	}
+
+	usersByEmail, err := loadSeedUsersByEmail(tx, seedUserEmails)
 	if err != nil {
 		return err
 	}
@@ -129,36 +131,44 @@ func CreateBillingSamples(tx *gorm.DB) error {
 		},
 	}
 
-	vendors := make([]model.Vendor, 0, len(vendorSeeds))
-	for _, seed := range vendorSeeds {
-		vendors = append(vendors, model.Vendor{
-			Name:           seed.Name,
-			NormalizedName: seed.NormalizedName,
-			CreatedAt:      now,
-			UpdatedAt:      now,
-		})
+	vendors := make([]model.Vendor, 0, len(seedUserEmails)*len(vendorSeeds))
+	for _, userEmail := range seedUserEmails {
+		user := usersByEmail[userEmail]
+		for _, seed := range vendorSeeds {
+			vendors = append(vendors, model.Vendor{
+				UserID:         user.ID,
+				Name:           seed.Name,
+				NormalizedName: seed.NormalizedName,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			})
+		}
 	}
 	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&vendors).Error; err != nil {
 		return fmt.Errorf("failed to create vendors: %w", err)
 	}
 
-	vendorsByNormalizedName, err := loadSeedVendorsByNormalizedName(tx, vendorSeeds)
+	vendorsByKey, err := loadSeedVendorsByUserAndNormalizedName(tx, vendorSeeds, usersByEmail)
 	if err != nil {
 		return err
 	}
 
-	aliases := make([]model.VendorAlias, 0, len(vendorSeeds)*2)
-	for _, seed := range vendorSeeds {
-		vendorID := vendorsByNormalizedName[seed.NormalizedName].ID
-		for _, alias := range seed.Aliases {
-			aliases = append(aliases, model.VendorAlias{
-				VendorID:        vendorID,
-				AliasType:       alias.AliasType,
-				AliasValue:      alias.AliasValue,
-				NormalizedValue: alias.NormalizedValue,
-				CreatedAt:       now,
-				UpdatedAt:       now,
-			})
+	aliases := make([]model.VendorAlias, 0, len(seedUserEmails)*len(vendorSeeds)*2)
+	for _, userEmail := range seedUserEmails {
+		user := usersByEmail[userEmail]
+		for _, seed := range vendorSeeds {
+			vendor := vendorsByKey[buildSeedVendorKey(user.ID, seed.NormalizedName)]
+			for _, alias := range seed.Aliases {
+				aliases = append(aliases, model.VendorAlias{
+					UserID:          user.ID,
+					VendorID:        vendor.ID,
+					AliasType:       alias.AliasType,
+					AliasValue:      alias.AliasValue,
+					NormalizedValue: alias.NormalizedValue,
+					CreatedAt:       now,
+					UpdatedAt:       now,
+				})
+			}
 		}
 	}
 	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&aliases).Error; err != nil {
@@ -391,9 +401,9 @@ func CreateBillingSamples(tx *gorm.DB) error {
 			return fmt.Errorf("seed user not found for billing: %s", seed.UserEmail)
 		}
 
-		vendor, ok := vendorsByNormalizedName[seed.VendorNormalized]
+		vendor, ok := vendorsByKey[buildSeedVendorKey(user.ID, seed.VendorNormalized)]
 		if !ok {
-			return fmt.Errorf("seed vendor not found: %s", seed.VendorNormalized)
+			return fmt.Errorf("seed vendor not found: user=%s normalized_name=%s", seed.UserEmail, seed.VendorNormalized)
 		}
 
 		emailKey := buildSeedEmailKey(user.ID, seed.EmailExternalID)
@@ -432,7 +442,7 @@ func CreateBillingSamples(tx *gorm.DB) error {
 		return fmt.Errorf("failed to create billings: %w", err)
 	}
 
-	billingsByKey, err := loadSeedBillingsByIdentity(tx, billingSeeds, usersByEmail, vendorsByNormalizedName)
+	billingsByKey, err := loadSeedBillingsByIdentity(tx, billingSeeds, usersByEmail, vendorsByKey)
 	if err != nil {
 		return err
 	}
@@ -440,7 +450,7 @@ func CreateBillingSamples(tx *gorm.DB) error {
 	lineItems := make([]model.BillingLineItem, 0, len(billingSeeds))
 	for _, seed := range billingSeeds {
 		user := usersByEmail[seed.UserEmail]
-		vendor := vendorsByNormalizedName[seed.VendorNormalized]
+		vendor := vendorsByKey[buildSeedVendorKey(user.ID, seed.VendorNormalized)]
 		billingKey := buildSeedBillingKey(user.ID, vendor.ID, seed.BillingNumber)
 		billing, ok := billingsByKey[billingKey]
 		if !ok {
@@ -497,29 +507,41 @@ func loadSeedUsersByEmail(tx *gorm.DB, emails []string) (map[string]seededUser, 
 	return usersByEmail, nil
 }
 
-func loadSeedVendorsByNormalizedName(tx *gorm.DB, seeds []vendorSeed) (map[string]model.Vendor, error) {
+func loadSeedVendorsByUserAndNormalizedName(
+	tx *gorm.DB,
+	seeds []vendorSeed,
+	usersByEmail map[string]seededUser,
+) (map[string]model.Vendor, error) {
 	normalizedNames := make([]string, 0, len(seeds))
+	userIDs := make([]uint, 0, len(usersByEmail))
 	for _, seed := range seeds {
 		normalizedNames = append(normalizedNames, seed.NormalizedName)
 	}
+	for _, user := range usersByEmail {
+		userIDs = append(userIDs, user.ID)
+	}
 
 	var vendors []model.Vendor
-	if err := tx.Where("normalized_name IN ?", normalizedNames).Find(&vendors).Error; err != nil {
+	if err := tx.Where("user_id IN ? AND normalized_name IN ?", userIDs, normalizedNames).Find(&vendors).Error; err != nil {
 		return nil, fmt.Errorf("failed to load seed vendors: %w", err)
 	}
 
-	vendorsByNormalizedName := make(map[string]model.Vendor, len(vendors))
+	vendorsByKey := make(map[string]model.Vendor, len(vendors))
 	for _, vendor := range vendors {
-		vendorsByNormalizedName[strings.TrimSpace(vendor.NormalizedName)] = vendor
+		key := buildSeedVendorKey(vendor.UserID, vendor.NormalizedName)
+		vendorsByKey[key] = vendor
 	}
 
-	for _, normalizedName := range normalizedNames {
-		if _, ok := vendorsByNormalizedName[normalizedName]; !ok {
-			return nil, fmt.Errorf("required seed vendor not found: %s", normalizedName)
+	for _, user := range usersByEmail {
+		for _, normalizedName := range normalizedNames {
+			key := buildSeedVendorKey(user.ID, normalizedName)
+			if _, ok := vendorsByKey[key]; !ok {
+				return nil, fmt.Errorf("required seed vendor not found: user_id=%d normalized_name=%s", user.ID, normalizedName)
+			}
 		}
 	}
 
-	return vendorsByNormalizedName, nil
+	return vendorsByKey, nil
 }
 
 func loadSeedEmailsByUserAndExternalID(
@@ -564,15 +586,15 @@ func loadSeedBillingsByIdentity(
 	tx *gorm.DB,
 	seeds []billingSeed,
 	usersByEmail map[string]seededUser,
-	vendorsByNormalizedName map[string]model.Vendor,
+	vendorsByKey map[string]model.Vendor,
 ) (map[string]seededBilling, error) {
 	userIDs := make([]uint, 0, len(usersByEmail))
 	for _, user := range usersByEmail {
 		userIDs = append(userIDs, user.ID)
 	}
 
-	vendorIDs := make([]uint, 0, len(vendorsByNormalizedName))
-	for _, vendor := range vendorsByNormalizedName {
+	vendorIDs := make([]uint, 0, len(vendorsByKey))
+	for _, vendor := range vendorsByKey {
 		vendorIDs = append(vendorIDs, vendor.ID)
 	}
 
@@ -599,7 +621,7 @@ func loadSeedBillingsByIdentity(
 
 	for _, seed := range seeds {
 		user := usersByEmail[seed.UserEmail]
-		vendor := vendorsByNormalizedName[seed.VendorNormalized]
+		vendor := vendorsByKey[buildSeedVendorKey(user.ID, seed.VendorNormalized)]
 		key := buildSeedBillingKey(user.ID, vendor.ID, seed.BillingNumber)
 		if _, ok := billingsByKey[key]; !ok {
 			return nil, fmt.Errorf("required seed billing not found: user=%s vendor=%s billing_number=%s", seed.UserEmail, seed.VendorNormalized, seed.BillingNumber)
@@ -611,6 +633,10 @@ func loadSeedBillingsByIdentity(
 
 func buildSeedEmailKey(userID uint, externalMessageID string) string {
 	return fmt.Sprintf("%d:%s", userID, strings.TrimSpace(externalMessageID))
+}
+
+func buildSeedVendorKey(userID uint, normalizedName string) string {
+	return fmt.Sprintf("%d:%s", userID, strings.TrimSpace(normalizedName))
 }
 
 func buildSeedBillingKey(userID uint, vendorID uint, billingNumber string) string {

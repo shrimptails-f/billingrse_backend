@@ -12,7 +12,10 @@ import (
 // resolveTarget は repository で材料を集め、policy で 1 回の最終判定を行う。
 func (uc *useCase) resolveTarget(ctx context.Context, userID uint, target ResolutionTarget, reqLog logger.Interface) (domain.ResolutionDecision, *domain.Failure, error) {
 	input := buildVendorResolutionInput(target)
-	facts, err := uc.resolutionRepository.FetchFacts(ctx, uc.policy.BuildFetchPlan(input))
+	plan := uc.policy.BuildFetchPlan(input)
+	plan.UserID = userID
+
+	facts, err := uc.resolutionRepository.FetchFacts(ctx, plan)
 	if err != nil {
 		return domain.ResolutionDecision{}, newFailure(target, domain.FailureStageResolveVendor, domain.FailureCodeVendorResolveFail, messageForResolutionFailure(target, domain.FailureCodeVendorResolveFail)), err
 	}

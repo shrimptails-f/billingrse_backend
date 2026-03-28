@@ -30,7 +30,7 @@ func TestBillingEligibility(t *testing.T) {
 	}
 
 	resolution := VendorResolution{
-		ResolvedVendor: &Vendor{Name: "Netflix"},
+		ResolvedVendor: &Vendor{UserID: 1, Name: "Netflix"},
 	}
 
 	eligibility := BillingEligibility{}

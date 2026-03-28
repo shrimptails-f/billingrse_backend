@@ -118,8 +118,9 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 
 		resolution := commondomain.VendorResolution{
 			ResolvedVendor: &commondomain.Vendor{
-				ID:   target.VendorID,
-				Name: target.VendorName,
+				ID:     target.VendorID,
+				UserID: cmd.UserID,
+				Name:   target.VendorName,
 			},
 		}
 		err := uc.policy.Evaluate(target.Data, resolution)

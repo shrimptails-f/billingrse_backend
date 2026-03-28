@@ -51,38 +51,39 @@ func skipIfVendorResolutionDBUnavailable(t *testing.T, err error) {
 
 // 観点:
 // - fetch は各ルール用の候補群を 1 回で集められること
-// - exact 系は複数候補を落とさず返すこと
+// - user_id が違う alias は混ざらないこと
 func TestVendorResolutionRepository_FetchFacts_CollectsCandidatesForEachRule(t *testing.T) {
 	t.Parallel()
 
 	env := newVendorResolutionInfraTestEnv(t)
 	defer env.clean()
 
-	acmeOld := seedVendor(t, env.db, 1, "Acme Old", "acme old", testTime(9, 0))
-	acmeNew := seedVendor(t, env.db, 2, "Acme New", "acme new", testTime(9, 5))
-	domainVendor := seedVendor(t, env.db, 3, "Domain Vendor", "domain vendor", testTime(9, 10))
-	senderVendor := seedVendor(t, env.db, 4, "Sender Vendor", "sender vendor", testTime(9, 15))
-	subjectVendor := seedVendor(t, env.db, 5, "Subject Vendor", "subject vendor", testTime(9, 20))
+	acmeVendor := seedVendor(t, env.db, 1, 1, "Acme", "acme", testTime(9, 0))
+	domainVendor := seedVendor(t, env.db, 3, 1, "Domain Vendor", "domain vendor", testTime(9, 10))
+	senderVendor := seedVendor(t, env.db, 4, 1, "Sender Vendor", "sender vendor", testTime(9, 15))
+	subjectVendor := seedVendor(t, env.db, 5, 1, "Subject Vendor", "subject vendor", testTime(9, 20))
+	otherUserVendor := seedVendor(t, env.db, 6, 2, "Other User Acme", "other user acme", testTime(9, 25))
 
-	seedAlias(t, env.db, acmeOld.ID, vrdomain.MatchedByNameExact, "Acme", "acme", testTime(9, 30))
-	seedAlias(t, env.db, acmeNew.ID, vrdomain.MatchedByNameExact, "Acme", "acme", testTime(9, 40))
-	seedAlias(t, env.db, domainVendor.ID, vrdomain.MatchedBySenderDomain, "acme.example.com", "acme.example.com", testTime(9, 50))
-	seedAlias(t, env.db, senderVendor.ID, vrdomain.MatchedBySenderName, "Acme Billing", "acme billing", testTime(10, 0))
-	seedAlias(t, env.db, subjectVendor.ID, vrdomain.MatchedBySubjectKeyword, "acme cloud invoice", "acme cloud invoice", testTime(10, 10))
+	seedAlias(t, env.db, acmeVendor.UserID, acmeVendor.ID, vrdomain.MatchedByNameExact, "Acme", "acme", testTime(9, 30))
+	seedAlias(t, env.db, domainVendor.UserID, domainVendor.ID, vrdomain.MatchedBySenderDomain, "acme.example.com", "acme.example.com", testTime(9, 50))
+	seedAlias(t, env.db, senderVendor.UserID, senderVendor.ID, vrdomain.MatchedBySenderName, "Acme Billing", "acme billing", testTime(10, 0))
+	seedAlias(t, env.db, subjectVendor.UserID, subjectVendor.ID, vrdomain.MatchedBySubjectKeyword, "acme cloud invoice", "acme cloud invoice", testTime(10, 10))
+	seedAlias(t, env.db, otherUserVendor.UserID, otherUserVendor.ID, vrdomain.MatchedByNameExact, "Acme", "acme", testTime(10, 20))
 
 	facts, err := env.repository.FetchFacts(context.Background(), vrdomain.VendorResolutionFetchPlan{
+		UserID:            1,
 		NameExactValue:    "acme",
 		SenderDomainValue: "acme.example.com",
 		SenderNameValue:   "acme billing",
 		SubjectValue:      "your acme cloud invoice is ready",
 	})
 	require.NoError(t, err)
-	require.Len(t, facts.NameExactCandidates, 2)
+	require.Len(t, facts.NameExactCandidates, 1)
 	require.Len(t, facts.SenderDomainCandidates, 1)
 	require.Len(t, facts.SenderNameCandidates, 1)
 	require.Len(t, facts.SubjectKeywordCandidates, 1)
 
-	require.Equal(t, []uint{acmeNew.ID, acmeOld.ID}, vendorIDs(facts.NameExactCandidates))
+	require.Equal(t, []uint{acmeVendor.ID}, vendorIDs(facts.NameExactCandidates))
 	require.Equal(t, domainVendor.ID, facts.SenderDomainCandidates[0].Vendor.ID)
 	require.Equal(t, senderVendor.ID, facts.SenderNameCandidates[0].Vendor.ID)
 	require.Equal(t, subjectVendor.ID, facts.SubjectKeywordCandidates[0].Vendor.ID)
@@ -96,13 +97,14 @@ func TestVendorResolutionRepository_FetchFacts_FiltersSubjectKeywordMatches(t *t
 	env := newVendorResolutionInfraTestEnv(t)
 	defer env.clean()
 
-	vendor1 := seedVendor(t, env.db, 1, "Invoice", "invoice", testTime(9, 0))
-	vendor2 := seedVendor(t, env.db, 2, "Shipping", "shipping", testTime(9, 5))
+	vendor1 := seedVendor(t, env.db, 1, 1, "Invoice", "invoice", testTime(9, 0))
+	vendor2 := seedVendor(t, env.db, 2, 1, "Shipping", "shipping", testTime(9, 5))
 
-	seedAlias(t, env.db, vendor1.ID, vrdomain.MatchedBySubjectKeyword, "invoice ready", "invoice ready", testTime(9, 10))
-	seedAlias(t, env.db, vendor2.ID, vrdomain.MatchedBySubjectKeyword, "shipping notice", "shipping notice", testTime(9, 20))
+	seedAlias(t, env.db, vendor1.UserID, vendor1.ID, vrdomain.MatchedBySubjectKeyword, "invoice ready", "invoice ready", testTime(9, 10))
+	seedAlias(t, env.db, vendor2.UserID, vendor2.ID, vrdomain.MatchedBySubjectKeyword, "shipping notice", "shipping notice", testTime(9, 20))
 
 	facts, err := env.repository.FetchFacts(context.Background(), vrdomain.VendorResolutionFetchPlan{
+		UserID:       1,
 		SubjectValue: "invoice ready for download",
 	})
 	require.NoError(t, err)
@@ -110,11 +112,12 @@ func TestVendorResolutionRepository_FetchFacts_FiltersSubjectKeywordMatches(t *t
 	require.Equal(t, vendor1.ID, facts.SubjectKeywordCandidates[0].Vendor.ID)
 }
 
-func seedVendor(t *testing.T, db *gorm.DB, id uint, name, normalized string, createdAt time.Time) commondomain.Vendor {
+func seedVendor(t *testing.T, db *gorm.DB, id uint, userID uint, name, normalized string, createdAt time.Time) commondomain.Vendor {
 	t.Helper()
 
 	record := vendorRecord{
 		ID:             id,
+		UserID:         userID,
 		Name:           name,
 		NormalizedName: normalized,
 		CreatedAt:      createdAt,
@@ -123,15 +126,17 @@ func seedVendor(t *testing.T, db *gorm.DB, id uint, name, normalized string, cre
 	require.NoError(t, db.Create(&record).Error)
 
 	return commondomain.Vendor{
-		ID:   record.ID,
-		Name: record.Name,
+		ID:     record.ID,
+		UserID: record.UserID,
+		Name:   record.Name,
 	}
 }
 
-func seedAlias(t *testing.T, db *gorm.DB, vendorID uint, aliasType, aliasValue, normalizedValue string, createdAt time.Time) vendorAliasRecord {
+func seedAlias(t *testing.T, db *gorm.DB, userID uint, vendorID uint, aliasType, aliasValue, normalizedValue string, createdAt time.Time) vendorAliasRecord {
 	t.Helper()
 
 	record := vendorAliasRecord{
+		UserID:          userID,
 		VendorID:        vendorID,
 		AliasType:       aliasType,
 		AliasValue:      aliasValue,

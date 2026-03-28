@@ -221,7 +221,6 @@ func extractBody(payload *gmail.MessagePart) string {
 		payload.Body.Data != "" {
 
 		decoded, err := base64.URLEncoding.DecodeString(payload.Body.Data)
-
 		if err == nil {
 			return string(decoded)
 		}

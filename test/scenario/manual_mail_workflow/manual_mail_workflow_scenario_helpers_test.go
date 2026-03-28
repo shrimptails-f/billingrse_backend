@@ -296,6 +296,7 @@ func (e *manualMailWorkflowScenarioEnv) mustCreateVendor(name string) uint {
 
 	now := e.clock.Now().UTC()
 	record := model.Vendor{
+		UserID:         e.userID,
 		Name:           strings.TrimSpace(name),
 		NormalizedName: commondomain.NormalizeLooseText(name),
 		CreatedAt:      now,
@@ -310,6 +311,7 @@ func (e *manualMailWorkflowScenarioEnv) mustCreateVendorAlias(vendorID uint, ali
 
 	now := e.clock.Now().UTC()
 	record := model.VendorAlias{
+		UserID:          e.userID,
 		VendorID:        vendorID,
 		AliasType:       strings.TrimSpace(aliasType),
 		AliasValue:      strings.TrimSpace(aliasValue),
@@ -393,7 +395,7 @@ func (e *manualMailWorkflowScenarioEnv) mustFindVendorByName(name string) model.
 	e.t.Helper()
 
 	var vendor model.Vendor
-	require.NoError(e.t, e.db.Where("name = ?", strings.TrimSpace(name)).First(&vendor).Error)
+	require.NoError(e.t, e.db.Where("user_id = ? AND name = ?", e.userID, strings.TrimSpace(name)).First(&vendor).Error)
 	return vendor
 }
 
