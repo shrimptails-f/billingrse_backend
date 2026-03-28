@@ -38,6 +38,8 @@ func TestRepository_CreateEmailVerificationToken_Success(t *testing.T) {
 	assert.Equal(t, userRec.ID, created.UserID)
 	assert.Equal(t, "test-token-uuid", created.Token)
 	assert.WithinDuration(t, expiresAt, created.ExpiresAt, time.Second)
+	assert.Nil(t, created.ResendWindowStartedAt)
+	assert.Zero(t, created.ResendCount)
 }
 
 func TestRepository_InvalidateActiveTokens_Success(t *testing.T) {
@@ -207,10 +209,12 @@ func TestRepository_GetLatestTokenForUser_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	err = env.db.Create(&emailVerificationTokenRecord{
-		UserID:    userRec.ID,
-		Token:     "latest-token",
-		ExpiresAt: env.nowUTC.Add(3 * time.Hour),
-		CreatedAt: env.nowUTC,
+		UserID:                userRec.ID,
+		Token:                 "latest-token",
+		ExpiresAt:             env.nowUTC.Add(3 * time.Hour),
+		CreatedAt:             env.nowUTC,
+		ResendWindowStartedAt: timePtr(env.nowUTC.Add(-5 * time.Minute)),
+		ResendCount:           2,
 	}).Error
 	require.NoError(t, err)
 
@@ -219,6 +223,9 @@ func TestRepository_GetLatestTokenForUser_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "latest-token", token.Token)
 	assert.WithinDuration(t, env.nowUTC, token.CreatedAt, time.Second)
+	require.NotNil(t, token.ResendWindowStartedAt)
+	assert.WithinDuration(t, env.nowUTC.Add(-5*time.Minute), *token.ResendWindowStartedAt, time.Second)
+	assert.Equal(t, 2, token.ResendCount)
 }
 
 func TestRepository_GetLatestTokenForUser_NotFound(t *testing.T) {
@@ -262,6 +269,39 @@ func TestRepository_DeleteTokenByID_Success(t *testing.T) {
 	assert.Equal(t, int64(0), count)
 }
 
+func TestRepository_UpdateVerificationEmailResendWindow_Success(t *testing.T) {
+	t.Parallel()
+	env := newAuthRepoTestEnv(t)
+	defer func() { _ = env.clean() }()
+
+	env.insertUser(t, "resent@example.com")
+	var userRec userRecord
+	err := env.db.Where("email = ?", "resent@example.com").First(&userRec).Error
+	require.NoError(t, err)
+
+	var tokenRec emailVerificationTokenRecord
+	err = env.db.Create(&emailVerificationTokenRecord{
+		UserID:    userRec.ID,
+		Token:     "resent-token",
+		ExpiresAt: env.nowUTC.Add(3 * time.Hour),
+		CreatedAt: env.nowUTC,
+	}).Error
+	require.NoError(t, err)
+	err = env.db.Where("token = ?", "resent-token").First(&tokenRec).Error
+	require.NoError(t, err)
+
+	windowStartedAt := env.nowUTC.Add(5 * time.Minute)
+	err = env.repo.UpdateVerificationEmailResendWindow(context.Background(), tokenRec.ID, windowStartedAt, 2)
+	require.NoError(t, err)
+
+	var updatedToken emailVerificationTokenRecord
+	err = env.db.Where("id = ?", tokenRec.ID).First(&updatedToken).Error
+	require.NoError(t, err)
+	require.NotNil(t, updatedToken.ResendWindowStartedAt)
+	assert.WithinDuration(t, windowStartedAt, *updatedToken.ResendWindowStartedAt, time.Second)
+	assert.Equal(t, 2, updatedToken.ResendCount)
+}
+
 func TestRepository_GetActiveTokenForUser_Success(t *testing.T) {
 	t.Parallel()
 	env := newAuthRepoTestEnv(t)
@@ -275,10 +315,12 @@ func TestRepository_GetActiveTokenForUser_Success(t *testing.T) {
 	// Create an active token
 	expiresAt := env.nowUTC.Add(3 * time.Hour)
 	err = env.db.Create(&emailVerificationTokenRecord{
-		UserID:    userRec.ID,
-		Token:     "active-token",
-		ExpiresAt: expiresAt,
-		CreatedAt: env.nowUTC,
+		UserID:                userRec.ID,
+		Token:                 "active-token",
+		ExpiresAt:             expiresAt,
+		CreatedAt:             env.nowUTC,
+		ResendWindowStartedAt: timePtr(env.nowUTC.Add(-3 * time.Minute)),
+		ResendCount:           1,
 	}).Error
 	require.NoError(t, err)
 
@@ -287,6 +329,9 @@ func TestRepository_GetActiveTokenForUser_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "active-token", token.Token)
 	assert.Equal(t, userRec.ID, token.UserID)
+	require.NotNil(t, token.ResendWindowStartedAt)
+	assert.WithinDuration(t, env.nowUTC.Add(-3*time.Minute), *token.ResendWindowStartedAt, time.Second)
+	assert.Equal(t, 1, token.ResendCount)
 	assert.Nil(t, token.ConsumedAt)
 }
 
@@ -323,6 +368,10 @@ func TestRepository_GetActiveTokenForUser_ExpiredToken(t *testing.T) {
 	_, err = env.repo.GetActiveTokenForUser(context.Background(), userRec.ID, env.nowUTC)
 
 	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+}
+
+func timePtr(t time.Time) *time.Time {
+	return &t
 }
 
 func TestRepository_GetActiveTokenForUser_ConsumedToken(t *testing.T) {

@@ -44,12 +44,14 @@ func (r *Repository) GetActiveTokenForUser(ctx context.Context, userID uint, now
 	}
 
 	return domain.EmailVerificationToken{
-		ID:         record.ID,
-		UserID:     record.UserID,
-		Token:      record.Token,
-		ExpiresAt:  record.ExpiresAt,
-		CreatedAt:  record.CreatedAt,
-		ConsumedAt: record.ConsumedAt,
+		ID:                    record.ID,
+		UserID:                record.UserID,
+		Token:                 record.Token,
+		ExpiresAt:             record.ExpiresAt,
+		CreatedAt:             record.CreatedAt,
+		ResendWindowStartedAt: record.ResendWindowStartedAt,
+		ResendCount:           record.ResendCount,
+		ConsumedAt:            record.ConsumedAt,
 	}, nil
 }
 
@@ -66,11 +68,13 @@ func (r *Repository) CreateEmailVerificationToken(ctx context.Context, token dom
 	}
 
 	record := emailVerificationTokenRecord{
-		UserID:     token.UserID,
-		Token:      token.Token,
-		ExpiresAt:  token.ExpiresAt,
-		CreatedAt:  token.CreatedAt,
-		ConsumedAt: token.ConsumedAt,
+		UserID:                token.UserID,
+		Token:                 token.Token,
+		ExpiresAt:             token.ExpiresAt,
+		CreatedAt:             token.CreatedAt,
+		ResendWindowStartedAt: token.ResendWindowStartedAt,
+		ResendCount:           token.ResendCount,
+		ConsumedAt:            token.ConsumedAt,
 	}
 
 	// Use Clauses(clause.OnConflict) for upsert behavior on user_id unique constraint
@@ -78,10 +82,12 @@ func (r *Repository) CreateEmailVerificationToken(ctx context.Context, token dom
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "user_id"}},
 			DoUpdates: clause.Assignments(map[string]interface{}{
-				"token":       record.Token,
-				"expires_at":  record.ExpiresAt,
-				"created_at":  record.CreatedAt,
-				"consumed_at": record.ConsumedAt,
+				"token":                    record.Token,
+				"expires_at":               record.ExpiresAt,
+				"created_at":               record.CreatedAt,
+				"resend_window_started_at": record.ResendWindowStartedAt,
+				"resend_count":             record.ResendCount,
+				"consumed_at":              record.ConsumedAt,
 			}),
 		}).
 		Create(&record).
@@ -104,12 +110,14 @@ func (r *Repository) CreateEmailVerificationToken(ctx context.Context, token dom
 	}
 
 	return domain.EmailVerificationToken{
-		ID:         record.ID,
-		UserID:     record.UserID,
-		Token:      record.Token,
-		ExpiresAt:  record.ExpiresAt,
-		CreatedAt:  record.CreatedAt,
-		ConsumedAt: record.ConsumedAt,
+		ID:                    record.ID,
+		UserID:                record.UserID,
+		Token:                 record.Token,
+		ExpiresAt:             record.ExpiresAt,
+		CreatedAt:             record.CreatedAt,
+		ResendWindowStartedAt: record.ResendWindowStartedAt,
+		ResendCount:           record.ResendCount,
+		ConsumedAt:            record.ConsumedAt,
 	}, nil
 }
 
@@ -165,12 +173,14 @@ func (r *Repository) GetEmailVerificationToken(ctx context.Context, token string
 	}
 
 	return domain.EmailVerificationToken{
-		ID:         record.ID,
-		UserID:     record.UserID,
-		Token:      record.Token,
-		ExpiresAt:  record.ExpiresAt,
-		CreatedAt:  record.CreatedAt,
-		ConsumedAt: record.ConsumedAt,
+		ID:                    record.ID,
+		UserID:                record.UserID,
+		Token:                 record.Token,
+		ExpiresAt:             record.ExpiresAt,
+		CreatedAt:             record.CreatedAt,
+		ResendWindowStartedAt: record.ResendWindowStartedAt,
+		ResendCount:           record.ResendCount,
+		ConsumedAt:            record.ConsumedAt,
 	}, nil
 }
 
@@ -280,13 +290,43 @@ func (r *Repository) GetLatestTokenForUser(ctx context.Context, userID uint) (do
 	}
 
 	return domain.EmailVerificationToken{
-		ID:         record.ID,
-		UserID:     record.UserID,
-		Token:      record.Token,
-		ExpiresAt:  record.ExpiresAt,
-		CreatedAt:  record.CreatedAt,
-		ConsumedAt: record.ConsumedAt,
+		ID:                    record.ID,
+		UserID:                record.UserID,
+		Token:                 record.Token,
+		ExpiresAt:             record.ExpiresAt,
+		CreatedAt:             record.CreatedAt,
+		ResendWindowStartedAt: record.ResendWindowStartedAt,
+		ResendCount:           record.ResendCount,
+		ConsumedAt:            record.ConsumedAt,
 	}, nil
+}
+
+// UpdateVerificationEmailResendWindow updates the fixed-window resend state for a token.
+func (r *Repository) UpdateVerificationEmailResendWindow(ctx context.Context, tokenID uint, windowStartedAt time.Time, resendCount int) error {
+	if ctx == nil {
+		return logger.ErrNilContext
+	}
+
+	reqLog, logErr := r.logger.WithContext(ctx)
+	if logErr != nil {
+		return logErr
+	}
+
+	err := r.db.WithContext(ctx).
+		Model(&emailVerificationTokenRecord{}).
+		Where("id = ?", tokenID).
+		Updates(map[string]interface{}{
+			"resend_window_started_at": windowStartedAt,
+			"resend_count":             resendCount,
+		}).
+		Error
+
+	if err != nil {
+		logDBQueryFailed(reqLog, "email_verification_tokens", "update_verification_email_resend_window", err, logger.Uint("token_id", tokenID))
+		return fmt.Errorf("failed to update verification email resend window: %w", err)
+	}
+
+	return nil
 }
 
 // DeleteTokenByID deletes a token by ID.
