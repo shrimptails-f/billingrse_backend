@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	openaisdk "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -51,7 +52,7 @@ from: %s
 receivedAt: %s
 body:
 %s
-`, strings.TrimSpace(subject), strings.TrimSpace(from), receivedAt.UTC().Format(time.RFC3339), strings.TrimSpace(body))
+`, strings.TrimSpace(normalizePromptText(subject)), strings.TrimSpace(normalizePromptText(from)), receivedAt.UTC().Format(time.RFC3339), strings.TrimSpace(normalizePromptText(body)))
 }
 
 type Client struct {
@@ -83,6 +84,8 @@ func (c *Client) Chat(ctx context.Context, prompt string) (string, error) {
 	if ctx == nil {
 		return "", logger.ErrNilContext
 	}
+	normalizedPrompt := normalizePromptText(prompt)
+	promptWasNormalized := normalizedPrompt != prompt
 
 	reqLog := c.log
 	if withContext, err := c.log.WithContext(ctx); err == nil {
@@ -104,7 +107,7 @@ func (c *Client) Chat(ctx context.Context, prompt string) (string, error) {
 			return err
 		}
 
-		r, err := c.sdk.Chat.Completions.New(ctx, buildChatCompletionParams(prompt))
+		r, err := c.sdk.Chat.Completions.New(ctx, buildChatCompletionParams(normalizedPrompt))
 		if err != nil {
 			return err
 		}
@@ -116,6 +119,9 @@ func (c *Client) Chat(ctx context.Context, prompt string) (string, error) {
 			logger.String("provider", provider),
 			logger.String("operation", operation),
 			logger.String("model", model),
+			logger.Int("prompt_bytes", len(normalizedPrompt)),
+			logger.Bool("prompt_utf8_valid", utf8.ValidString(normalizedPrompt)),
+			logger.Bool("prompt_sanitized", promptWasNormalized),
 			logger.Err(err),
 		)
 		return "", err
@@ -250,6 +256,16 @@ func nullableNumberSchema(description string) map[string]any {
 		"type":        []string{"number", "null"},
 		"description": description,
 	}
+}
+
+func normalizePromptText(text string) string {
+	if text == "" {
+		return ""
+	}
+
+	normalized := strings.ToValidUTF8(text, " ")
+	normalized = strings.ReplaceAll(normalized, "\x00", " ")
+	return normalized
 }
 
 // shouldRetryOpenAIError determines if an OpenAI API error should be retried.

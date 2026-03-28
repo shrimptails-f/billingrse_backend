@@ -69,7 +69,7 @@ func (r *BillingQueryRepository) MonthDetail(ctx context.Context, query billingq
 
 	var rows []billingMonthDetailVendorRow
 	if err := r.buildMonthDetailBaseQuery(ctx, query, monthStart, monthEnd).
-		Joins("INNER JOIN vendors ON vendors.id = billings.vendor_id").
+		Joins("INNER JOIN vendors ON vendors.id = billings.vendor_id AND vendors.user_id = billings.user_id").
 		Select([]string{
 			"vendors.name AS vendor_name",
 			"SUM(COALESCE(billing_line_items.amount, 0)) AS total_amount",

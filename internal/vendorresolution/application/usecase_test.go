@@ -38,11 +38,14 @@ func TestUseCaseExecute_MixedOutcome(t *testing.T) {
 	uc := NewUseCase(
 		&stubVendorResolutionRepository{
 			fetchFacts: func(ctx context.Context, plan domain.VendorResolutionFetchPlan) (domain.VendorResolutionFacts, error) {
+				if plan.UserID != 10 {
+					t.Fatalf("unexpected user scope: %+v", plan)
+				}
 				switch {
 				case plan.NameExactValue == "acme":
 					return domain.VendorResolutionFacts{
 						NameExactCandidates: []commondomain.VendorAliasCandidate{
-							aliasCandidate(1, domain.MatchedByNameExact, "acme", commondomain.Vendor{ID: 700, Name: "Acme"}, testTime(9, 0)),
+							aliasCandidate(1, domain.MatchedByNameExact, "acme", commondomain.Vendor{ID: 700, UserID: 10, Name: "Acme"}, testTime(9, 0)),
 						},
 					}, nil
 				case plan.NameExactValue == "unknown":
@@ -197,12 +200,18 @@ func TestUseCaseExecute_AutoRegistersCandidateVendor(t *testing.T) {
 		&stubVendorResolutionRepository{
 			fetchFacts: func(ctx context.Context, plan domain.VendorResolutionFetchPlan) (domain.VendorResolutionFacts, error) {
 				fetchCalls++
+				if plan.UserID != 1 {
+					t.Fatalf("unexpected plan: %+v", plan)
+				}
 				return domain.VendorResolutionFacts{}, nil
 			},
 		},
 		&stubVendorRegistrationRepository{
 			ensureByPlan: func(ctx context.Context, plan domain.VendorRegistrationPlan) (*commondomain.Vendor, error) {
 				registrationCalls++
+				if plan.UserID != 1 {
+					t.Fatalf("unexpected plan: %+v", plan)
+				}
 				if plan.VendorName != "アマゾンジャパン合同会社" {
 					t.Fatalf("unexpected plan: %+v", plan)
 				}
@@ -212,7 +221,7 @@ func TestUseCaseExecute_AutoRegistersCandidateVendor(t *testing.T) {
 				if len(plan.Aliases) != 1 || plan.Aliases[0].AliasType != domain.MatchedByNameExact {
 					t.Fatalf("unexpected plan: %+v", plan)
 				}
-				return &commondomain.Vendor{ID: 501, Name: plan.VendorName}, nil
+				return &commondomain.Vendor{ID: 501, UserID: plan.UserID, Name: plan.VendorName}, nil
 			},
 		},
 		logger.NewNop(),
@@ -260,11 +269,17 @@ func TestUseCaseExecute_AutoRegisterFailureBecomesFailure(t *testing.T) {
 	uc := NewUseCase(
 		&stubVendorResolutionRepository{
 			fetchFacts: func(ctx context.Context, plan domain.VendorResolutionFetchPlan) (domain.VendorResolutionFacts, error) {
+				if plan.UserID != 1 {
+					t.Fatalf("unexpected plan: %+v", plan)
+				}
 				return domain.VendorResolutionFacts{}, nil
 			},
 		},
 		&stubVendorRegistrationRepository{
 			ensureByPlan: func(ctx context.Context, plan domain.VendorRegistrationPlan) (*commondomain.Vendor, error) {
+				if plan.UserID != 1 {
+					t.Fatalf("unexpected plan: %+v", plan)
+				}
 				return nil, errors.New("insert failed")
 			},
 		},

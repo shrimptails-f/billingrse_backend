@@ -44,8 +44,9 @@ func (billingListEmailRecord) TableName() string {
 
 type billingListVendorRecord struct {
 	ID             uint      `gorm:"column:id;primaryKey;autoIncrement"`
+	UserID         uint      `gorm:"column:user_id;not null;uniqueIndex:uni_vendors_user_normalized_name,priority:1"`
 	Name           string    `gorm:"column:name;size:255;not null"`
-	NormalizedName string    `gorm:"column:normalized_name;size:255;not null"`
+	NormalizedName string    `gorm:"column:normalized_name;size:255;not null;uniqueIndex:uni_vendors_user_normalized_name,priority:2"`
 	CreatedAt      time.Time `gorm:"column:created_at;not null"`
 	UpdatedAt      time.Time `gorm:"column:updated_at;not null"`
 }
@@ -145,7 +146,7 @@ func (r *BillingQueryRepository) List(ctx context.Context, query billingqueryapp
 func (r *BillingQueryRepository) buildListBaseQuery(ctx context.Context, query billingqueryapp.ListQuery) *gorm.DB {
 	tx := r.db.WithContext(ctx).
 		Table("billings").
-		Joins("INNER JOIN vendors ON vendors.id = billings.vendor_id").
+		Joins("INNER JOIN vendors ON vendors.id = billings.vendor_id AND vendors.user_id = billings.user_id").
 		Joins("INNER JOIN emails ON emails.id = billings.email_id AND emails.user_id = billings.user_id").
 		Joins("LEFT JOIN "+billingListLineItemSummarySubQuery()+" ON line_item_summary.billing_id = billings.id").
 		Where("billings.user_id = ?", query.UserID)

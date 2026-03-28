@@ -9,9 +9,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 // buildChatCompletionParams が意図したモデルと schema 構成を組み立てることを確認する。
@@ -159,6 +161,28 @@ func TestBuildChatCompletionParams_MarshalJSONIncludesStructuredOutputs(t *testi
 	}
 	if got := jsonSchema["strict"]; got != true {
 		t.Fatalf("unexpected strict flag in payload: %#v", got)
+	}
+}
+
+func TestBuildParsedEmailPrompt_NormalizesInvalidUTF8AndNullBytes(t *testing.T) {
+	t.Parallel()
+
+	subject := string([]byte{'A', 0xff, 'B'})
+	body := "line1\x00line2"
+
+	prompt := BuildParsedEmailPrompt(subject, "billing@example.com", time.Unix(0, 0).UTC(), body)
+
+	if !utf8.ValidString(prompt) {
+		t.Fatalf("prompt must be valid utf-8: %q", prompt)
+	}
+	if strings.ContainsRune(prompt, '\x00') {
+		t.Fatalf("prompt must not contain null bytes: %q", prompt)
+	}
+	if !strings.Contains(prompt, "A B") {
+		t.Fatalf("expected normalized subject in prompt: %q", prompt)
+	}
+	if !strings.Contains(prompt, "line1 line2") {
+		t.Fatalf("expected normalized body in prompt: %q", prompt)
 	}
 }
 

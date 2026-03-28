@@ -58,6 +58,7 @@ func TestVendorRegistrationRepository_EnsureByPlan_CreatesVendorAndAlias(t *test
 	defer env.clean()
 
 	vendor, err := env.repository.EnsureByPlan(context.Background(), commondomain.VendorRegistrationPlan{
+		UserID:               1,
 		VendorName:           "アマゾンジャパン合同会社",
 		NormalizedVendorName: "アマゾンジャパン合同会社",
 		Aliases: []commondomain.VendorRegistrationAlias{
@@ -71,17 +72,20 @@ func TestVendorRegistrationRepository_EnsureByPlan_CreatesVendorAndAlias(t *test
 	require.NoError(t, err)
 	require.NotNil(t, vendor)
 	require.NotZero(t, vendor.ID)
+	require.Equal(t, uint(1), vendor.UserID)
 	require.Equal(t, "アマゾンジャパン合同会社", vendor.Name)
 
 	var vendors []vendorRecord
 	require.NoError(t, env.db.Find(&vendors).Error)
 	require.Len(t, vendors, 1)
+	require.Equal(t, uint(1), vendors[0].UserID)
 	require.Equal(t, "アマゾンジャパン合同会社", vendors[0].Name)
 	require.Equal(t, "アマゾンジャパン合同会社", vendors[0].NormalizedName)
 
 	var aliases []vendorAliasRecord
 	require.NoError(t, env.db.Find(&aliases).Error)
 	require.Len(t, aliases, 1)
+	require.Equal(t, uint(1), aliases[0].UserID)
 	require.Equal(t, vendors[0].ID, aliases[0].VendorID)
 	require.Equal(t, vrdomain.MatchedByNameExact, aliases[0].AliasType)
 }
@@ -94,9 +98,10 @@ func TestVendorRegistrationRepository_EnsureByPlan_ReusesVendorAndAddsAlias(t *t
 	env := newVendorRegistrationInfraTestEnv(t)
 	defer env.clean()
 
-	seedVendorRecord(t, env.db, 10, "Acme", "acme", testTime(9, 0))
+	seedVendorRecord(t, env.db, 10, 1, "Acme", "acme", testTime(9, 0))
 
 	vendor, err := env.repository.EnsureByPlan(context.Background(), commondomain.VendorRegistrationPlan{
+		UserID:               1,
 		VendorName:           "Acme",
 		NormalizedVendorName: "acme",
 		Aliases: []commondomain.VendorRegistrationAlias{
@@ -110,6 +115,7 @@ func TestVendorRegistrationRepository_EnsureByPlan_ReusesVendorAndAddsAlias(t *t
 	require.NoError(t, err)
 	require.NotNil(t, vendor)
 	require.Equal(t, uint(10), vendor.ID)
+	require.Equal(t, uint(1), vendor.UserID)
 	require.Equal(t, "Acme", vendor.Name)
 
 	var vendors []vendorRecord
@@ -119,6 +125,7 @@ func TestVendorRegistrationRepository_EnsureByPlan_ReusesVendorAndAddsAlias(t *t
 	var aliases []vendorAliasRecord
 	require.NoError(t, env.db.Find(&aliases).Error)
 	require.Len(t, aliases, 1)
+	require.Equal(t, uint(1), aliases[0].UserID)
 	require.Equal(t, uint(10), aliases[0].VendorID)
 }
 
@@ -131,6 +138,7 @@ func TestVendorRegistrationRepository_EnsureByPlan_IsIdempotent(t *testing.T) {
 	defer env.clean()
 
 	plan := commondomain.VendorRegistrationPlan{
+		UserID:               1,
 		VendorName:           "Acme",
 		NormalizedVendorName: "acme",
 		Aliases: []commondomain.VendorRegistrationAlias{
@@ -158,17 +166,73 @@ func TestVendorRegistrationRepository_EnsureByPlan_IsIdempotent(t *testing.T) {
 	var aliases []vendorAliasRecord
 	require.NoError(t, env.db.Find(&aliases).Error)
 	require.Len(t, aliases, 1)
+	require.Equal(t, uint(1), aliases[0].UserID)
 }
 
-func seedVendorRecord(t *testing.T, db *gorm.DB, id uint, name, normalized string, createdAt time.Time) {
+// 観点:
+// - 同じ normalized_name でも user_id が違えば別 vendor を作成すること
+func TestVendorRegistrationRepository_EnsureByPlan_CreatesUserScopedVendor(t *testing.T) {
+	t.Parallel()
+
+	env := newVendorRegistrationInfraTestEnv(t)
+	defer env.clean()
+
+	seedVendorRecord(t, env.db, 10, 1, "Acme", "acme", testTime(9, 0))
+	seedAliasRecord(t, env.db, 1, 10, vrdomain.MatchedByNameExact, "Acme", "acme", testTime(9, 5))
+
+	vendor, err := env.repository.EnsureByPlan(context.Background(), commondomain.VendorRegistrationPlan{
+		UserID:               2,
+		VendorName:           "Acme",
+		NormalizedVendorName: "acme",
+		Aliases: []commondomain.VendorRegistrationAlias{
+			{
+				AliasType:       vrdomain.MatchedByNameExact,
+				AliasValue:      "Acme",
+				NormalizedValue: "acme",
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, vendor)
+	require.NotEqual(t, uint(10), vendor.ID)
+	require.Equal(t, uint(2), vendor.UserID)
+
+	var vendors []vendorRecord
+	require.NoError(t, env.db.Order("id ASC").Find(&vendors).Error)
+	require.Len(t, vendors, 2)
+	require.Equal(t, []uint{1, 2}, []uint{vendors[0].UserID, vendors[1].UserID})
+
+	var aliases []vendorAliasRecord
+	require.NoError(t, env.db.Order("id ASC").Find(&aliases).Error)
+	require.Len(t, aliases, 2)
+	require.Equal(t, []uint{1, 2}, []uint{aliases[0].UserID, aliases[1].UserID})
+}
+
+func seedVendorRecord(t *testing.T, db *gorm.DB, id uint, userID uint, name, normalized string, createdAt time.Time) {
 	t.Helper()
 
 	record := vendorRecord{
 		ID:             id,
+		UserID:         userID,
 		Name:           name,
 		NormalizedName: normalized,
 		CreatedAt:      createdAt,
 		UpdatedAt:      createdAt,
+	}
+	require.NoError(t, db.Create(&record).Error)
+}
+
+func seedAliasRecord(t *testing.T, db *gorm.DB, userID uint, vendorID uint, aliasType, aliasValue, normalizedValue string, createdAt time.Time) {
+	t.Helper()
+
+	record := vendorAliasRecord{
+		UserID:          userID,
+		VendorID:        vendorID,
+		AliasType:       aliasType,
+		AliasValue:      aliasValue,
+		NormalizedValue: normalizedValue,
+		CreatedAt:       createdAt,
+		UpdatedAt:       createdAt,
 	}
 	require.NoError(t, db.Create(&record).Error)
 }

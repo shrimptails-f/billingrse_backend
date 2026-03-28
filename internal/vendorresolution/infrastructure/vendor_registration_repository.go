@@ -43,6 +43,9 @@ func (r *VendorRegistrationRepository) EnsureByPlan(ctx context.Context, plan co
 	}
 
 	plan = normalizeRegistrationPlan(plan)
+	if plan.UserID == 0 {
+		return nil, fmt.Errorf("user_id is required")
+	}
 	if plan.VendorName == "" || plan.NormalizedVendorName == "" {
 		return nil, nil
 	}
@@ -53,12 +56,12 @@ func (r *VendorRegistrationRepository) EnsureByPlan(ctx context.Context, plan co
 
 	var vendor vendorRecord
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		record, err := r.findVendorByNormalizedName(tx, plan.NormalizedVendorName)
+		record, err := r.findVendorByNormalizedName(tx, plan.UserID, plan.NormalizedVendorName)
 		if err != nil {
 			return err
 		}
 		if record == nil {
-			record, err = r.createVendor(tx, plan.VendorName, plan.NormalizedVendorName)
+			record, err = r.createVendor(tx, plan.UserID, plan.VendorName, plan.NormalizedVendorName)
 			if err != nil {
 				return err
 			}
@@ -66,7 +69,7 @@ func (r *VendorRegistrationRepository) EnsureByPlan(ctx context.Context, plan co
 
 		vendor = *record
 		for _, alias := range plan.Aliases {
-			if err := r.ensureAlias(tx, vendor.ID, alias); err != nil {
+			if err := r.ensureAlias(tx, vendor.UserID, vendor.ID, alias); err != nil {
 				return err
 			}
 		}
@@ -78,32 +81,34 @@ func (r *VendorRegistrationRepository) EnsureByPlan(ctx context.Context, plan co
 	}
 
 	return &commondomain.Vendor{
-		ID:   vendor.ID,
-		Name: vendor.Name,
+		ID:     vendor.ID,
+		UserID: vendor.UserID,
+		Name:   vendor.Name,
 	}, nil
 }
 
-// findVendorByNormalizedName は normalized_name 一意制約を使って既存 vendor を探す。
-func (r *VendorRegistrationRepository) findVendorByNormalizedName(tx *gorm.DB, normalizedName string) (*vendorRecord, error) {
+// findVendorByNormalizedName は user_id + normalized_name 一意制約を使って既存 vendor を探す。
+func (r *VendorRegistrationRepository) findVendorByNormalizedName(tx *gorm.DB, userID uint, normalizedName string) (*vendorRecord, error) {
 	var record vendorRecord
-	err := tx.Where("normalized_name = ?", normalizedName).Take(&record).Error
+	err := tx.Where("user_id = ? AND normalized_name = ?", userID, normalizedName).Take(&record).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("failed to lookup vendor by normalized_name: %w", err)
+		return nil, fmt.Errorf("failed to lookup vendor by user_id and normalized_name: %w", err)
 	}
 	return &record, nil
 }
 
 // createVendor は競合時の再読込も含めて canonical Vendor を補完する。
-func (r *VendorRegistrationRepository) createVendor(tx *gorm.DB, canonicalName, normalizedName string) (*vendorRecord, error) {
+func (r *VendorRegistrationRepository) createVendor(tx *gorm.DB, userID uint, canonicalName, normalizedName string) (*vendorRecord, error) {
 	record := vendorRecord{
+		UserID:         userID,
 		Name:           canonicalName,
 		NormalizedName: normalizedName,
 	}
 	if err := tx.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "normalized_name"}},
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "normalized_name"}},
 		DoNothing: true,
 	}).Create(&record).Error; err != nil {
 		return nil, fmt.Errorf("failed to create vendor: %w", err)
@@ -112,7 +117,7 @@ func (r *VendorRegistrationRepository) createVendor(tx *gorm.DB, canonicalName, 
 		return &record, nil
 	}
 
-	created, err := r.findVendorByNormalizedName(tx, normalizedName)
+	created, err := r.findVendorByNormalizedName(tx, userID, normalizedName)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +128,7 @@ func (r *VendorRegistrationRepository) createVendor(tx *gorm.DB, canonicalName, 
 }
 
 // ensureAlias は登録計画に含まれる alias を vendor 配下へ補完する。
-func (r *VendorRegistrationRepository) ensureAlias(tx *gorm.DB, vendorID uint, alias commondomain.VendorRegistrationAlias) error {
+func (r *VendorRegistrationRepository) ensureAlias(tx *gorm.DB, userID uint, vendorID uint, alias commondomain.VendorRegistrationAlias) error {
 	if alias.AliasType == "" || alias.AliasValue == "" || alias.NormalizedValue == "" {
 		return nil
 	}
@@ -132,6 +137,7 @@ func (r *VendorRegistrationRepository) ensureAlias(tx *gorm.DB, vendorID uint, a
 	}
 
 	record := vendorAliasRecord{
+		UserID:          userID,
 		VendorID:        vendorID,
 		AliasType:       alias.AliasType,
 		AliasValue:      alias.AliasValue,
@@ -139,7 +145,7 @@ func (r *VendorRegistrationRepository) ensureAlias(tx *gorm.DB, vendorID uint, a
 	}
 	if err := tx.Clauses(clause.OnConflict{
 		Columns: []clause.Column{
-			{Name: "vendor_id"},
+			{Name: "user_id"},
 			{Name: "alias_type"},
 			{Name: "normalized_value"},
 		},
@@ -147,7 +153,33 @@ func (r *VendorRegistrationRepository) ensureAlias(tx *gorm.DB, vendorID uint, a
 	}).Create(&record).Error; err != nil {
 		return fmt.Errorf("failed to create vendor alias: %w", err)
 	}
+	if record.ID != 0 {
+		return nil
+	}
+
+	existing, err := r.findAliasByNormalizedValue(tx, userID, alias.AliasType, alias.NormalizedValue)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		return fmt.Errorf("vendor alias upsert finished without persisted row")
+	}
+	if existing.VendorID != vendorID {
+		return fmt.Errorf("vendor alias already belongs to another vendor")
+	}
 	return nil
+}
+
+func (r *VendorRegistrationRepository) findAliasByNormalizedValue(tx *gorm.DB, userID uint, aliasType, normalizedValue string) (*vendorAliasRecord, error) {
+	var record vendorAliasRecord
+	err := tx.Where("user_id = ? AND alias_type = ? AND normalized_value = ?", userID, aliasType, normalizedValue).Take(&record).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to lookup vendor alias by user_id, alias_type, and normalized_value: %w", err)
+	}
+	return &record, nil
 }
 
 func normalizeRegistrationPlan(plan commondomain.VendorRegistrationPlan) commondomain.VendorRegistrationPlan {
