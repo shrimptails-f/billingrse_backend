@@ -70,6 +70,8 @@ type AuthRepository interface {
 	ConsumeTokenAndVerifyUser(ctx context.Context, tokenID uint, userID uint, consumedAt time.Time) (domain.User, error)
 	// GetLatestTokenForUser retrieves the latest token for a user
 	GetLatestTokenForUser(ctx context.Context, userID uint) (domain.EmailVerificationToken, error)
+	// UpdateVerificationEmailResendWindow records the fixed-window resend state after a successful resend.
+	UpdateVerificationEmailResendWindow(ctx context.Context, tokenID uint, windowStartedAt time.Time, resendCount int) error
 	// DeleteTokenByID deletes a token by ID
 	DeleteTokenByID(ctx context.Context, tokenID uint) error
 	// CreateRefreshToken stores a refresh token record.

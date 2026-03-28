@@ -89,6 +89,11 @@ func (m *mockAuthRepository) DeleteTokenByID(ctx context.Context, tokenID uint) 
 	return args.Error(0)
 }
 
+func (m *mockAuthRepository) UpdateVerificationEmailResendWindow(ctx context.Context, tokenID uint, windowStartedAt time.Time, resendCount int) error {
+	args := m.Called(ctx, tokenID, windowStartedAt, resendCount)
+	return args.Error(0)
+}
+
 func (m *mockAuthRepository) CreateRefreshToken(ctx context.Context, token domain.RefreshToken) (domain.RefreshToken, error) {
 	args := m.Called(ctx, token)
 	refreshToken, _ := args.Get(0).(domain.RefreshToken)
@@ -555,6 +560,7 @@ func TestAuthUseCase_ResendVerificationEmailSuccess(t *testing.T) {
 	mailer.On("SendVerificationEmail", mock.Anything, mock.Anything, mock.MatchedBy(func(url string) bool {
 		return url == "https://example.com/signup/verify?token=new-token"
 	})).Return(nil).Once()
+	repo.On("UpdateVerificationEmailResendWindow", mock.Anything, uint(2), fixedTime, 1).Return(nil).Once()
 
 	stubOS := mocklibrary.NewOsWrapperMock(map[string]string{"FRONT_DOMAIN": "https://example.com"})
 	uc := NewAuthUseCase(repo, stubOS, mailer, &stubClock{now: fixedTime}, testVault())
@@ -662,11 +668,13 @@ func TestAuthUseCase_ResendVerificationEmailRateLimited(t *testing.T) {
 	}
 
 	recentToken := domain.EmailVerificationToken{
-		ID:        1,
-		UserID:    1,
-		Token:     "recent-token",
-		ExpiresAt: fixedTime.Add(1 * time.Hour),
-		CreatedAt: fixedTime.Add(-10 * time.Minute), // Less than 15 minutes ago
+		ID:                    1,
+		UserID:                1,
+		Token:                 "recent-token",
+		ExpiresAt:             fixedTime.Add(1 * time.Hour),
+		CreatedAt:             fixedTime.Add(-10 * time.Minute),
+		ResendWindowStartedAt: timePtr(fixedTime.Add(-10 * time.Minute)),
+		ResendCount:           3,
 	}
 
 	repo.On("GetUserByEmail", mock.Anything, domain.EmailAddress("user@example.com")).Return(user, nil).Once()
@@ -725,4 +733,183 @@ func TestAuthUseCase_ResendVerificationEmailMailSendFailed(t *testing.T) {
 	assert.ErrorIs(t, err, ErrMailSendFailed)
 	repo.AssertExpectations(t)
 	mailer.AssertExpectations(t)
+}
+
+func TestAuthUseCase_ResendVerificationEmail_AllowsImmediateResendAfterRegister(t *testing.T) {
+	t.Parallel()
+	fixedTime := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	repo := new(mockAuthRepository)
+	mailer := new(mockVerificationEmailSender)
+
+	hashed, err := testVault().GenerateHashPassword("password123")
+	assert.NoError(t, err)
+	hashedPassword := domain.NewPasswordHashFromHash(hashed)
+
+	user := domain.User{
+		ID:           1,
+		Email:        domain.EmailAddress("user@example.com"),
+		PasswordHash: hashedPassword,
+	}
+
+	registerToken := domain.EmailVerificationToken{
+		ID:        1,
+		UserID:    1,
+		Token:     "register-token",
+		ExpiresAt: fixedTime.Add(3 * time.Hour),
+		CreatedAt: fixedTime.Add(-1 * time.Minute),
+	}
+
+	repo.On("GetUserByEmail", mock.Anything, domain.EmailAddress("user@example.com")).Return(user, nil).Once()
+	repo.On("GetLatestTokenForUser", mock.Anything, uint(1)).Return(registerToken, nil).Once()
+	repo.On("GetActiveTokenForUser", mock.Anything, uint(1), fixedTime).Return(registerToken, nil).Once()
+	mailer.On("SendVerificationEmail", mock.Anything, mock.Anything, "https://example.com/signup/verify?token=register-token").Return(nil).Once()
+	repo.On("UpdateVerificationEmailResendWindow", mock.Anything, uint(1), fixedTime, 1).Return(nil).Once()
+
+	stubOS := mocklibrary.NewOsWrapperMock(map[string]string{"FRONT_DOMAIN": "https://example.com"})
+	uc := NewAuthUseCase(repo, stubOS, mailer, &stubClock{now: fixedTime}, testVault())
+
+	err = uc.ResendVerificationEmail(context.Background(), domain.ResendVerificationRequest{
+		Email:    "user@example.com",
+		Password: "password123",
+	})
+
+	assert.NoError(t, err)
+	repo.AssertExpectations(t)
+	mailer.AssertExpectations(t)
+}
+
+func TestAuthUseCase_ResendVerificationEmailMailSendFailed_DoesNotDeleteExistingToken(t *testing.T) {
+	t.Parallel()
+	fixedTime := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	repo := new(mockAuthRepository)
+	mailer := new(mockVerificationEmailSender)
+
+	hashed, err := testVault().GenerateHashPassword("password123")
+	assert.NoError(t, err)
+	hashedPassword := domain.NewPasswordHashFromHash(hashed)
+
+	user := domain.User{
+		ID:           1,
+		Email:        domain.EmailAddress("user@example.com"),
+		PasswordHash: hashedPassword,
+	}
+
+	existingToken := domain.EmailVerificationToken{
+		ID:        1,
+		UserID:    1,
+		Token:     "existing-token",
+		ExpiresAt: fixedTime.Add(2 * time.Hour),
+		CreatedAt: fixedTime.Add(-2 * time.Hour),
+	}
+
+	repo.On("GetUserByEmail", mock.Anything, domain.EmailAddress("user@example.com")).Return(user, nil).Once()
+	repo.On("GetLatestTokenForUser", mock.Anything, uint(1)).Return(existingToken, nil).Once()
+	repo.On("GetActiveTokenForUser", mock.Anything, uint(1), fixedTime).Return(existingToken, nil).Once()
+	mailer.On("SendVerificationEmail", mock.Anything, mock.Anything, "https://example.com/signup/verify?token=existing-token").Return(errors.New("smtp error")).Once()
+
+	stubOS := mocklibrary.NewOsWrapperMock(map[string]string{"FRONT_DOMAIN": "https://example.com"})
+	uc := NewAuthUseCase(repo, stubOS, mailer, &stubClock{now: fixedTime}, testVault())
+
+	err = uc.ResendVerificationEmail(context.Background(), domain.ResendVerificationRequest{
+		Email:    "user@example.com",
+		Password: "password123",
+	})
+
+	assert.ErrorIs(t, err, ErrMailSendFailed)
+	repo.AssertExpectations(t)
+	mailer.AssertExpectations(t)
+}
+
+func TestAuthUseCase_ResendVerificationEmailWithinWindowIncrementsCount(t *testing.T) {
+	t.Parallel()
+	fixedTime := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	repo := new(mockAuthRepository)
+	mailer := new(mockVerificationEmailSender)
+
+	hashed, err := testVault().GenerateHashPassword("password123")
+	assert.NoError(t, err)
+	hashedPassword := domain.NewPasswordHashFromHash(hashed)
+
+	user := domain.User{
+		ID:           1,
+		Email:        domain.EmailAddress("user@example.com"),
+		PasswordHash: hashedPassword,
+	}
+
+	activeToken := domain.EmailVerificationToken{
+		ID:                    1,
+		UserID:                1,
+		Token:                 "active-token",
+		ExpiresAt:             fixedTime.Add(2 * time.Hour),
+		CreatedAt:             fixedTime.Add(-20 * time.Minute),
+		ResendWindowStartedAt: timePtr(fixedTime.Add(-10 * time.Minute)),
+		ResendCount:           2,
+	}
+
+	repo.On("GetUserByEmail", mock.Anything, domain.EmailAddress("user@example.com")).Return(user, nil).Once()
+	repo.On("GetLatestTokenForUser", mock.Anything, uint(1)).Return(activeToken, nil).Once()
+	repo.On("GetActiveTokenForUser", mock.Anything, uint(1), fixedTime).Return(activeToken, nil).Once()
+	mailer.On("SendVerificationEmail", mock.Anything, mock.Anything, "https://example.com/signup/verify?token=active-token").Return(nil).Once()
+	repo.On("UpdateVerificationEmailResendWindow", mock.Anything, uint(1), fixedTime.Add(-10*time.Minute), 3).Return(nil).Once()
+
+	stubOS := mocklibrary.NewOsWrapperMock(map[string]string{"FRONT_DOMAIN": "https://example.com"})
+	uc := NewAuthUseCase(repo, stubOS, mailer, &stubClock{now: fixedTime}, testVault())
+
+	err = uc.ResendVerificationEmail(context.Background(), domain.ResendVerificationRequest{
+		Email:    "user@example.com",
+		Password: "password123",
+	})
+
+	assert.NoError(t, err)
+	repo.AssertExpectations(t)
+	mailer.AssertExpectations(t)
+}
+
+func TestAuthUseCase_ResendVerificationEmailExpiredWindowResetsCount(t *testing.T) {
+	t.Parallel()
+	fixedTime := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	repo := new(mockAuthRepository)
+	mailer := new(mockVerificationEmailSender)
+
+	hashed, err := testVault().GenerateHashPassword("password123")
+	assert.NoError(t, err)
+	hashedPassword := domain.NewPasswordHashFromHash(hashed)
+
+	user := domain.User{
+		ID:           1,
+		Email:        domain.EmailAddress("user@example.com"),
+		PasswordHash: hashedPassword,
+	}
+
+	activeToken := domain.EmailVerificationToken{
+		ID:                    1,
+		UserID:                1,
+		Token:                 "active-token",
+		ExpiresAt:             fixedTime.Add(2 * time.Hour),
+		CreatedAt:             fixedTime.Add(-2 * time.Hour),
+		ResendWindowStartedAt: timePtr(fixedTime.Add(-20 * time.Minute)),
+		ResendCount:           3,
+	}
+
+	repo.On("GetUserByEmail", mock.Anything, domain.EmailAddress("user@example.com")).Return(user, nil).Once()
+	repo.On("GetLatestTokenForUser", mock.Anything, uint(1)).Return(activeToken, nil).Once()
+	repo.On("GetActiveTokenForUser", mock.Anything, uint(1), fixedTime).Return(activeToken, nil).Once()
+	mailer.On("SendVerificationEmail", mock.Anything, mock.Anything, "https://example.com/signup/verify?token=active-token").Return(nil).Once()
+	repo.On("UpdateVerificationEmailResendWindow", mock.Anything, uint(1), fixedTime, 1).Return(nil).Once()
+
+	stubOS := mocklibrary.NewOsWrapperMock(map[string]string{"FRONT_DOMAIN": "https://example.com"})
+	uc := NewAuthUseCase(repo, stubOS, mailer, &stubClock{now: fixedTime}, testVault())
+
+	err = uc.ResendVerificationEmail(context.Background(), domain.ResendVerificationRequest{
+		Email:    "user@example.com",
+		Password: "password123",
+	})
+
+	assert.NoError(t, err)
+	repo.AssertExpectations(t)
+	mailer.AssertExpectations(t)
+}
+
+func timePtr(t time.Time) *time.Time {
+	return &t
 }

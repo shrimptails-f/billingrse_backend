@@ -12,8 +12,13 @@ import (
 	"gorm.io/gorm"
 )
 
-// ResendVerificationEmail resends the verification email after authenticating the user
-// and checking rate limits (15 minutes since last token).
+const (
+	resendVerificationWindow = 15 * time.Minute
+	maxResendCountPerWindow  = 3
+)
+
+// ResendVerificationEmail resends the verification email after authenticating the user.
+// The fixed window rate limit applies only to successful resend operations, not to the initial registration email.
 // It checks for an existing active token and reuses it if available.
 func (uc *AuthUseCase) ResendVerificationEmail(ctx context.Context, req domain.ResendVerificationRequest) error {
 	// Authenticate the user
@@ -46,16 +51,22 @@ func (uc *AuthUseCase) ResendVerificationEmail(ctx context.Context, req domain.R
 		return fmt.Errorf("failed to get latest token: %w", err)
 	}
 
-	if err == nil {
-		// Token exists, check rate limit
-		if now.Sub(latestToken.CreatedAt) < 15*time.Minute {
-			return ErrResendRateLimited
+	windowStartedAt := now
+	nextResendCount := 1
+	if err == nil && latestToken.ResendWindowStartedAt != nil {
+		if now.Sub(*latestToken.ResendWindowStartedAt) < resendVerificationWindow {
+			if latestToken.ResendCount >= maxResendCountPerWindow {
+				return ErrResendRateLimited
+			}
+			windowStartedAt = *latestToken.ResendWindowStartedAt
+			nextResendCount = latestToken.ResendCount + 1
 		}
 	}
 
 	// Check for existing active token
 	existingToken, err := uc.repo.GetActiveTokenForUser(ctx, user.ID, now)
 	var tokenToUse domain.EmailVerificationToken
+	createdNewToken := false
 
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return fmt.Errorf("failed to check existing token: %w", err)
@@ -79,6 +90,7 @@ func (uc *AuthUseCase) ResendVerificationEmail(ctx context.Context, req domain.R
 			return fmt.Errorf("failed to create verification token: %w", err)
 		}
 		tokenToUse = createdToken
+		createdNewToken = true
 	}
 
 	// Send verification email
@@ -92,9 +104,15 @@ func (uc *AuthUseCase) ResendVerificationEmail(ctx context.Context, req domain.R
 
 	err = uc.mailer.SendVerificationEmail(ctx, user, verifyURL)
 	if err != nil {
-		// Delete the token if email sending fails
-		_ = uc.repo.DeleteTokenByID(ctx, tokenToUse.ID)
+		// Roll back only tokens created by this resend attempt.
+		if createdNewToken {
+			_ = uc.repo.DeleteTokenByID(ctx, tokenToUse.ID)
+		}
 		return ErrMailSendFailed
+	}
+
+	if err := uc.repo.UpdateVerificationEmailResendWindow(ctx, tokenToUse.ID, windowStartedAt, nextResendCount); err != nil {
+		return fmt.Errorf("failed to update resend window: %w", err)
 	}
 
 	return nil

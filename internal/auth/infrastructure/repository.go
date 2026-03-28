@@ -58,12 +58,14 @@ func (userRecord) TableName() string {
 
 // emailVerificationTokenRecord represents the database record structure for email_verification_tokens table
 type emailVerificationTokenRecord struct {
-	ID         uint       `gorm:"column:id"`
-	UserID     uint       `gorm:"column:user_id"`
-	Token      string     `gorm:"column:token;unique"`
-	ExpiresAt  time.Time  `gorm:"column:expires_at"`
-	CreatedAt  time.Time  `gorm:"column:created_at"`
-	ConsumedAt *time.Time `gorm:"column:consumed_at"`
+	ID                    uint       `gorm:"column:id"`
+	UserID                uint       `gorm:"column:user_id"`
+	Token                 string     `gorm:"column:token;unique"`
+	ExpiresAt             time.Time  `gorm:"column:expires_at"`
+	CreatedAt             time.Time  `gorm:"column:created_at"`
+	ResendWindowStartedAt *time.Time `gorm:"column:resend_window_started_at"`
+	ResendCount           int        `gorm:"column:resend_count"`
+	ConsumedAt            *time.Time `gorm:"column:consumed_at"`
 }
 
 // TableName specifies the table name for emailVerificationTokenRecord
