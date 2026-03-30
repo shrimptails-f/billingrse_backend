@@ -18,5 +18,7 @@ func TestAnalyzer(t *testing.T) {
 		"nplusone_interface",
 		"nplusone_crosspkg_helper",
 		"nplusone_crosspkg_method",
+		"nplusone_negative_funclit",
+		"nplusone_negative_wrapper",
 	)
 }
