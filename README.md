@@ -123,7 +123,7 @@ project root
 - Log: `Zap`
 - Testing: `testify` scenario tests
 - Lint: golangci-lint
-- Custom Tooling: DI guard custom lint
+- Custom Tooling: `dicheck`, `nplusonecheck`
 - Migration Version Manage: Atlas
 - Tooling: Taskfile, Air, GitHub Actions
 
@@ -191,6 +191,13 @@ classDiagram
 - `t.Parallel()` 方針と[テストごとのDB準備](./internal/library/mysql/mysql.go#L82)により、テスト独立性と並列安全性を意識している
 - GitHub Actions では build、`go vet`、internal tests、scenario tests、custom lint を実行する
 
+### Custom Lint
+
+- `task lint` では `golangci-lint custom` を使って custom linter を含む lint を実行する
+- `dicheck` は DI まわりの実装ミスを検知する
+- `nplusonecheck` はループ内 query を中心に N+1 になりそうな呼び出しを検知する
+- 詳細は [tools/dicheck/newinterfacecheck.go](./tools/dicheck/newinterfacecheck.go) と [tools/nplusonecheck/README.md](./tools/nplusonecheck/README.md) を参照
+
 ## 設計判断
 
 ### 特に効いたもの
@@ -203,7 +210,7 @@ classDiagram
 - テストでモック化しやすくするために、外部依存(Redis・MySQL・Gmail・OpenAI API)・時間・環境変数をClientで薄く切り出して抽象化できるようにした
 - DDDのドメインモデルはcommon/domainに配置し、パッケージ横断を許容した
 - 手動メール取得実行履歴は`技術的失敗`と`業務上の未解決 / 不成立 / 重複`を分けて記録し、利用者には stage ごとにこれを確認できるようにした
-- AIコーディングエージェントを使用しており、DIで実装ミスが多発したためガードレールとして[Custom lint](./tools/dicheck/newinterfacecheck.go)を実装した
+- AIコーディングエージェントを使用しており、DIやループ内 query の実装ミスを減らすためのガードレールとして custom lint を整備した
 
 ## 開発コマンド
 
