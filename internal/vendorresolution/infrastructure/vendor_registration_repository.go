@@ -21,6 +21,11 @@ type VendorRegistrationRepository struct {
 	log logger.Interface
 }
 
+type vendorAliasLookupKey struct {
+	AliasType       string
+	NormalizedValue string
+}
+
 // NewVendorRegistrationRepository は Gorm ベースの vendor 登録 repository を生成する。
 func NewVendorRegistrationRepository(db *gorm.DB, log logger.Interface) *VendorRegistrationRepository {
 	if log == nil {
@@ -68,10 +73,8 @@ func (r *VendorRegistrationRepository) EnsureByPlan(ctx context.Context, plan co
 		}
 
 		vendor = *record
-		for _, alias := range plan.Aliases {
-			if err := r.ensureAlias(tx, vendor.UserID, vendor.ID, alias); err != nil {
-				return err
-			}
+		if err := r.ensureAliases(tx, vendor.UserID, vendor.ID, plan.Aliases); err != nil {
+			return err
 		}
 
 		return nil
@@ -127,22 +130,13 @@ func (r *VendorRegistrationRepository) createVendor(tx *gorm.DB, userID uint, ca
 	return created, nil
 }
 
-// ensureAlias は登録計画に含まれる alias を vendor 配下へ補完する。
-func (r *VendorRegistrationRepository) ensureAlias(tx *gorm.DB, userID uint, vendorID uint, alias commondomain.VendorRegistrationAlias) error {
-	if alias.AliasType == "" || alias.AliasValue == "" || alias.NormalizedValue == "" {
-		return nil
-	}
-	if utf8.RuneCountInString(alias.NormalizedValue) > vendorNameColumnLimit {
+// ensureAliases は登録計画に含まれる alias 群を vendor 配下へ補完する。
+func (r *VendorRegistrationRepository) ensureAliases(tx *gorm.DB, userID uint, vendorID uint, aliases []commondomain.VendorRegistrationAlias) error {
+	records := buildVendorAliasRecords(userID, vendorID, aliases)
+	if len(records) == 0 {
 		return nil
 	}
 
-	record := vendorAliasRecord{
-		UserID:          userID,
-		VendorID:        vendorID,
-		AliasType:       alias.AliasType,
-		AliasValue:      alias.AliasValue,
-		NormalizedValue: alias.NormalizedValue,
-	}
 	if err := tx.Clauses(clause.OnConflict{
 		Columns: []clause.Column{
 			{Name: "user_id"},
@@ -150,36 +144,94 @@ func (r *VendorRegistrationRepository) ensureAlias(tx *gorm.DB, userID uint, ven
 			{Name: "normalized_value"},
 		},
 		DoNothing: true,
-	}).Create(&record).Error; err != nil {
-		return fmt.Errorf("failed to create vendor alias: %w", err)
-	}
-	if record.ID != 0 {
-		return nil
+	}).Create(&records).Error; err != nil {
+		return fmt.Errorf("failed to create vendor aliases: %w", err)
 	}
 
-	existing, err := r.findAliasByNormalizedValue(tx, userID, alias.AliasType, alias.NormalizedValue)
+	existing, err := r.findAliasesByKeys(tx, userID, records)
 	if err != nil {
 		return err
 	}
-	if existing == nil {
-		return fmt.Errorf("vendor alias upsert finished without persisted row")
+
+	existingByKey := make(map[vendorAliasLookupKey]vendorAliasRecord, len(existing))
+	for _, record := range existing {
+		existingByKey[vendorAliasLookupKey{
+			AliasType:       record.AliasType,
+			NormalizedValue: record.NormalizedValue,
+		}] = record
 	}
-	if existing.VendorID != vendorID {
-		return fmt.Errorf("vendor alias already belongs to another vendor")
+
+	for _, record := range records {
+		existingRecord, found := existingByKey[vendorAliasLookupKey{
+			AliasType:       record.AliasType,
+			NormalizedValue: record.NormalizedValue,
+		}]
+		if !found {
+			return fmt.Errorf("vendor alias upsert finished without persisted row")
+		}
+		if existingRecord.VendorID != vendorID {
+			return fmt.Errorf("vendor alias already belongs to another vendor")
+		}
 	}
+
 	return nil
 }
 
-func (r *VendorRegistrationRepository) findAliasByNormalizedValue(tx *gorm.DB, userID uint, aliasType, normalizedValue string) (*vendorAliasRecord, error) {
-	var record vendorAliasRecord
-	err := tx.Where("user_id = ? AND alias_type = ? AND normalized_value = ?", userID, aliasType, normalizedValue).Take(&record).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+func buildVendorAliasRecords(userID uint, vendorID uint, aliases []commondomain.VendorRegistrationAlias) []vendorAliasRecord {
+	records := make([]vendorAliasRecord, 0, len(aliases))
+	seen := make(map[vendorAliasLookupKey]struct{}, len(aliases))
+
+	for _, alias := range aliases {
+		if alias.AliasType == "" || alias.AliasValue == "" || alias.NormalizedValue == "" {
+			continue
 		}
-		return nil, fmt.Errorf("failed to lookup vendor alias by user_id, alias_type, and normalized_value: %w", err)
+		if utf8.RuneCountInString(alias.NormalizedValue) > vendorNameColumnLimit {
+			continue
+		}
+
+		key := vendorAliasLookupKey{
+			AliasType:       alias.AliasType,
+			NormalizedValue: alias.NormalizedValue,
+		}
+		if _, found := seen[key]; found {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		records = append(records, vendorAliasRecord{
+			UserID:          userID,
+			VendorID:        vendorID,
+			AliasType:       alias.AliasType,
+			AliasValue:      alias.AliasValue,
+			NormalizedValue: alias.NormalizedValue,
+		})
 	}
-	return &record, nil
+
+	return records
+}
+
+func (r *VendorRegistrationRepository) findAliasesByKeys(tx *gorm.DB, userID uint, aliases []vendorAliasRecord) ([]vendorAliasRecord, error) {
+	if len(aliases) == 0 {
+		return nil, nil
+	}
+
+	conditions := make([]string, 0, len(aliases))
+	args := make([]interface{}, 0, 1+len(aliases)*2)
+	args = append(args, userID)
+	for _, alias := range aliases {
+		conditions = append(conditions, "(alias_type = ? AND normalized_value = ?)")
+		args = append(args, alias.AliasType, alias.NormalizedValue)
+	}
+
+	var records []vendorAliasRecord
+	err := tx.Where(
+		"user_id = ? AND ("+strings.Join(conditions, " OR ")+")",
+		args...,
+	).Find(&records).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to lookup vendor aliases by user_id, alias_type, and normalized_value: %w", err)
+	}
+	return records, nil
 }
 
 func normalizeRegistrationPlan(plan commondomain.VendorRegistrationPlan) commondomain.VendorRegistrationPlan {

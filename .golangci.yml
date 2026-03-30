@@ -5,12 +5,16 @@ linters:
   default: none
   enable:
     - diinterfacecheck
+    - nplusonecheck
     - newinterfacecheck
   settings:
     custom:
       diinterfacecheck:
         type: module
         description: detect interface DI types in dig.Provide parameters
+      nplusonecheck:
+        type: module
+        description: detect loop-driven SQL and GORM query calls, including same-package helpers
       newinterfacecheck:
         type: module
         description: detect concrete parameters in NewXxx functions

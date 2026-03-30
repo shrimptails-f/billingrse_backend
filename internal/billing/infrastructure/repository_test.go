@@ -202,6 +202,7 @@ func TestBillingRepository_SaveIfAbsent_ConcurrentDuplicate(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
+		//nolint:nplusonecheck // This test intentionally exercises concurrent DB writes in looped goroutines.
 		go func() {
 			defer wg.Done()
 			result, err := env.repo.SaveIfAbsent(context.Background(), billing)
