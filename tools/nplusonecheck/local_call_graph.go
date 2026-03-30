@@ -2,6 +2,7 @@ package nplusonecheck
 
 import (
 	"go/ast"
+	"go/token"
 	"go/types"
 
 	"golang.org/x/tools/go/analysis"
@@ -47,31 +48,276 @@ func callExecutesQuery(pass *analysis.Pass, pkg *packageState, call *ast.CallExp
 	}
 
 	resolved := state.findDecl(pkg, call)
-	if resolved == nil {
+	if len(resolved) == 0 {
 		return false
 	}
 
-	return state.declContainsQuery(pass, resolved)
+	return state.declsContainQuery(pass, resolved)
 }
 
 // findDecl は CallExpr が current package や import 先 package の helper 関数や
-// method なら、対応する宣言を返します。
-func (s *callGraphState) findDecl(pkg *packageState, call *ast.CallExpr) *resolvedDecl {
+// method なら、対応する宣言候補を返します。
+func (s *callGraphState) findDecl(pkg *packageState, call *ast.CallExpr) []resolvedDecl {
 	if pkg == nil || pkg.typesInfo == nil {
 		return nil
 	}
 
 	switch fun := call.Fun.(type) {
 	case *ast.Ident:
-		return s.resolveDecl(pkg.typesInfo.Uses[fun])
+		return singleResolvedDecl(s.resolveDecl(pkg.typesInfo.Uses[fun]))
 	case *ast.SelectorExpr:
 		if selection := pkg.typesInfo.Selections[fun]; selection != nil {
-			return s.resolveDecl(selection.Obj())
+			return s.resolveSelectionDecls(pkg, fun, selection, call.Pos())
 		}
-		return s.resolveDecl(pkg.typesInfo.Uses[fun.Sel])
+		return singleResolvedDecl(s.resolveDecl(pkg.typesInfo.Uses[fun.Sel]))
 	default:
 		return nil
 	}
+}
+
+func (s *callGraphState) resolveSelectionDecls(
+	pkg *packageState,
+	fun *ast.SelectorExpr,
+	selection *types.Selection,
+	callPos token.Pos,
+) []resolvedDecl {
+	if selection == nil {
+		return nil
+	}
+
+	if unwrapInterface(selection.Recv()) == nil {
+		return singleResolvedDecl(s.resolveDecl(selection.Obj()))
+	}
+
+	return s.resolveInterfaceMethodDecls(pkg, fun, callPos)
+}
+
+func (s *callGraphState) resolveInterfaceMethodDecls(
+	pkg *packageState,
+	fun *ast.SelectorExpr,
+	callPos token.Pos,
+) []resolvedDecl {
+	if pkg == nil || pkg.typesInfo == nil || fun == nil || fun.Sel == nil {
+		return nil
+	}
+
+	if resolved := s.resolveConcreteReceiverMethodDecl(pkg, fun.X, fun.Sel.Name, callPos); resolved != nil {
+		return singleResolvedDecl(resolved)
+	}
+
+	iface := unwrapInterface(pkg.typesInfo.TypeOf(fun.X))
+	if iface == nil {
+		return nil
+	}
+
+	return s.resolveInterfaceMethodCandidates(pkg, iface, fun.Sel.Name)
+}
+
+func (s *callGraphState) resolveConcreteReceiverMethodDecl(
+	pkg *packageState,
+	expr ast.Expr,
+	methodName string,
+	callPos token.Pos,
+) *resolvedDecl {
+	concreteType := s.resolveConcreteType(pkg, expr, callPos)
+	if concreteType == nil {
+		return nil
+	}
+
+	method := lookupMethod(concreteType, methodName)
+	if method == nil {
+		return nil
+	}
+
+	return s.resolveDecl(method)
+}
+
+func (s *callGraphState) resolveConcreteType(pkg *packageState, expr ast.Expr, callPos token.Pos) types.Type {
+	if pkg == nil || pkg.typesInfo == nil || expr == nil {
+		return nil
+	}
+
+	if concreteType := concreteTypeOfExpr(pkg.typesInfo, expr); concreteType != nil {
+		return concreteType
+	}
+
+	ident, ok := unwrapIdent(expr)
+	if !ok {
+		return nil
+	}
+
+	return s.resolveAssignedConcreteType(pkg, objectForIdent(pkg.typesInfo, ident), callPos)
+}
+
+func (s *callGraphState) resolveAssignedConcreteType(
+	pkg *packageState,
+	obj types.Object,
+	callPos token.Pos,
+) types.Type {
+	if pkg == nil || pkg.typesInfo == nil || obj == nil {
+		return nil
+	}
+
+	var (
+		resolved  types.Type
+		ambiguous bool
+	)
+
+	for _, file := range pkg.files {
+		ast.Inspect(file, func(n ast.Node) bool {
+			if ambiguous || n == nil {
+				return !ambiguous
+			}
+			if n.Pos() >= callPos {
+				return false
+			}
+
+			switch node := n.(type) {
+			case *ast.ValueSpec:
+				for idx, name := range node.Names {
+					if objectForIdent(pkg.typesInfo, name) != obj {
+						continue
+					}
+
+					recordResolvedType(pkg.typesInfo, &resolved, &ambiguous, indexedExpr(node.Values, idx))
+				}
+			case *ast.AssignStmt:
+				for idx, lhs := range node.Lhs {
+					ident, ok := lhs.(*ast.Ident)
+					if !ok || objectForIdent(pkg.typesInfo, ident) != obj {
+						continue
+					}
+
+					recordResolvedType(pkg.typesInfo, &resolved, &ambiguous, assignedExpr(node.Rhs, idx))
+				}
+			}
+
+			return !ambiguous
+		})
+		if ambiguous {
+			return nil
+		}
+	}
+
+	return resolved
+}
+
+func recordResolvedType(info *types.Info, resolved *types.Type, ambiguous *bool, expr ast.Expr) {
+	if ambiguous == nil || *ambiguous {
+		return
+	}
+
+	typ := concreteTypeOfExpr(info, expr)
+	if typ == nil {
+		*ambiguous = true
+		return
+	}
+
+	if resolved == nil || *resolved == nil {
+		*resolved = typ
+		return
+	}
+
+	if !types.Identical(*resolved, typ) {
+		*ambiguous = true
+	}
+}
+
+func (s *callGraphState) resolveInterfaceMethodCandidates(
+	pkg *packageState,
+	iface *types.Interface,
+	methodName string,
+) []resolvedDecl {
+	if pkg == nil || iface == nil || methodName == "" {
+		return nil
+	}
+
+	candidates := make([]resolvedDecl, 0)
+	seen := make(map[string]struct{})
+	for _, candidatePkg := range s.loader.searchPackages(pkg) {
+		for _, fn := range candidatePkg.funcsByName[methodName] {
+			sig, ok := fn.Type().(*types.Signature)
+			if !ok || sig.Recv() == nil {
+				continue
+			}
+			if !types.Implements(sig.Recv().Type(), iface) {
+				continue
+			}
+
+			resolved := s.resolveDecl(fn)
+			if resolved == nil {
+				continue
+			}
+
+			if _, ok := seen[resolved.key]; ok {
+				continue
+			}
+
+			seen[resolved.key] = struct{}{}
+			candidates = append(candidates, *resolved)
+		}
+	}
+
+	return candidates
+}
+
+func lookupMethod(typ types.Type, methodName string) *types.Func {
+	methods := types.NewMethodSet(typ)
+	for idx := 0; idx < methods.Len(); idx++ {
+		obj, ok := methods.At(idx).Obj().(*types.Func)
+		if ok && obj.Name() == methodName {
+			return obj
+		}
+	}
+
+	return nil
+}
+
+func unwrapIdent(expr ast.Expr) (*ast.Ident, bool) {
+	switch node := expr.(type) {
+	case *ast.Ident:
+		return node, true
+	case *ast.ParenExpr:
+		return unwrapIdent(node.X)
+	default:
+		return nil, false
+	}
+}
+
+func objectForIdent(info *types.Info, ident *ast.Ident) types.Object {
+	if info == nil || ident == nil {
+		return nil
+	}
+
+	if obj := info.Uses[ident]; obj != nil {
+		return obj
+	}
+
+	return info.Defs[ident]
+}
+
+func indexedExpr(exprs []ast.Expr, idx int) ast.Expr {
+	if idx < 0 || idx >= len(exprs) {
+		return nil
+	}
+
+	return exprs[idx]
+}
+
+func assignedExpr(exprs []ast.Expr, idx int) ast.Expr {
+	if len(exprs) == 1 {
+		return exprs[0]
+	}
+
+	return indexedExpr(exprs, idx)
+}
+
+func singleResolvedDecl(resolved *resolvedDecl) []resolvedDecl {
+	if resolved == nil {
+		return nil
+	}
+
+	return []resolvedDecl{*resolved}
 }
 
 // resolveDecl は object が current package または import 先 package の関数なら、
@@ -102,6 +348,16 @@ func (s *callGraphState) resolveDecl(obj types.Object) *resolvedDecl {
 		pkg:  pkg,
 		decl: decl,
 	}
+}
+
+func (s *callGraphState) declsContainQuery(pass *analysis.Pass, resolved []resolvedDecl) bool {
+	for idx := range resolved {
+		if s.declContainsQuery(pass, &resolved[idx]) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // declContainsQuery は helper 関数や method の本体を調べて、

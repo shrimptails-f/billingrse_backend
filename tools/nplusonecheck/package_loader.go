@@ -6,6 +6,7 @@ import (
 	"go/types"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -14,9 +15,12 @@ import (
 
 // packageState は 1 package 分の型情報と、関数宣言 index を持ちます。
 type packageState struct {
-	path      string
-	typesInfo *types.Info
-	decls     map[string]*ast.FuncDecl
+	path        string
+	typesInfo   *types.Info
+	files       []*ast.File
+	decls       map[string]*ast.FuncDecl
+	funcsByName map[string][]*types.Func
+	imports     map[string]struct{}
 }
 
 // packageLoader は current package と import 先 package の AST / 型情報を管理します。
@@ -131,9 +135,12 @@ func (l *packageLoader) loadPackage(importPath string) *packageState {
 // buildPackageState は package の関数宣言 index を組み立てます。
 func buildPackageState(path string, typesInfo *types.Info, files []*ast.File) *packageState {
 	state := &packageState{
-		path:      path,
-		typesInfo: typesInfo,
-		decls:     make(map[string]*ast.FuncDecl),
+		path:        path,
+		typesInfo:   typesInfo,
+		files:       files,
+		decls:       make(map[string]*ast.FuncDecl),
+		funcsByName: make(map[string][]*types.Func),
+		imports:     make(map[string]struct{}),
 	}
 
 	if typesInfo == nil {
@@ -141,6 +148,19 @@ func buildPackageState(path string, typesInfo *types.Info, files []*ast.File) *p
 	}
 
 	for _, file := range files {
+		for _, imp := range file.Imports {
+			if imp == nil || imp.Path == nil {
+				continue
+			}
+
+			importPath, err := strconv.Unquote(imp.Path.Value)
+			if err != nil || importPath == "" {
+				continue
+			}
+
+			state.imports[importPath] = struct{}{}
+		}
+
 		for _, decl := range file.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
 			if !ok || fn.Name == nil {
@@ -158,10 +178,38 @@ func buildPackageState(path string, typesInfo *types.Info, files []*ast.File) *p
 			}
 
 			state.decls[key] = fn
+			state.funcsByName[fn.Name.Name] = append(state.funcsByName[fn.Name.Name], obj)
 		}
 	}
 
 	return state
+}
+
+func (l *packageLoader) searchPackages(pkg *packageState) []*packageState {
+	if pkg == nil {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	result := make([]*packageState, 0, 1+len(pkg.imports))
+	add := func(state *packageState) {
+		if state == nil {
+			return
+		}
+		if _, ok := seen[state.path]; ok {
+			return
+		}
+
+		seen[state.path] = struct{}{}
+		result = append(result, state)
+	}
+
+	add(pkg)
+	for importPath := range pkg.imports {
+		add(l.loadPackage(importPath))
+	}
+
+	return result
 }
 
 // detectWorkspaceRoot は current package の source file から

@@ -14,8 +14,9 @@ type queryTarget struct {
 }
 
 // queryTargets は PoC で監視する最小限の対象です。
-// current package と同じ workspace 配下の helper 関数や method は再帰的にたどりますが、
-// interface 越しの呼び出しまでは追いません。
+// current package と同じ workspace 配下の helper 関数や method は再帰的にたどり、
+// interface method はローカル concrete 解決または current package/direct import の
+// 候補列挙で追跡します。
 var queryTargets = []queryTarget{
 	{
 		packagePath: "database/sql",
@@ -140,6 +141,42 @@ func unwrapNamedOrPointer(typ types.Type) *types.Named {
 	}
 
 	return nil
+}
+
+func unwrapInterface(typ types.Type) *types.Interface {
+	typ = types.Unalias(typ)
+	if typ == nil {
+		return nil
+	}
+
+	iface, ok := typ.Underlying().(*types.Interface)
+	if !ok {
+		return nil
+	}
+
+	return iface
+}
+
+func concreteTypeOfExpr(typesInfo *types.Info, expr ast.Expr) types.Type {
+	if typesInfo == nil || expr == nil {
+		return nil
+	}
+
+	switch node := expr.(type) {
+	case *ast.ParenExpr:
+		return concreteTypeOfExpr(typesInfo, node.X)
+	case *ast.CallExpr:
+		if len(node.Args) == 1 && unwrapInterface(typesInfo.TypeOf(node.Fun)) != nil {
+			return concreteTypeOfExpr(typesInfo, node.Args[0])
+		}
+	}
+
+	typ := typesInfo.TypeOf(expr)
+	if typ == nil || unwrapInterface(typ) != nil {
+		return nil
+	}
+
+	return types.Unalias(typ)
 }
 
 // newMethodSet は対象メソッド名を高速に照合するための set を作ります。
