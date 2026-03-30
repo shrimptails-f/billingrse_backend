@@ -2,125 +2,134 @@ package nplusonecheck
 
 import (
 	"go/ast"
-	"go/token"
 	"go/types"
 
 	"golang.org/x/tools/go/analysis"
 )
 
-// localCallState は同一 package 内の関数宣言と、
+// callGraphState は current package と import 先 package をまたいで、
 // 「この関数を実行すると最終的にクエリが走るか」の判定結果を持ちます。
-type localCallState struct {
-	decls    map[token.Pos]*ast.FuncDecl
-	memo     map[token.Pos]bool
-	visiting map[token.Pos]bool
+type callGraphState struct {
+	loader   *packageLoader
+	memo     map[string]bool
+	visiting map[string]bool
 }
 
-// newLocalCallState は同一 package 内の top-level 関数と method を集めます。
-func newLocalCallState(pass *analysis.Pass) *localCallState {
-	state := &localCallState{
-		decls:    make(map[token.Pos]*ast.FuncDecl),
-		memo:     make(map[token.Pos]bool),
-		visiting: make(map[token.Pos]bool),
+type resolvedDecl struct {
+	key  string
+	pkg  *packageState
+	decl *ast.FuncDecl
+}
+
+// newCallGraphState は current package を起点に call graph 追跡 state を作ります。
+func newCallGraphState(pass *analysis.Pass) *callGraphState {
+	return &callGraphState{
+		loader:   newPackageLoader(pass),
+		memo:     make(map[string]bool),
+		visiting: make(map[string]bool),
 	}
-
-	for _, file := range pass.Files {
-		for _, decl := range file.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Name == nil {
-				continue
-			}
-
-			obj := pass.TypesInfo.Defs[fn.Name]
-			if obj == nil {
-				continue
-			}
-
-			state.decls[obj.Pos()] = fn
-		}
-	}
-
-	return state
 }
 
 // callExecutesQuery は、この呼び出しを実行すると最終的に
 // DB クエリまで到達するかを判定します。
-func callExecutesQuery(pass *analysis.Pass, call *ast.CallExpr, state *localCallState) bool {
-	if isQueryCall(pass, call) {
+func callExecutesQuery(pass *analysis.Pass, pkg *packageState, call *ast.CallExpr, state *callGraphState) bool {
+	if pkg == nil || pkg.typesInfo == nil {
+		return false
+	}
+
+	if isQueryCall(pkg.typesInfo, call) {
 		return true
 	}
 
 	// 即時実行の無名関数は、その本体をこの場で実行するため再帰的に見ます。
 	if lit, ok := call.Fun.(*ast.FuncLit); ok {
-		return state.nodeContainsQuery(pass, lit.Body)
+		return state.nodeContainsQuery(pass, pkg, lit.Body)
 	}
 
-	decl := state.findLocalDecl(pass, call)
-	if decl == nil {
+	resolved := state.findDecl(pkg, call)
+	if resolved == nil {
 		return false
 	}
 
-	return state.declContainsQuery(pass, decl)
+	return state.declContainsQuery(pass, resolved)
 }
 
-// findLocalDecl は CallExpr が同一 package の helper 関数や method なら、
-// 対応する宣言を返します。
-func (s *localCallState) findLocalDecl(pass *analysis.Pass, call *ast.CallExpr) *ast.FuncDecl {
+// findDecl は CallExpr が current package や import 先 package の helper 関数や
+// method なら、対応する宣言を返します。
+func (s *callGraphState) findDecl(pkg *packageState, call *ast.CallExpr) *resolvedDecl {
+	if pkg == nil || pkg.typesInfo == nil {
+		return nil
+	}
+
 	switch fun := call.Fun.(type) {
 	case *ast.Ident:
-		return s.declByObject(pass, pass.TypesInfo.Uses[fun])
+		return s.resolveDecl(pkg.typesInfo.Uses[fun])
 	case *ast.SelectorExpr:
-		if selection := pass.TypesInfo.Selections[fun]; selection != nil {
-			return s.declByObject(pass, selection.Obj())
+		if selection := pkg.typesInfo.Selections[fun]; selection != nil {
+			return s.resolveDecl(selection.Obj())
 		}
-		return s.declByObject(pass, pass.TypesInfo.Uses[fun.Sel])
+		return s.resolveDecl(pkg.typesInfo.Uses[fun.Sel])
 	default:
 		return nil
 	}
 }
 
-// declByObject は object が同一 package の関数なら、その宣言を返します。
-func (s *localCallState) declByObject(pass *analysis.Pass, obj types.Object) *ast.FuncDecl {
-	if obj == nil || obj.Pkg() == nil || obj.Pkg().Path() != pass.Pkg.Path() {
-		return nil
-	}
-
+// resolveDecl は object が current package または import 先 package の関数なら、
+// 対応する package 情報と宣言を返します。
+func (s *callGraphState) resolveDecl(obj types.Object) *resolvedDecl {
 	fn, ok := obj.(*types.Func)
 	if !ok {
 		return nil
 	}
 
-	return s.decls[fn.Pos()]
+	key := funcKey(fn)
+	if key == "" {
+		return nil
+	}
+
+	pkg := s.loader.packageForObject(fn)
+	if pkg == nil {
+		return nil
+	}
+
+	decl := pkg.decls[key]
+	if decl == nil {
+		return nil
+	}
+
+	return &resolvedDecl{
+		key:  key,
+		pkg:  pkg,
+		decl: decl,
+	}
 }
 
 // declContainsQuery は helper 関数や method の本体を調べて、
 // 最終的にクエリ実行へ到達するかを返します。
-func (s *localCallState) declContainsQuery(pass *analysis.Pass, decl *ast.FuncDecl) bool {
-	if decl == nil || decl.Body == nil {
+func (s *callGraphState) declContainsQuery(pass *analysis.Pass, resolved *resolvedDecl) bool {
+	if resolved == nil || resolved.decl == nil || resolved.decl.Body == nil {
 		return false
 	}
 
-	key := decl.Pos()
-
-	if result, ok := s.memo[key]; ok {
+	if result, ok := s.memo[resolved.key]; ok {
 		return result
 	}
 
-	if s.visiting[key] {
+	if s.visiting[resolved.key] {
 		return false
 	}
 
-	s.visiting[key] = true
-	result := s.nodeContainsQuery(pass, decl.Body)
-	delete(s.visiting, key)
-	s.memo[key] = result
+	s.visiting[resolved.key] = true
+	result := s.nodeContainsQuery(pass, resolved.pkg, resolved.decl.Body)
+	delete(s.visiting, resolved.key)
+	s.memo[resolved.key] = result
 
 	return result
 }
 
 // nodeContainsQuery はノード配下にある実行される呼び出しを調べて、
 // クエリまで到達する経路があるかを返します。
-func (s *localCallState) nodeContainsQuery(pass *analysis.Pass, node ast.Node) bool {
+func (s *callGraphState) nodeContainsQuery(pass *analysis.Pass, pkg *packageState, node ast.Node) bool {
 	found := false
 
 	ast.Inspect(node, func(n ast.Node) bool {
@@ -139,7 +148,7 @@ func (s *localCallState) nodeContainsQuery(pass *analysis.Pass, node ast.Node) b
 			return true
 		}
 
-		if callExecutesQuery(pass, call, s) {
+		if callExecutesQuery(pass, pkg, call, s) {
 			found = true
 			return false
 		}

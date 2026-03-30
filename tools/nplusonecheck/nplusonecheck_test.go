@@ -15,5 +15,7 @@ func TestAnalyzer(t *testing.T) {
 		"nplusone_gorm",
 		"nplusone_helper",
 		"nplusone_method",
+		"nplusone_crosspkg_helper",
+		"nplusone_crosspkg_method",
 	)
 }

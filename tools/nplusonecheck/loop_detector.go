@@ -9,7 +9,8 @@ import (
 // run は package 内の各ファイルを走査し、
 // for / range の本体に対してクエリ実行につながる呼び出しがないかを見ます。
 func run(pass *analysis.Pass) {
-	state := newLocalCallState(pass)
+	state := newCallGraphState(pass)
+	currentPkg := state.loader.currentPackage()
 
 	for _, file := range pass.Files {
 		// file は 1 ファイル分の AST です。
@@ -21,12 +22,12 @@ func run(pass *analysis.Pass) {
 			case *ast.ForStmt:
 				// 通常の for 文です。
 				// 例: for i := 0; i < n; i++ { ... }
-				reportLoopQueries(pass, loop.Body, state)
+				reportLoopQueries(pass, currentPkg, loop.Body, state)
 				return false
 			case *ast.RangeStmt:
 				// range を使う for 文です。
 				// 例: for _, v := range items { ... }
-				reportLoopQueries(pass, loop.Body, state)
+				reportLoopQueries(pass, currentPkg, loop.Body, state)
 				return false
 			default:
 				return true
@@ -37,7 +38,7 @@ func run(pass *analysis.Pass) {
 
 // reportLoopQueries はループ本体の中にある CallExpr を見て、
 // 代表的な DB クエリ実行に当たるものを報告します。
-func reportLoopQueries(pass *analysis.Pass, body *ast.BlockStmt, state *localCallState) {
+func reportLoopQueries(pass *analysis.Pass, pkg *packageState, body *ast.BlockStmt, state *callGraphState) {
 	if body == nil {
 		return
 	}
@@ -54,7 +55,7 @@ func reportLoopQueries(pass *analysis.Pass, body *ast.BlockStmt, state *localCal
 			return true
 		}
 
-		if !callExecutesQuery(pass, call, state) {
+		if !callExecutesQuery(pass, pkg, call, state) {
 			return true
 		}
 

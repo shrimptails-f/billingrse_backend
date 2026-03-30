@@ -3,8 +3,6 @@ package nplusonecheck
 import (
 	"go/ast"
 	"go/types"
-
-	"golang.org/x/tools/go/analysis"
 )
 
 // queryTarget は「どの型の、どのメソッド呼び出しを
@@ -16,8 +14,8 @@ type queryTarget struct {
 }
 
 // queryTargets は PoC で監視する最小限の対象です。
-// 同一 package の helper 関数や method は再帰的にたどりますが、
-// 他 package や interface 越しの呼び出しまでは追いません。
+// current package と同じ workspace 配下の helper 関数や method は再帰的にたどりますが、
+// interface 越しの呼び出しまでは追いません。
 var queryTargets = []queryTarget{
 	{
 		packagePath: "database/sql",
@@ -102,13 +100,13 @@ var queryTargets = []queryTarget{
 
 // isQueryCall は selector 呼び出しの receiver 型を解決し、
 // 登録済みの DB 型とメソッド名に一致するかを判定します。
-func isQueryCall(pass *analysis.Pass, call *ast.CallExpr) bool {
+func isQueryCall(typesInfo *types.Info, call *ast.CallExpr) bool {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok || sel.Sel == nil {
 		return false
 	}
 
-	named := unwrapNamedOrPointer(pass.TypesInfo.TypeOf(sel.X))
+	named := unwrapNamedOrPointer(typesInfo.TypeOf(sel.X))
 	if named == nil || named.Obj() == nil || named.Obj().Pkg() == nil {
 		return false
 	}
