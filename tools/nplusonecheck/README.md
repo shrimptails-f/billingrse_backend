@@ -70,6 +70,6 @@
 | hook / callback | 例: `AfterFind`, serializer, scan hook などで暗黙に query が走る形です。明示的な call graph と receiver 型の追跡だけでは扱えません。 | [local_call_graph.go](/home/dev/backend/tools/nplusonecheck/local_call_graph.go), [query_matcher.go](/home/dev/backend/tools/nplusonecheck/query_matcher.go) |
 | closure / 無名関数の未実行定義 | 例: `fn := func() { db.First(...) }`。実行経路に乗ることが AST から直ちに分からないため、現状は中身を見ません。 | [loop_detector.go](/home/dev/backend/tools/nplusonecheck/loop_detector.go), [local_call_graph.go](/home/dev/backend/tools/nplusonecheck/local_call_graph.go) |
 
-現状は PoC なので、検知漏れを減らすよりも、まずは分かりやすい query 実行点を軽量に拾う方を優先しています。
+この linter は、検知漏れを減らすよりも、まずは分かりやすい query 実行点を軽量に拾う方を優先しています。
 また `gorm` については「実行メソッド」を query とみなしているため、`Where(...)` や `Session(...)` のような builder / scope 生成だけでは報告しません。
 また interface method は保守的に扱っており、実装候補が複数あっても、その中に query 到達候補があれば警告します。
