@@ -170,6 +170,76 @@ func TestVendorRegistrationRepository_EnsureByPlan_IsIdempotent(t *testing.T) {
 }
 
 // 観点:
+// - 複数 alias を 1 回の登録計画でまとめて補完できること
+func TestVendorRegistrationRepository_EnsureByPlan_CreatesMultipleAliases(t *testing.T) {
+	t.Parallel()
+
+	env := newVendorRegistrationInfraTestEnv(t)
+	defer env.clean()
+
+	vendor, err := env.repository.EnsureByPlan(context.Background(), commondomain.VendorRegistrationPlan{
+		UserID:               1,
+		VendorName:           "Acme",
+		NormalizedVendorName: "acme",
+		Aliases: []commondomain.VendorRegistrationAlias{
+			{
+				AliasType:       vrdomain.MatchedByNameExact,
+				AliasValue:      "Acme",
+				NormalizedValue: "acme",
+			},
+			{
+				AliasType:       vrdomain.MatchedBySenderName,
+				AliasValue:      "ACME Billing",
+				NormalizedValue: "acme billing",
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, vendor)
+
+	var aliases []vendorAliasRecord
+	require.NoError(t, env.db.Order("alias_type ASC").Find(&aliases).Error)
+	require.Len(t, aliases, 2)
+	require.Equal(t, vendor.ID, aliases[0].VendorID)
+	require.Equal(t, vendor.ID, aliases[1].VendorID)
+	require.Equal(t, []string{vrdomain.MatchedByNameExact, vrdomain.MatchedBySenderName}, []string{aliases[0].AliasType, aliases[1].AliasType})
+}
+
+// 観点:
+// - 同じ alias key が複数回含まれても 1 件として扱うこと
+func TestVendorRegistrationRepository_EnsureByPlan_DeduplicatesAliasKeys(t *testing.T) {
+	t.Parallel()
+
+	env := newVendorRegistrationInfraTestEnv(t)
+	defer env.clean()
+
+	vendor, err := env.repository.EnsureByPlan(context.Background(), commondomain.VendorRegistrationPlan{
+		UserID:               1,
+		VendorName:           "Acme",
+		NormalizedVendorName: "acme",
+		Aliases: []commondomain.VendorRegistrationAlias{
+			{
+				AliasType:       vrdomain.MatchedByNameExact,
+				AliasValue:      "Acme",
+				NormalizedValue: "acme",
+			},
+			{
+				AliasType:       vrdomain.MatchedByNameExact,
+				AliasValue:      "ACME",
+				NormalizedValue: "acme",
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, vendor)
+
+	var aliases []vendorAliasRecord
+	require.NoError(t, env.db.Find(&aliases).Error)
+	require.Len(t, aliases, 1)
+	require.Equal(t, "Acme", aliases[0].AliasValue)
+}
+
+// 観点:
 // - 同じ normalized_name でも user_id が違えば別 vendor を作成すること
 func TestVendorRegistrationRepository_EnsureByPlan_CreatesUserScopedVendor(t *testing.T) {
 	t.Parallel()
@@ -206,6 +276,43 @@ func TestVendorRegistrationRepository_EnsureByPlan_CreatesUserScopedVendor(t *te
 	require.NoError(t, env.db.Order("id ASC").Find(&aliases).Error)
 	require.Len(t, aliases, 2)
 	require.Equal(t, []uint{1, 2}, []uint{aliases[0].UserID, aliases[1].UserID})
+}
+
+// 観点:
+// - alias が別 vendor に属していたら transaction 全体を rollback すること
+func TestVendorRegistrationRepository_EnsureByPlan_RollsBackWhenAliasBelongsToAnotherVendor(t *testing.T) {
+	t.Parallel()
+
+	env := newVendorRegistrationInfraTestEnv(t)
+	defer env.clean()
+
+	seedVendorRecord(t, env.db, 10, 1, "Existing", "existing", testTime(9, 0))
+	seedAliasRecord(t, env.db, 1, 10, vrdomain.MatchedBySenderDomain, "billing@example.com", "billing@example.com", testTime(9, 5))
+
+	vendor, err := env.repository.EnsureByPlan(context.Background(), commondomain.VendorRegistrationPlan{
+		UserID:               1,
+		VendorName:           "Other Vendor",
+		NormalizedVendorName: "other vendor",
+		Aliases: []commondomain.VendorRegistrationAlias{
+			{
+				AliasType:       vrdomain.MatchedBySenderDomain,
+				AliasValue:      "billing@example.com",
+				NormalizedValue: "billing@example.com",
+			},
+		},
+	})
+	require.ErrorContains(t, err, "vendor alias already belongs to another vendor")
+	require.Nil(t, vendor)
+
+	var vendors []vendorRecord
+	require.NoError(t, env.db.Order("id ASC").Find(&vendors).Error)
+	require.Len(t, vendors, 1)
+	require.Equal(t, uint(10), vendors[0].ID)
+
+	var aliases []vendorAliasRecord
+	require.NoError(t, env.db.Order("id ASC").Find(&aliases).Error)
+	require.Len(t, aliases, 1)
+	require.Equal(t, uint(10), aliases[0].VendorID)
 }
 
 func seedVendorRecord(t *testing.T, db *gorm.DB, id uint, userID uint, name, normalized string, createdAt time.Time) {

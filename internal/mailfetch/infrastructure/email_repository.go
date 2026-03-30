@@ -178,6 +178,7 @@ func (r *GormEmailRepositoryAdapter) savePreparedEmailChunks(
 		}
 
 		chunk := prepared[start:end]
+		//nolint:nplusonecheck // Chunked saves are intentional to allow partial success handling per batch.
 		chunkResults, err := r.savePreparedEmails(ctx, userID, source, chunk)
 		if err != nil {
 			var insertErr *batchInsertError
