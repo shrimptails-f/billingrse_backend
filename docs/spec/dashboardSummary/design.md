@@ -53,7 +53,7 @@ flowchart TB
 {
   "current_month_analysis_success_count": 1280,
   "total_saved_billing_count": 842,
-  "fallback_billing_count": 73
+  "current_month_fallback_billing_count": 73
 }
 ```
 
@@ -85,10 +85,11 @@ flowchart TB
 - 重複判定で保存されなかったものは含めない。
 - repository が保存済み請求件数を集計する。
 
-### `fallback_billing_count`
+### `current_month_fallback_billing_count`
 - 集計元は `billings` とする。
 - 判定条件は `billing_date IS NULL` とする。
-- 既存 `fallback_billing_count` の意味と揃える。
+- 月判定は v1 では UTC 現在月を使う。
+- `billing_summary_date` で当月範囲に入るものを集計する。
 
 ## SQL 集計方針
 
@@ -100,7 +101,7 @@ flowchart TB
 補足:
 - `current_month_analysis_success_count` は期間条件付き `COUNT(*)`
 - `total_saved_billing_count` は `billings` の `COUNT(*)`
-- `fallback_billing_count` は `billings.billing_date IS NULL` 条件付き `COUNT(*)`
+- `current_month_fallback_billing_count` は `billings.billing_date IS NULL` かつ `billings.billing_summary_date` が当月範囲内の条件付き `COUNT(*)`
 
 ## package 構成
 
@@ -138,4 +139,4 @@ internal/
 - `user_id` 所有範囲
 - `parsed_emails` 当月件数集計
 - `billings` 総件数集計
-- `billings.billing_date IS NULL` 件数集計
+- `billings.billing_date IS NULL` かつ `billing_summary_date` 当月件数集計

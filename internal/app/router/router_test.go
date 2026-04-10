@@ -8,10 +8,12 @@ import (
 	"business/internal/app/middleware"
 	authpresentation "business/internal/app/presentation/auth"
 	billingpresentation "business/internal/app/presentation/billing"
+	dashboardpresentation "business/internal/app/presentation/dashboard"
 	macpresentation "business/internal/app/presentation/mailaccountconnection"
 	manualpresentation "business/internal/app/presentation/manualmailworkflow"
 	"business/internal/auth/domain"
 	billingqueryapp "business/internal/billingquery/application"
+	dashboardqueryapp "business/internal/dashboardquery/application"
 	"business/internal/library/logger"
 	macapp "business/internal/mailaccountconnection/application"
 	macdomain "business/internal/mailaccountconnection/domain"
@@ -129,6 +131,12 @@ func (s *stubBillingMonthDetailUseCase) Get(ctx context.Context, query billingqu
 	return billingqueryapp.MonthDetailResult{VendorItems: []billingqueryapp.MonthDetailVendorItem{}}, nil
 }
 
+type stubDashboardSummaryUseCase struct{}
+
+func (s *stubDashboardSummaryUseCase) Get(ctx context.Context, query dashboardqueryapp.SummaryQuery) (dashboardqueryapp.SummaryResult, error) {
+	return dashboardqueryapp.SummaryResult{}, nil
+}
+
 func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -166,6 +174,10 @@ func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 		)
 	})
 	assert.NoError(t, err)
+	err = container.Provide(func() *dashboardpresentation.Controller {
+		return dashboardpresentation.NewController(&stubDashboardSummaryUseCase{}, log)
+	})
+	assert.NoError(t, err)
 
 	domain, _ := osw.GetEnv("DOMAIN")
 	_, err = Router(g, container, log, domain)
@@ -195,6 +207,7 @@ func TestNewRouterRegistersVersionedAndLegacyRoutes(t *testing.T) {
 		"GET /api/v1/billings",
 		"GET /api/v1/billings/summary/monthly-trend",
 		"GET /api/v1/billings/summary/monthly-detail/:year_month",
+		"GET /api/v1/dashboard/summary",
 	}
 	for _, route := range expectedRoutes {
 		assert.Contains(t, routes, route)
