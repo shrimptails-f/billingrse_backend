@@ -163,7 +163,6 @@ classDiagram
   User --> Email : 所有
   User --> Billing : 所有
 
-  ManualMailWorkflowHistory --> MailAccountConnection : 実行対象
   ManualMailWorkflowHistory *-- ManualMailWorkflowFailure : 失敗記録
 
   Email --> ParsedEmail : AI解析
