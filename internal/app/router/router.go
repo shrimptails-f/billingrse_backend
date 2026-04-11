@@ -4,6 +4,7 @@ import (
 	"business/internal/app/middleware"
 	authpresentation "business/internal/app/presentation/auth"
 	billingpresentation "business/internal/app/presentation/billing"
+	dashboardpresentation "business/internal/app/presentation/dashboard"
 	macpresentation "business/internal/app/presentation/mailaccountconnection"
 	manualpresentation "business/internal/app/presentation/manualmailworkflow"
 	"business/internal/library/logger"
@@ -89,6 +90,19 @@ func Router(g *gin.Engine, container *dig.Container, log logger.Interface, allow
 		group.GET("/summary/monthly-detail/:year_month", authMiddleware.Authenticate(), billingController.MonthDetail)
 	}
 	registerBillingRoutes(g.Group("/api/v1/billings"))
+
+	// Dashboard関連
+	var dashboardController *dashboardpresentation.Controller
+	if err := container.Invoke(func(dc *dashboardpresentation.Controller) {
+		dashboardController = dc
+	}); err != nil {
+		log.Error("failed to resolve dashboard controller", logger.Err(err))
+		return g, err
+	}
+	registerDashboardRoutes := func(group *gin.RouterGroup) {
+		group.GET("/summary", authMiddleware.Authenticate(), dashboardController.Summary)
+	}
+	registerDashboardRoutes(g.Group("/api/v1/dashboard"))
 
 	return g, nil
 }

@@ -4,6 +4,7 @@ import (
 	"business/internal/app/middleware"
 	authpresentation "business/internal/app/presentation/auth"
 	billingpresentation "business/internal/app/presentation/billing"
+	dashboardpresentation "business/internal/app/presentation/dashboard"
 	macpresentation "business/internal/app/presentation/mailaccountconnection"
 	manualpresentation "business/internal/app/presentation/manualmailworkflow"
 	v1 "business/internal/app/router"
@@ -11,6 +12,7 @@ import (
 	authdomain "business/internal/auth/domain"
 	authinfra "business/internal/auth/infrastructure"
 	billingqueryapp "business/internal/billingquery/application"
+	dashboardqueryapp "business/internal/dashboardquery/application"
 	"business/internal/library/crypto"
 	"business/internal/library/gmailService"
 	"business/internal/library/logger"
@@ -117,6 +119,8 @@ type scenarioStubBillingMonthlyTrendUseCase struct{}
 
 type scenarioStubBillingMonthDetailUseCase struct{}
 
+type scenarioStubDashboardSummaryUseCase struct{}
+
 func newMailAccountConnectionScenarioEnv(t *testing.T) *mailAccountConnectionScenarioEnv {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -173,6 +177,7 @@ func newMailAccountConnectionScenarioEnv(t *testing.T) *mailAccountConnectionSce
 		&scenarioStubBillingMonthDetailUseCase{},
 		log,
 	)
+	dashboardController := dashboardpresentation.NewController(&scenarioStubDashboardSummaryUseCase{}, log)
 
 	router := gin.New()
 	container := dig.New()
@@ -181,6 +186,7 @@ func newMailAccountConnectionScenarioEnv(t *testing.T) *mailAccountConnectionSce
 	require.NoError(t, container.Provide(func() *macpresentation.Controller { return macController }))
 	require.NoError(t, container.Provide(func() *manualpresentation.Controller { return manualController }))
 	require.NoError(t, container.Provide(func() *billingpresentation.Controller { return billingController }))
+	require.NoError(t, container.Provide(func() *dashboardpresentation.Controller { return dashboardController }))
 	_, err = v1.Router(router, container, log, scenarioAllowedOrigin)
 	require.NoError(t, err)
 
@@ -497,8 +503,13 @@ func (s *scenarioStubBillingMonthDetailUseCase) Get(ctx context.Context, query b
 	}, nil
 }
 
+func (s *scenarioStubDashboardSummaryUseCase) Get(ctx context.Context, query dashboardqueryapp.SummaryQuery) (dashboardqueryapp.SummaryResult, error) {
+	return dashboardqueryapp.SummaryResult{}, nil
+}
+
 var _ manualapp.StartUseCase = (*scenarioStubManualMailWorkflowUseCase)(nil)
 var _ manualapp.ListUseCase = (*scenarioStubManualMailWorkflowUseCase)(nil)
 var _ billingqueryapp.ListUseCaseInterface = (*scenarioStubBillingListUseCase)(nil)
 var _ billingqueryapp.MonthlyTrendUseCaseInterface = (*scenarioStubBillingMonthlyTrendUseCase)(nil)
 var _ billingqueryapp.MonthDetailUseCaseInterface = (*scenarioStubBillingMonthDetailUseCase)(nil)
+var _ dashboardqueryapp.SummaryUseCaseInterface = (*scenarioStubDashboardSummaryUseCase)(nil)

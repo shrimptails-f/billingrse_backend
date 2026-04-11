@@ -7,6 +7,7 @@
 | [Billing 一覧 API](./BillingList.md) | `GET` | `/api/v1/billings` | 認証済みユーザー自身の請求一覧を、検索中心で取得する。 |
 | [Billing Monthly Trend API](./BillingMonthlyTrend.md) | `GET` | `/api/v1/billings/summary/monthly-trend` | 認証済みユーザー自身の請求を、通貨別の直近 12 ヶ月 zero-fill 推移として取得する。 |
 | [Billing Month Detail API](./BillingMonthDetail.md) | `GET` | `/api/v1/billings/summary/monthly-detail/:year_month` | 認証済みユーザー自身の請求を、指定月の支払先別内訳付き詳細として取得する。 |
+| [ダッシュボード 解析・保存サマリー](./dashboardSummary/requirementsDefinition.md) | `GET` | `/api/v1/dashboard/summary` | 認証済みユーザー自身のダッシュボード KPI を取得する。 |
 | [Gmail OAuth 認可 URL 発行 API](./MailAccountConnection.md) | `POST` | `/api/v1/mail-account-connections/gmail/authorize` | 認証済みユーザー向けに Gmail OAuth の認可 URL と有効期限を発行する。 |
 | [Gmail OAuth コールバック受付 API](./MailAccountConnection.md) | `POST` | `/api/v1/mail-account-connections/gmail/callback` | frontend から受け取った `code` と `state` を検証し、MailAccountConnection を作成または再連携する。 |
 | [MailAccountConnection 一覧 API](./MailAccountConnectionList.md) | `GET` | `/api/v1/mail-account-connections` | 認証済みユーザー自身のメール連携一覧を返す。provider へのリアルタイム確認は行わない。 |

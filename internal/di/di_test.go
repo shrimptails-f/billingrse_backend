@@ -5,6 +5,7 @@ import (
 
 	"business/internal/app/middleware"
 	authpresentation "business/internal/app/presentation/auth"
+	dashboardpresentation "business/internal/app/presentation/dashboard"
 	manualpresentation "business/internal/app/presentation/manualmailworkflow"
 	"business/internal/auth/application"
 	"business/internal/library/crypto"
@@ -95,11 +96,13 @@ func TestBuildContainer_ResolvesAuthPresentation(t *testing.T) {
 
 	err := container.Invoke(func(
 		controller *authpresentation.Controller,
+		dashboardController *dashboardpresentation.Controller,
 		manualController *manualpresentation.Controller,
 		authMiddleware *middleware.AuthMiddleware,
 		usecase *application.AuthUseCase,
 	) {
 		assert.NotNil(t, controller)
+		assert.NotNil(t, dashboardController)
 		assert.NotNil(t, manualController)
 		assert.NotNil(t, authMiddleware)
 		assert.NotNil(t, usecase)
