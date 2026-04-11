@@ -66,6 +66,14 @@ classDiagram
   <<value_object>> InvoiceNumber
 
   User "1" --> "0..*" MailAccountConnection : 連携
+  MailAccountConnection "1" --> "0..*" MailFetch : 取得に使用
+  MailFetch "1" o-- "0..*" ManualMailFetch : 手動
+  ManualMailFetch --> Email : 取得
+  Email "1" *-- "0..*" ParsedEmail : 解析結果
+  ParsedEmail --> VendorResolution : 支払先候補
+  VendorResolution <.. BillingEligibility : 解決結果を利用
+  BillingEligibility ..> Billing : 成立対象を決める
+
   User "1" --> "0..*" EmailVerificationToken : 認証
   User "1" --> "0..*" BatchSetting : 所有
   User "1" --> "0..*" ManualMailWorkflowHistory : 所有
@@ -73,26 +81,17 @@ classDiagram
   User "1" --> "0..*" Billing : 所有
 
   MailAccountConnection "0..*" --> "1" MailService : サービス
-  MailAccountConnection "1" --> "0..*" MailFetch : 取得に使用
 
-  MailFetch "1" o-- "0..*" ManualMailFetch : 手動
   MailFetch "1" o-- "0..*" MailFetchBatch : バッチ
-
   MailFetchBatch "1" --> "1" BatchSetting : 設定
   BatchSetting "1" *-- "1" FetchCondition : 取得条件
-  BatchSetting --> MailAccountConnection : 実行対象
-  ManualMailWorkflowHistory --> MailAccountConnection : 実行対象
-  ManualMailWorkflowHistory *-- "0..*" ManualMailWorkflowFailure : failure
-
-  ManualMailFetch --> Email : 取得
   MailFetchBatch --> Email : 取得
 
-  Email "1" *-- "0..*" ParsedEmail : 解析結果
-  ParsedEmail --> VendorResolution : 支払先候補
-  VendorResolution --> Vendor : 解決
+  ManualMailFetch --> ManualMailWorkflowHistory : 実行結果を保持
+  ManualMailWorkflowHistory *-- "0..*" ManualMailWorkflowFailure : failure
+
   ParsedEmail --> BillingEligibility : 成立判定
-  BillingEligibility ..> VendorResolution : 解決結果を利用
-  BillingEligibility ..> Billing : 成立対象を決める
+  VendorResolution --> Vendor : 解決
 
   Billing --> Vendor : 支払先
   Billing --> PaymentCycle : 支払周期
@@ -122,8 +121,7 @@ classDiagram
   │       └─ メールサービス
   ├─ 所有
   │   └─ バッチ設定
-  │       ├─ 取得条件
-  │       └─ 実行対象として メールアカウント連携
+  │       └─ 取得条件
   ├─ 所有
   │   └─ 手動履歴
   │       ├─ 手動メール取得条件
@@ -147,8 +145,10 @@ classDiagram
 請求成立判定
   └─ 支払先解決の結果を利用する
 
+手動メール取得
+  └─ 実行結果として 手動履歴 を持つ
+
 手動履歴
-  ├─ 実行対象として メールアカウント連携 を持つ
   ├─ 受付時点の手動メール取得条件 を持つ
   └─ failure として 手動履歴失敗 を持つ
 ```
