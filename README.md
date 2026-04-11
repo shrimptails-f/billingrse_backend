@@ -222,7 +222,7 @@ classDiagram
 
 ## 詳細ドキュメント
 
-- ローカル環境構築手順: [docs/VsCodeDevContainer.md](./docs/VsCodeDevContainer.md)
+- ローカル環境構築手順: [docs/local_setup.md](./docs/local_setup.md)
 - アーキテクチャ: [docs/architecture.md](./docs/architecture.md)
 - API 設計: [docs/api_design.md](./docs/api_design.md)
 - コーディングルール: [docs/coding_rules.md](./docs/coding_rules.md)
@@ -232,3 +232,7 @@ classDiagram
 - 手動 workflow 要件定義: [docs/spec/manualmailworkflow/requirementsDefinition.md](./docs/spec/manualmailworkflow/requirementsDefinition.md)
 - 手動 workflow 基本設計: [docs/spec/manualmailworkflow/basicDesign.md](./docs/spec/manualmailworkflow/basicDesign.md)
 - 手動 workflow 詳細設計: [docs/spec/manualmailworkflow/detailDesign.md](./docs/spec/manualmailworkflow/detailDesign.md)
+
+## 関連リポジトリ
+
+- [フロント](https://github.com/shrimptails-f/billingrse_front)
