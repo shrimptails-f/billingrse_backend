@@ -213,10 +213,14 @@ func (e *dashboardSummaryScenarioEnv) getSummaryWithoutAuth() *httptest.Response
 func (e *dashboardSummaryScenarioEnv) mustIssueJWT(userID uint) string {
 	e.t.Helper()
 
+	// JWT validation uses wall-clock time, so the test token expiration must not
+	// depend on the scenario's fixed business clock.
+	now := time.Now().UTC()
 	claims := authdomain.AuthClaims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(e.clock.Now().Add(1 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(1 * time.Hour)),
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
