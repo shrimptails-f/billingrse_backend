@@ -1,6 +1,8 @@
 ![Version](https://img.shields.io/badge/Version-1.0.0-green)
 # billingrse とは
 
+名前は billing と parser を合わせた造語です
+
 Gmailから請求メールを取得し、AI解析を行ったうえで保存し、請求を検索・集計ができます。  
 ※本リポジトリは`billingrse`の`Go製バックエンド`です  
 非構造なメール本文を、あとから追跡できる請求データへ変換することを目的にしています
