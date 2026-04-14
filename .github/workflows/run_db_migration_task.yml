@@ -1,0 +1,89 @@
+# Migration タスクを手動で実行するワークフロー。db-tools タスク定義を run-task し、コマンドを上書き。
+name: Run DB Migration Task
+
+permissions:
+  id-token: write
+  contents: read
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-task:
+    name: Run migration (create)
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      AWS_REGION: ap-northeast-1
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      STAGE: dev
+      VPC_NAME: billingrse-dev-vpc
+      APP_SUBNET_TAG: billingrse-dev-public-a
+      APP_SECURITY_GROUP_NAME: billingrse-app
+      CLUSTER_NAME: billingrse-dev-cluster
+      TASK_DEFINITION_FAMILY: billingrse-dev-db-tools
+      MIGRATION_COMMAND: '["go","run","tools/migrations/main.go","dev","create"]'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Run migration task
+        run: |
+          set -euo pipefail
+
+          VPC_ID=$(aws ec2 describe-vpcs \
+            --region "${AWS_REGION}" \
+            --filters Name=tag:Name,Values="${VPC_NAME}" \
+                      Name=tag:Stage,Values="${STAGE}" \
+            --query 'Vpcs[0].VpcId' --output text)
+
+          SUBNETS=$(aws ec2 describe-subnets \
+            --region "${AWS_REGION}" \
+            --filters Name=vpc-id,Values="${VPC_ID}" \
+                      Name=tag:Name,Values="${APP_SUBNET_TAG}" \
+            --query 'join(`,`, Subnets[].SubnetId)' --output text)
+
+          APP_SG=$(aws ec2 describe-security-groups \
+            --region "${AWS_REGION}" \
+            --filters Name=vpc-id,Values="${VPC_ID}" \
+                      Name=group-name,Values="${APP_SECURITY_GROUP_NAME}" \
+                      Name=tag:Stage,Values="${STAGE}" \
+            --query 'SecurityGroups[0].GroupId' --output text)
+
+          TASK_DEF_ARN=$(aws ecs list-task-definitions \
+            --region "${AWS_REGION}" \
+            --family-prefix "${TASK_DEFINITION_FAMILY}" \
+            --status ACTIVE --sort DESC --max-items 1 \
+            --query 'taskDefinitionArns[0]' --output text)
+
+          if [ -z "${VPC_ID}" ] || [ "${VPC_ID}" = "None" ]; then
+            echo "VPC not found"; exit 1; fi
+          if [ -z "${SUBNETS}" ] || [ "${SUBNETS}" = "None" ]; then
+            echo "Subnets not found"; exit 1; fi
+          if [ -z "${APP_SG}" ] || [ "${APP_SG}" = "None" ]; then
+            echo "App SG not found"; exit 1; fi
+          if [ -z "${TASK_DEF_ARN}" ] || [ "${TASK_DEF_ARN}" = "None" ]; then
+            echo "Task definition not found"; exit 1; fi
+
+          echo "Using VPC: ${VPC_ID}"
+          echo "Using subnets: [${SUBNETS}]"
+          echo "Using app SG: ${APP_SG}"
+          echo "Using task definition: ${TASK_DEF_ARN}"
+          echo "Migration command: ${MIGRATION_COMMAND}"
+
+          OVERRIDES=$(jq -cn --argjson cmd "${MIGRATION_COMMAND}" '{containerOverrides:[{name:"db-tools",command:$cmd}]}' )
+
+          aws ecs run-task \
+            --region "${AWS_REGION}" \
+            --cluster "${CLUSTER_NAME}" \
+            --launch-type FARGATE \
+            --task-definition "${TASK_DEF_ARN}" \
+            --network-configuration "awsvpcConfiguration={subnets=[${SUBNETS}],securityGroups=[${APP_SG}],assignPublicIp=ENABLED}" \
+            --overrides "${OVERRIDES}"
