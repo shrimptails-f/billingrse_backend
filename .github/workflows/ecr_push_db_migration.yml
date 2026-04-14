@@ -1,4 +1,4 @@
-name: Push DB Migration Image to ECR
+name: Push Migration Image
 
 permissions:
   id-token: write

@@ -1,5 +1,5 @@
 # Seeder タスクを手動で実行するワークフロー。db-tools タスク定義を run-task し、コマンドを上書き。
-name: Run DB Seeder Task
+name: Run DB Seed
 
 permissions:
   id-token: write
