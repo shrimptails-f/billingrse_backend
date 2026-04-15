@@ -27,7 +27,11 @@ func (p *Provider) GetOpenAILimiter() Limiter {
 // NewProviderFromEnv constructs a Provider by reading Redis configuration from the environment.
 func NewProviderFromEnv(osw oswrapper.OsWapperInterface, log logger.Interface) (*Provider, error) {
 	if osw == nil {
-		osw = oswrapper.New(nil)
+		var err error
+		osw, err = oswrapper.New(nil, nil)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if log == nil {
 		log = logger.NewNop()
@@ -48,7 +52,11 @@ func NewProvider(
 	log logger.Interface,
 ) *Provider {
 	if osw == nil {
-		osw = oswrapper.New(nil)
+		var err error
+		osw, err = oswrapper.New(nil, nil)
+		if err != nil {
+			panic(err)
+		}
 	}
 	if clock == nil {
 		clock = timewrapper.NewClock()

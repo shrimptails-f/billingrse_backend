@@ -80,7 +80,10 @@ func NewTest(osw oswrapper.OsWapperInterface, log logger.Interface) (*MySQL, err
 // CreateNewTestDB はランダムな名前でDBを作成し、そのインスタンスを返します。
 // また、deferで削除を予約します。
 func CreateNewTestDB() (*MySQL, func() error, error) {
-	osw := oswrapper.New(nil)
+	osw, err := oswrapper.New(nil, nil)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	newLogger := newSilentGormLogger()
 	if os.Getenv("IS_HIDDEN_TEST_SQL") == "true" {

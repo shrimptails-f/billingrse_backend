@@ -187,7 +187,10 @@ func loadScriptFromBody(t *testing.T, name, body string) script.Script {
 	err := os.WriteFile(path, []byte(body), 0o600)
 	require.NoError(t, err)
 
-	scr, err := script.New(oswrapper.New(nil), name, path)
+	osw, err := oswrapper.New(nil, nil)
+	require.NoError(t, err)
+
+	scr, err := script.New(osw, name, path)
 	require.NoError(t, err)
 	return scr
 }

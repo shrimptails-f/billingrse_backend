@@ -12,7 +12,7 @@ import (
 
 func TestIntegration_GetValue(t *testing.T) {
 	ctx := context.Background()
-	client, err := New(ctx)
+	client, err := New(ctx, "billingrse_dev")
 	assert.NoError(t, err)
 
 	val, err := client.GetValue(ctx, "test")

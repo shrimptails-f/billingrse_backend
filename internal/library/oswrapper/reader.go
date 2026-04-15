@@ -13,10 +13,12 @@ import (
 
 // OsWrapper は両方の機能を持つ具象構造体です
 type OsWrapper struct {
-	secretClient secret.Client
+	appSecretClient secret.Client
+	dbSecretClient  secret.Client
+	dbSecrets       map[string]string
 }
 
-var secretEnvKeys = map[string]struct{}{
+var appSecretEnvKeys = map[string]struct{}{
 	"JWT_SECRET_KEY":            {},
 	"OPENAI_API_KEY":            {},
 	"AGENT_TOKEN_KEY_V1":        {},
@@ -24,19 +26,45 @@ var secretEnvKeys = map[string]struct{}{
 	"EMAIL_TOKEN_KEY_V1":        {},
 	"EMAIL_TOKEN_SALT":          {},
 	"REDIS_PASSWORD":            {},
-	"MYSQL_USER":                {},
-	"MYSQL_PASSWORD":            {},
 	"DB_HOST":                   {},
 	"DB_PORT":                   {},
 	"EMAIL_GMAIL_CLIENT_ID":     {},
 	"EMAIL_GMAIL_CLIENT_SECRET": {},
 }
 
+var dbSecretEnvKeyMap = map[string]string{
+	"MYSQL_USER":     "username",
+	"MYSQL_PASSWORD": "password",
+}
+
 // New は OsWrapper のインスタンスを返します
-func New(secretClient secret.Client) *OsWrapper {
-	return &OsWrapper{
-		secretClient: secretClient,
+func New(appSecretClient, dbSecretClient secret.Client) (*OsWrapper, error) {
+	wrapper := &OsWrapper{
+		appSecretClient: appSecretClient,
+		dbSecretClient:  dbSecretClient,
+		dbSecrets:       map[string]string{},
 	}
+
+	if !shouldUseSecretManager() {
+		return wrapper, nil
+	}
+
+	if dbSecretClient == nil {
+		return wrapper, nil
+	}
+
+	for envKey, secretKey := range dbSecretEnvKeyMap {
+		val, err := dbSecretClient.GetValue(context.Background(), secretKey)
+		if err != nil {
+			return nil, fmt.Errorf("DB シークレット %s の取得に失敗しました: %w", secretKey, err)
+		}
+		if strings.TrimSpace(val) == "" {
+			return nil, fmt.Errorf("DB シークレット %s が設定されていません", secretKey)
+		}
+		wrapper.dbSecrets[envKey] = val
+	}
+
+	return wrapper, nil
 }
 
 // ReadFile はファイルを読み込み文字列として返します
@@ -56,23 +84,28 @@ func (o *OsWrapper) ReadFile(path string) (string, error) {
 
 // GetEnv は環境変数を取得します。空文字の場合はエラーを返します。
 func (o *OsWrapper) GetEnv(key string) (string, error) {
-	stage := os.Getenv("APP")
-	// local Ciでない、かつ特定の項目名だったらAWS SecretManagerから取得する
-	if _, ok := secretEnvKeys[key]; ok && (stage != "local" && stage != "ci") {
-		if o.secretClient == nil {
-			return "", errors.New("シークレットのクライアントがnilです。")
+	if shouldUseSecretManager() {
+		if _, ok := dbSecretEnvKeyMap[key]; ok {
+			val, exists := o.dbSecrets[key]
+			if !exists || strings.TrimSpace(val) == "" {
+				return "", fmt.Errorf("DB シークレット %s が設定されていません", key)
+			}
+			return val, nil
 		}
-		val, err := o.secretClient.GetValue(context.Background(), key)
-		if err != nil {
-			return "", fmt.Errorf("シークレット %s の取得に失敗しました: %w", key, err)
+
+		if _, ok := appSecretEnvKeys[key]; ok {
+			if o.appSecretClient == nil {
+				return "", errors.New("アプリ共通のシークレットクライアントがnilです")
+			}
+			val, err := o.appSecretClient.GetValue(context.Background(), key)
+			if err != nil {
+				return "", fmt.Errorf("シークレット %s の取得に失敗しました: %w", key, err)
+			}
+			if strings.TrimSpace(val) == "" {
+				return "", fmt.Errorf("AWS SecretManagerに %s が設定されていません", key)
+			}
+			return val, nil
 		}
-		if strings.TrimSpace(val) == "" {
-			return "", fmt.Errorf("AWS SecretManagerに %s が設定されていません", key)
-		}
-		if fallback := strings.TrimSpace(os.Getenv(key)); fallback != "" {
-			return fallback, nil
-		}
-		return val, nil
 	}
 
 	value := os.Getenv(key)
@@ -81,4 +114,9 @@ func (o *OsWrapper) GetEnv(key string) (string, error) {
 	}
 
 	return value, nil
+}
+
+func shouldUseSecretManager() bool {
+	stage := strings.TrimSpace(os.Getenv("APP"))
+	return stage != "" && stage != "local" && stage != "ci"
 }
