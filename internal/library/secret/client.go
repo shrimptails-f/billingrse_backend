@@ -14,24 +14,40 @@ import (
 
 const (
 	defaultVersionStage = "AWSCURRENT"
-	defaultSecretName   = "billingrse_dev"
 	defaultRegion       = "ap-northeast-1"
 )
 
 type secretClient struct {
+	secretName string
+	values     map[string]string
 }
 
-func New(ctx context.Context) (Client, error) {
+func New(ctx context.Context, secretName string) (Client, error) {
 	if ctx == nil {
 		return nil, errors.New("ctx is required")
 	}
 
-	return &secretClient{}, nil
+	if secretName == "" {
+		return nil, errors.New("secret name is required")
+	}
+
+	values, err := getSecrets(ctx, secretName)
+	if err != nil {
+		return nil, err
+	}
+
+	return &secretClient{
+		secretName: secretName,
+		values:     values,
+	}, nil
 }
 
-func getSecrets(ctx context.Context) (map[string]string, error) {
+func getSecrets(ctx context.Context, secretName string) (map[string]string, error) {
 	if ctx == nil {
 		return nil, errors.New("context is required")
+	}
+	if secretName == "" {
+		return nil, errors.New("secret name is required")
 	}
 
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(defaultRegion))
@@ -41,11 +57,11 @@ func getSecrets(ctx context.Context) (map[string]string, error) {
 
 	svc := secretsmanager.NewFromConfig(cfg)
 	result, err := svc.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
-		SecretId:     aws.String(defaultSecretName),
+		SecretId:     aws.String(secretName),
 		VersionStage: aws.String(defaultVersionStage),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get secret %s: %w", defaultSecretName, err)
+		return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
 	}
 
 	raw := ""
@@ -78,13 +94,9 @@ func (c *secretClient) GetValue(ctx context.Context, key string) (string, error)
 		return "", errors.New("key is required")
 	}
 
-	secrets, err := getSecrets(ctx)
-	if err != nil {
-		return "", err
-	}
-	v, ok := secrets[key]
+	v, ok := c.values[key]
 	if !ok {
-		return "", fmt.Errorf("%s: not found in secret", key)
+		return "", fmt.Errorf("%s: not found in secret %s", key, c.secretName)
 	}
 	return v, nil
 }

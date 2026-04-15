@@ -4,9 +4,7 @@ import (
 	"business/internal/library/logger"
 	"business/internal/library/mysql"
 	"business/internal/library/oswrapper"
-	"business/internal/library/secret"
 	"business/tools/seeder/seeders"
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -22,12 +20,10 @@ func main() {
 		return
 	}
 
-	ctx := context.Background()
-	secretClient, err := secret.New(ctx)
+	osw, err := oswrapper.New(nil, nil)
 	if err != nil {
-		panic("シークレットクライアント初期化に失敗しました: " + err.Error())
+		panic("OsWrapper 初期化に失敗しました: " + err.Error())
 	}
-	osw := oswrapper.New(secretClient)
 
 	var conn *mysql.MySQL
 	if os.Args[1] == "dev" {

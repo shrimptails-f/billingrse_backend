@@ -22,7 +22,11 @@ type Script struct {
 // When path is empty, the function attempts to read RATE_LIMIT_SCRIPT_PATH from the environment.
 func New(osw oswrapper.OsWapperInterface, name, path string) (Script, error) {
 	if osw == nil {
-		osw = oswrapper.New(nil)
+		var err error
+		osw, err = oswrapper.New(nil, nil)
+		if err != nil {
+			return Script{}, err
+		}
 	}
 
 	if path == "" {
