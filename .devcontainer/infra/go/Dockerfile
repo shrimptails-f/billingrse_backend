@@ -1,41 +1,44 @@
-FROM golang:1.25.2-bookworm
+FROM golang:1.25.2-alpine3.22
 
 ARG APP_ROOT
 
 ENV TZ=Asia/Tokyo \
     LANG=ja_JP.UTF-8 \
     LANGUAGE=ja_JP:ja \
-    LC_ALL=ja_JP.UTF-8
+    LC_ALL=ja_JP.UTF-8 \
+    MUSL_LOCPATH=/usr/share/i18n/locales/musl
 
 # 共通パッケージをまとめてインストール
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-      locales \
-      vim \
+RUN apk add --no-cache \
+      bash \
+      build-base \
+      ca-certificates \
+      curl \
+      git \
+      gnupg \
       keychain \
+      musl-locales \
+      musl-locales-lang \
+      nodejs \
+      npm \
+      python3 \
+      redis \
       ripgrep \
       sudo \
-      curl \
-      ca-certificates \
-      gnupg \
-      python3 \
-      redis-tools && \
-    localedef -i ja_JP -c -f UTF-8 -A /usr/share/locale/locale.alias ja_JP.UTF-8 && \
-    curl -sL "https://github.com/go-task/task/releases/download/v3.9.0/task_linux_amd64.deb" -o task.deb && \
-    dpkg -i task.deb && \
-    rm task.deb && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+      tzdata \
+      vim && \
+    cp /usr/share/zoneinfo/${TZ} /etc/localtime && \
+    echo "${TZ}" > /etc/timezone && \
+    update-ca-certificates && \
+    arch="$(apk --print-arch)" && \
+    case "${arch}" in \
+      x86_64) task_arch='amd64' ;; \
+      aarch64) task_arch='arm64' ;; \
+      *) echo "unsupported architecture: ${arch}" >&2; exit 1 ;; \
+    esac && \
+    curl -sL "https://github.com/go-task/task/releases/download/v3.9.0/task_linux_${task_arch}.tar.gz" | tar -xz -C /usr/local/bin task
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
-RUN mkdir -p /home/dev/.codex
-
-# Node.js (v22) インストール
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get update && \
-    apt-get install -y nodejs && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
 
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
     REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
@@ -51,8 +54,8 @@ RUN go install github.com/air-verse/air@latest && \
     go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.3
 
 # 開発ユーザー作成
-RUN groupadd -g 1000 dev && \
-    useradd -m -u 1000 -g dev -s /bin/bash dev && \
+RUN addgroup -g 1000 dev && \
+    adduser -D -u 1000 -G dev -s /bin/bash dev && \
     chown -R dev:dev /home/dev && \
     chown -R dev:dev /go/pkg/
 
@@ -60,6 +63,7 @@ RUN groupadd -g 1000 dev && \
 # VS Code Server 用のディレクトリを事前に作成して権限を設定
 RUN mkdir -p /home/dev/.vscode-server/bin /home/dev/.vscode-server/extensions && \
     chown -R dev:dev /home/dev/.vscode-server
+RUN mkdir -p /home/dev/.codex && chown -R dev:dev /home/dev/.codex
 
 # Atlasインストール(マイグレーションのバージョン管理)
 RUN curl -sSf https://atlasgo.sh | sh
