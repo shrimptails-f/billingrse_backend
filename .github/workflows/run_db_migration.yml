@@ -72,18 +72,27 @@ jobs:
           if [ -z "${TASK_DEF_ARN}" ] || [ "${TASK_DEF_ARN}" = "None" ]; then
             echo "Task definition not found"; exit 1; fi
 
-          echo "Using VPC: ${VPC_ID}"
-          echo "Using subnets: [${SUBNETS}]"
-          echo "Using app SG: ${APP_SG}"
-          echo "Using task definition: ${TASK_DEF_ARN}"
-          echo "Migration command: ${MIGRATION_COMMAND}"
+          echo "Starting migration task."
 
           OVERRIDES=$(jq -cn --argjson cmd "${MIGRATION_COMMAND}" '{containerOverrides:[{name:"db-tools",command:$cmd}]}' )
 
-          aws ecs run-task \
+          if ! TASK_ARN=$(aws ecs run-task \
             --region "${AWS_REGION}" \
             --cluster "${CLUSTER_NAME}" \
             --launch-type FARGATE \
             --task-definition "${TASK_DEF_ARN}" \
             --network-configuration "awsvpcConfiguration={subnets=[${SUBNETS}],securityGroups=[${APP_SG}],assignPublicIp=ENABLED}" \
-            --overrides "${OVERRIDES}"
+            --overrides "${OVERRIDES}" \
+            --query 'tasks[0].taskArn' \
+            --output text \
+            2>/dev/null); then
+            echo "Failed to start migration task."
+            exit 1
+          fi
+
+          if [ -z "${TASK_ARN}" ] || [ "${TASK_ARN}" = "None" ]; then
+            echo "Failed to start migration task."
+            exit 1
+          fi
+
+          echo "Migration task started."
