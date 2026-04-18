@@ -1,4 +1,5 @@
-# Seeder タスクを手動で実行するワークフロー。db-tools タスク定義を run-task し、コマンドを上書き。
+# Seeder タスクを手動で実行するワークフロー。
+# 毎回 db-tools イメージをビルド/プッシュし、指定タグで seeder を実行する。
 name: Run DB Seed
 
 permissions:
@@ -7,6 +8,11 @@ permissions:
 
 on:
   workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "db-init-toolsのイメージタグを指定してください"
+        required: false
+        default: ""
 
 jobs:
   run-task:
@@ -22,6 +28,8 @@ jobs:
       APP_SECURITY_GROUP_NAME: billingrse-app
       CLUSTER_NAME: billingrse-dev-cluster
       TASK_DEFINITION_FAMILY: billingrse-dev-db-tools
+      ECR_REPOSITORY: billingrse-dev-db-tools
+      INPUT_IMAGE_TAG: ${{ github.event.inputs.image_tag }}
       SEED_COMMAND: '["go","run","tools/seeder/main.go","dev"]'
 
     steps:
@@ -34,34 +42,81 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Resolve image tag
+        run: |
+          set -euo pipefail
+          echo "::group::Resolve image tag"
+
+          if [ -n "${INPUT_IMAGE_TAG}" ]; then
+            TAG="${INPUT_IMAGE_TAG}"
+          else
+            TAG="${GITHUB_SHA}"
+          fi
+
+          echo "IMAGE_TAG=${TAG}" >> "${GITHUB_ENV}"
+          echo "::endgroup::"
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+          echo "::group::Build and push image"
+
+          aws ecr describe-repositories --repository-names "${ECR_REPOSITORY}" >/dev/null 2>&1 || \
+          aws ecr create-repository --repository-name "${ECR_REPOSITORY}"
+
+          docker build \
+            -t ${ECR_REPOSITORY}:${IMAGE_TAG} \
+            -f deploy/db_tools/Dockerfile .
+
+          docker tag ${ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
+
+          docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
+          echo "::endgroup::"
+
       - name: Run seeder task
         run: |
           set -euo pipefail
 
-          VPC_ID=$(aws ec2 describe-vpcs \
+          sanitize_error() {
+            sed -E \
+              -e 's/[0-9]{12}/<account-id>/g' \
+              -e 's#arn:aws:[^ ]+#<arn>#g'
+          }
+
+          run_aws() {
+            local out
+            if ! out=$(aws "$@" 2>&1); then
+              echo "${out}" | sanitize_error >&2
+              return 1
+            fi
+            printf '%s' "${out}"
+          }
+
+          echo "::group::Resolve network"
+          VPC_ID=$(run_aws ec2 describe-vpcs \
             --region "${AWS_REGION}" \
             --filters Name=tag:Name,Values="${VPC_NAME}" \
                       Name=tag:Stage,Values="${STAGE}" \
             --query 'Vpcs[0].VpcId' --output text)
 
-          SUBNETS=$(aws ec2 describe-subnets \
+          SUBNETS=$(run_aws ec2 describe-subnets \
             --region "${AWS_REGION}" \
             --filters Name=vpc-id,Values="${VPC_ID}" \
                       Name=tag:Name,Values="${APP_SUBNET_TAG}" \
             --query 'join(`,`, Subnets[].SubnetId)' --output text)
 
-          APP_SG=$(aws ec2 describe-security-groups \
+          APP_SG=$(run_aws ec2 describe-security-groups \
             --region "${AWS_REGION}" \
             --filters Name=vpc-id,Values="${VPC_ID}" \
                       Name=group-name,Values="${APP_SECURITY_GROUP_NAME}" \
                       Name=tag:Stage,Values="${STAGE}" \
             --query 'SecurityGroups[0].GroupId' --output text)
-
-          TASK_DEF_ARN=$(aws ecs list-task-definitions \
-            --region "${AWS_REGION}" \
-            --family-prefix "${TASK_DEFINITION_FAMILY}" \
-            --status ACTIVE --sort DESC --max-items 1 \
-            --query 'taskDefinitionArns[0]' --output text)
 
           if [ -z "${VPC_ID}" ] || [ "${VPC_ID}" = "None" ]; then
             echo "VPC not found"; exit 1; fi
@@ -69,20 +124,57 @@ jobs:
             echo "Subnets not found"; exit 1; fi
           if [ -z "${APP_SG}" ] || [ "${APP_SG}" = "None" ]; then
             echo "App SG not found"; exit 1; fi
-          if [ -z "${TASK_DEF_ARN}" ] || [ "${TASK_DEF_ARN}" = "None" ]; then
-            echo "Task definition not found"; exit 1; fi
+          echo "::endgroup::"
 
-          echo "Resolved network and task definition."
-          echo "Starting seeder task."
-
+          echo "::group::Prepare task definition"
           OVERRIDES=$(jq -cn --argjson cmd "${SEED_COMMAND}" '{containerOverrides:[{name:"db-tools",command:$cmd}]}' )
+          ACCOUNT_ID=$(run_aws sts get-caller-identity --query 'Account' --output text)
+          TARGET_IMAGE="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
 
-          aws ecs run-task \
+          if ! BASE_TASK_DEF=$(run_aws ecs describe-task-definition \
+            --region "${AWS_REGION}" \
+            --task-definition "${TASK_DEFINITION_FAMILY}" \
+            --query 'taskDefinition' \
+            --output json); then
+            echo "Failed to describe base task definition."
+            exit 1
+          fi
+
+          UPDATED_TASK_DEF=$(echo "${BASE_TASK_DEF}" | jq -c \
+            --arg image "${TARGET_IMAGE}" \
+            '
+            .containerDefinitions = (.containerDefinitions | map(if .name == "db-tools" then .image = $image else . end))
+            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)
+            ')
+
+          if ! RUN_TASK_DEF_ARN=$(run_aws ecs register-task-definition \
+            --region "${AWS_REGION}" \
+            --cli-input-json "${UPDATED_TASK_DEF}" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text); then
+            echo "Failed to register task definition."
+            exit 1
+          fi
+          echo "::endgroup::"
+
+          echo "::group::Run seeder task"
+          if ! TASK_ARN=$(run_aws ecs run-task \
             --region "${AWS_REGION}" \
             --cluster "${CLUSTER_NAME}" \
             --launch-type FARGATE \
-            --task-definition "${TASK_DEF_ARN}" \
+            --task-definition "${RUN_TASK_DEF_ARN}" \
             --network-configuration "awsvpcConfiguration={subnets=[${SUBNETS}],securityGroups=[${APP_SG}],assignPublicIp=ENABLED}" \
             --overrides "${OVERRIDES}" \
-            --query '{tasks:tasks[].{taskArn:taskArn,lastStatus:lastStatus},failures:failures[].{arn:arn,reason:reason}}' \
-            --output json
+            --query 'tasks[0].taskArn' \
+            --output text); then
+            echo "Failed to start seeder task."
+            exit 1
+          fi
+
+          if [ -z "${TASK_ARN}" ] || [ "${TASK_ARN}" = "None" ]; then
+            echo "Failed to start seeder task."
+            exit 1
+          fi
+
+          echo "Seeder task started."
+          echo "::endgroup::"
