@@ -45,26 +45,41 @@ jobs:
         run: |
           set -euo pipefail
 
-          VPC_ID=$(aws ec2 describe-vpcs \
+          sanitize_error() {
+            sed -E \
+              -e 's/[0-9]{12}/<account-id>/g' \
+              -e 's#arn:aws:[^ ]+#<arn>#g'
+          }
+
+          run_aws() {
+            local out
+            if ! out=$(aws "$@" 2>&1); then
+              echo "${out}" | sanitize_error >&2
+              return 1
+            fi
+            printf '%s' "${out}"
+          }
+
+          VPC_ID=$(run_aws ec2 describe-vpcs \
             --region "${AWS_REGION}" \
             --filters Name=tag:Name,Values="${VPC_NAME}" \
                       Name=tag:Stage,Values="${STAGE}" \
             --query 'Vpcs[0].VpcId' --output text)
 
-          SUBNETS=$(aws ec2 describe-subnets \
+          SUBNETS=$(run_aws ec2 describe-subnets \
             --region "${AWS_REGION}" \
             --filters Name=vpc-id,Values="${VPC_ID}" \
                       Name=tag:Name,Values="${APP_SUBNET_TAG}" \
             --query 'join(`,`, Subnets[].SubnetId)' --output text)
 
-          APP_SG=$(aws ec2 describe-security-groups \
+          APP_SG=$(run_aws ec2 describe-security-groups \
             --region "${AWS_REGION}" \
             --filters Name=vpc-id,Values="${VPC_ID}" \
                       Name=group-name,Values="${APP_SECURITY_GROUP_NAME}" \
                       Name=tag:Stage,Values="${STAGE}" \
             --query 'SecurityGroups[0].GroupId' --output text)
 
-          TASK_DEF_ARN=$(aws ecs list-task-definitions \
+          TASK_DEF_ARN=$(run_aws ecs list-task-definitions \
             --region "${AWS_REGION}" \
             --family-prefix "${TASK_DEFINITION_FAMILY}" \
             --status ACTIVE --sort DESC --max-items 1 \
@@ -82,16 +97,15 @@ jobs:
           echo "Starting migration task."
 
           OVERRIDES=$(jq -cn --argjson cmd "${MIGRATION_COMMAND}" '{containerOverrides:[{name:"db-tools",command:$cmd}]}' )
-          ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+          ACCOUNT_ID=$(run_aws sts get-caller-identity --query 'Account' --output text)
           TARGET_IMAGE="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
 
-          if ! BASE_TASK_DEF=$(aws ecs describe-task-definition \
+          if ! BASE_TASK_DEF=$(run_aws ecs describe-task-definition \
             --region "${AWS_REGION}" \
             --task-definition "${TASK_DEF_ARN}" \
             --query 'taskDefinition' \
-            --output json \
-            2>/dev/null); then
-            echo "Failed to prepare migration task."
+            --output json); then
+            echo "Failed to describe base task definition."
             exit 1
           fi
 
@@ -102,17 +116,16 @@ jobs:
             | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)
             ')
 
-          if ! RUN_TASK_DEF_ARN=$(aws ecs register-task-definition \
+          if ! RUN_TASK_DEF_ARN=$(run_aws ecs register-task-definition \
             --region "${AWS_REGION}" \
             --cli-input-json "${UPDATED_TASK_DEF}" \
             --query 'taskDefinition.taskDefinitionArn' \
-            --output text \
-            2>/dev/null); then
-            echo "Failed to prepare migration task."
+            --output text); then
+            echo "Failed to register task definition."
             exit 1
           fi
 
-          if ! TASK_ARN=$(aws ecs run-task \
+          if ! TASK_ARN=$(run_aws ecs run-task \
             --region "${AWS_REGION}" \
             --cluster "${CLUSTER_NAME}" \
             --launch-type FARGATE \
@@ -120,8 +133,7 @@ jobs:
             --network-configuration "awsvpcConfiguration={subnets=[${SUBNETS}],securityGroups=[${APP_SG}],assignPublicIp=ENABLED}" \
             --overrides "${OVERRIDES}" \
             --query 'tasks[0].taskArn' \
-            --output text \
-            2>/dev/null); then
+            --output text); then
             echo "Failed to start migration task."
             exit 1
           fi
