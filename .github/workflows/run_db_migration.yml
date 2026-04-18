@@ -1,5 +1,5 @@
 # Migration タスクを手動で実行するワークフロー。
-# 必要に応じて db-tools イメージをビルド/プッシュし、指定タグで migration を実行する。
+# 毎回 db-tools イメージをビルド/プッシュし、指定タグで migration を実行する。
 name: Run DB Migration Task
 
 permissions:
@@ -9,11 +9,6 @@ permissions:
 on:
   workflow_dispatch:
     inputs:
-      build_image:
-        description: "実行前にdb-toolsイメージをビルドしてECRへpushする"
-        required: false
-        type: boolean
-        default: true
       image_tag:
         description: "db-init-toolsのイメージタグを指定してください"
         required: false
@@ -34,7 +29,6 @@ jobs:
       CLUSTER_NAME: billingrse-dev-cluster
       TASK_DEFINITION_FAMILY: billingrse-dev-db-tools
       ECR_REPOSITORY: billingrse-dev-db-tools
-      BUILD_IMAGE: ${{ inputs.build_image && 'true' || 'false' }}
       INPUT_IMAGE_TAG: ${{ github.event.inputs.image_tag }}
       MIGRATION_COMMAND: '["sh","-lc","atlas migrate hash --dir file://tools/migrations/ddl && atlas migrate apply --config file://atlas.hcl --env gorm"]'
 
@@ -52,29 +46,19 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "${BUILD_IMAGE}" = "true" ]; then
-            if [ -n "${INPUT_IMAGE_TAG}" ]; then
-              TAG="${INPUT_IMAGE_TAG}"
-            else
-              TAG="${GITHUB_SHA}"
-            fi
+          if [ -n "${INPUT_IMAGE_TAG}" ]; then
+            TAG="${INPUT_IMAGE_TAG}"
           else
-            if [ -n "${INPUT_IMAGE_TAG}" ]; then
-              TAG="${INPUT_IMAGE_TAG}"
-            else
-              TAG="latest"
-            fi
+            TAG="${GITHUB_SHA}"
           fi
 
           echo "IMAGE_TAG=${TAG}" >> "${GITHUB_ENV}"
 
       - name: Login to Amazon ECR
-        if: ${{ inputs.build_image }}
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Ensure ECR repository exists
-        if: ${{ inputs.build_image }}
         run: |
           set -euo pipefail
 
@@ -82,7 +66,6 @@ jobs:
           aws ecr create-repository --repository-name "${ECR_REPOSITORY}"
 
       - name: Build DB migration image
-        if: ${{ inputs.build_image }}
         run: |
           set -euo pipefail
 
@@ -91,7 +74,6 @@ jobs:
             -f deploy/db_tools/Dockerfile .
 
       - name: Tag image for ECR
-        if: ${{ inputs.build_image }}
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
@@ -100,7 +82,6 @@ jobs:
           docker tag ${ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
 
       - name: Push image to ECR
-        if: ${{ inputs.build_image }}
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
