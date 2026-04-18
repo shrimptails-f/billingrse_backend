@@ -1,4 +1,4 @@
-name: Push Backend Image
+name: Deploy Backend
 
 permissions:
   id-token: write
@@ -96,6 +96,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     environment: dev
+    outputs:
+      image_uri: ${{ steps.build_image.outputs.image_uri }}
     env:
       AWS_REGION: ap-northeast-1
       APP_ROOT: /home/dev/backend
@@ -124,12 +126,20 @@ jobs:
           aws ecr create-repository --repository-name "${ECR_REPOSITORY}"
 
       - name: Build runtime image
+        id: build_image
         run: |
+          set -euo pipefail
+
+          ECR_REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+
           docker build \
             --build-arg APP_ROOT=${APP_ROOT} \
             --target runtime \
             -t ${IMAGE_NAME}:${IMAGE_TAG} \
             -f deploy/Dockerfile .
+
+          echo "image_uri=${IMAGE_URI}" >> "${GITHUB_OUTPUT}"
 
       - name: Tag image for ECR
         env:
@@ -142,3 +152,81 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
+
+  deploy:
+    name: Deploy backend service (rolling update)
+    runs-on: ubuntu-latest
+    needs: push
+    environment: dev
+    env:
+      AWS_REGION: ap-northeast-1
+      CLUSTER_NAME: billingrse-dev-cluster
+      SERVICE_NAME: billingrse-dev-backend
+      CONTAINER_NAME: backend
+      IMAGE_URI: ${{ needs.push.outputs.image_uri }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Register task definition revision and update service
+        run: |
+          set -euo pipefail
+
+          CURRENT_TD_ARN="$(aws ecs describe-services \
+            --region "${AWS_REGION}" \
+            --cluster "${CLUSTER_NAME}" \
+            --services "${SERVICE_NAME}" \
+            --query 'services[0].taskDefinition' \
+            --output text)"
+
+          aws ecs describe-task-definition \
+            --region "${AWS_REGION}" \
+            --task-definition "${CURRENT_TD_ARN}" \
+            --query 'taskDefinition' > taskdef.json
+
+          jq --arg IMAGE_URI "${IMAGE_URI}" --arg CONTAINER_NAME "${CONTAINER_NAME}" '
+            .containerDefinitions |= map(
+              if .name == $CONTAINER_NAME then .image = $IMAGE_URI else . end
+            )
+            | del(
+                .taskDefinitionArn,
+                .revision,
+                .status,
+                .requiresAttributes,
+                .compatibilities,
+                .registeredAt,
+                .registeredBy
+              )
+          ' taskdef.json > new-taskdef.json
+
+          NEW_TD_ARN="$(aws ecs register-task-definition \
+            --region "${AWS_REGION}" \
+            --cli-input-json file://new-taskdef.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)"
+
+          aws ecs update-service \
+            --region "${AWS_REGION}" \
+            --cluster "${CLUSTER_NAME}" \
+            --service "${SERVICE_NAME}" \
+            --task-definition "${NEW_TD_ARN}"
+
+          aws ecs wait services-stable \
+            --region "${AWS_REGION}" \
+            --cluster "${CLUSTER_NAME}" \
+            --services "${SERVICE_NAME}"
+
+      - name: Print ECS service events on failure
+        if: failure()
+        run: |
+          aws ecs describe-services \
+            --region "${AWS_REGION}" \
+            --cluster "${CLUSTER_NAME}" \
+            --services "${SERVICE_NAME}" \
+            --query 'services[0].events[0:10].[createdAt,message]' \
+            --output table
