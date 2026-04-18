@@ -214,7 +214,9 @@ jobs:
             --region "${AWS_REGION}" \
             --cluster "${CLUSTER_NAME}" \
             --service "${SERVICE_NAME}" \
-            --task-definition "${NEW_TD_ARN}"
+            --task-definition "${NEW_TD_ARN}" \
+            --query 'service.{serviceName:serviceName,status:status,taskDefinition:taskDefinition,desiredCount:desiredCount,runningCount:runningCount,pendingCount:pendingCount,deployments:deployments[0:2].{id:id,status:status,taskDefinition:taskDefinition,rolloutState:rolloutState,rolloutStateReason:rolloutStateReason,desiredCount:desiredCount,runningCount:runningCount,pendingCount:pendingCount,failedTasks:failedTasks}}' \
+            --output json
 
           aws ecs wait services-stable \
             --region "${AWS_REGION}" \
@@ -228,5 +230,5 @@ jobs:
             --region "${AWS_REGION}" \
             --cluster "${CLUSTER_NAME}" \
             --services "${SERVICE_NAME}" \
-            --query 'services[0].events[0:10].[createdAt,message]' \
+            --query 'services[0].events[0:5].createdAt' \
             --output table
