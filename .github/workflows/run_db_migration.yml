@@ -7,6 +7,11 @@ permissions:
 
 on:
   workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "ECR image tag to run"
+        required: false
+        default: "latest"
 
 jobs:
   run-task:
@@ -22,6 +27,8 @@ jobs:
       APP_SECURITY_GROUP_NAME: billingrse-app
       CLUSTER_NAME: billingrse-dev-cluster
       TASK_DEFINITION_FAMILY: billingrse-dev-db-tools
+      ECR_REPOSITORY: billingrse-dev-db-tools
+      IMAGE_TAG: ${{ github.event.inputs.image_tag || 'latest' }}
       MIGRATION_COMMAND: '["sh","-lc","atlas migrate hash --dir file://tools/migrations/ddl && atlas migrate apply --config file://atlas.hcl --env gorm"]'
 
     steps:
@@ -75,12 +82,41 @@ jobs:
           echo "Starting migration task."
 
           OVERRIDES=$(jq -cn --argjson cmd "${MIGRATION_COMMAND}" '{containerOverrides:[{name:"db-tools",command:$cmd}]}' )
+          ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+          TARGET_IMAGE="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
+
+          if ! BASE_TASK_DEF=$(aws ecs describe-task-definition \
+            --region "${AWS_REGION}" \
+            --task-definition "${TASK_DEF_ARN}" \
+            --query 'taskDefinition' \
+            --output json \
+            2>/dev/null); then
+            echo "Failed to prepare migration task."
+            exit 1
+          fi
+
+          UPDATED_TASK_DEF=$(echo "${BASE_TASK_DEF}" | jq -c \
+            --arg image "${TARGET_IMAGE}" \
+            '
+            .containerDefinitions = (.containerDefinitions | map(if .name == "db-tools" then .image = $image else . end))
+            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)
+            ')
+
+          if ! RUN_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --region "${AWS_REGION}" \
+            --cli-input-json "${UPDATED_TASK_DEF}" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text \
+            2>/dev/null); then
+            echo "Failed to prepare migration task."
+            exit 1
+          fi
 
           if ! TASK_ARN=$(aws ecs run-task \
             --region "${AWS_REGION}" \
             --cluster "${CLUSTER_NAME}" \
             --launch-type FARGATE \
-            --task-definition "${TASK_DEF_ARN}" \
+            --task-definition "${RUN_TASK_DEF_ARN}" \
             --network-configuration "awsvpcConfiguration={subnets=[${SUBNETS}],securityGroups=[${APP_SG}],assignPublicIp=ENABLED}" \
             --overrides "${OVERRIDES}" \
             --query 'tasks[0].taskArn' \
