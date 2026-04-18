@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "ECR image tag to run"
+        description: "db-init-toolsのイメージタグを指定してください"
         required: false
         default: "latest"
 
