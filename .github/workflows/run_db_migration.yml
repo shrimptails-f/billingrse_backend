@@ -45,6 +45,7 @@ jobs:
       - name: Resolve image tag
         run: |
           set -euo pipefail
+          echo "::group::Resolve image tag"
 
           if [ -n "${INPUT_IMAGE_TAG}" ]; then
             TAG="${INPUT_IMAGE_TAG}"
@@ -53,41 +54,30 @@ jobs:
           fi
 
           echo "IMAGE_TAG=${TAG}" >> "${GITHUB_ENV}"
+          echo "::endgroup::"
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Ensure ECR repository exists
+      - name: Build and push image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           set -euo pipefail
+          echo "::group::Build and push image"
 
           aws ecr describe-repositories --repository-names "${ECR_REPOSITORY}" >/dev/null 2>&1 || \
           aws ecr create-repository --repository-name "${ECR_REPOSITORY}"
-
-      - name: Build DB migration image
-        run: |
-          set -euo pipefail
 
           docker build \
             -t ${ECR_REPOSITORY}:${IMAGE_TAG} \
             -f deploy/db_tools/Dockerfile .
 
-      - name: Tag image for ECR
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        run: |
-          set -euo pipefail
-
           docker tag ${ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
 
-      - name: Push image to ECR
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        run: |
-          set -euo pipefail
-
           docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
+          echo "::endgroup::"
 
       - name: Run migration task
         run: |
@@ -108,6 +98,7 @@ jobs:
             printf '%s' "${out}"
           }
 
+          echo "::group::Resolve network"
           VPC_ID=$(run_aws ec2 describe-vpcs \
             --region "${AWS_REGION}" \
             --filters Name=tag:Name,Values="${VPC_NAME}" \
@@ -133,9 +124,9 @@ jobs:
             echo "Subnets not found"; exit 1; fi
           if [ -z "${APP_SG}" ] || [ "${APP_SG}" = "None" ]; then
             echo "App SG not found"; exit 1; fi
+          echo "::endgroup::"
 
-          echo "Starting migration task."
-
+          echo "::group::Prepare task definition"
           OVERRIDES=$(jq -cn --argjson cmd "${MIGRATION_COMMAND}" '{containerOverrides:[{name:"db-tools",command:$cmd}]}' )
           ACCOUNT_ID=$(run_aws sts get-caller-identity --query 'Account' --output text)
           TARGET_IMAGE="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
@@ -164,7 +155,9 @@ jobs:
             echo "Failed to register task definition."
             exit 1
           fi
+          echo "::endgroup::"
 
+          echo "::group::Run migration task"
           if ! TASK_ARN=$(run_aws ecs run-task \
             --region "${AWS_REGION}" \
             --cluster "${CLUSTER_NAME}" \
@@ -184,3 +177,4 @@ jobs:
           fi
 
           echo "Migration task started."
+          echo "::endgroup::"
