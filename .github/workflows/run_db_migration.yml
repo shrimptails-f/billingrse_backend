@@ -10,7 +10,7 @@ on:
 
 jobs:
   run-task:
-    name: Run migration (create)
+    name: Run migration (atlas apply)
     runs-on: ubuntu-latest
     environment: dev
     env:
@@ -22,7 +22,7 @@ jobs:
       APP_SECURITY_GROUP_NAME: billingrse-app
       CLUSTER_NAME: billingrse-dev-cluster
       TASK_DEFINITION_FAMILY: billingrse-dev-db-tools
-      MIGRATION_COMMAND: '["go","run","tools/migrations/main.go","dev","create"]'
+      MIGRATION_COMMAND: '["sh","-lc","atlas migrate hash --dir file://tools/migrations/ddl && atlas migrate apply --config file://atlas.hcl --env gorm"]'
 
     steps:
       - name: Checkout
