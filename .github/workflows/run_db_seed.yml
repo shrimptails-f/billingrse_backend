@@ -72,11 +72,8 @@ jobs:
           if [ -z "${TASK_DEF_ARN}" ] || [ "${TASK_DEF_ARN}" = "None" ]; then
             echo "Task definition not found"; exit 1; fi
 
-          echo "Using VPC: ${VPC_ID}"
-          echo "Using subnets: [${SUBNETS}]"
-          echo "Using app SG: ${APP_SG}"
-          echo "Using task definition: ${TASK_DEF_ARN}"
-          echo "Seed command: ${SEED_COMMAND}"
+          echo "Resolved network and task definition."
+          echo "Starting seeder task."
 
           OVERRIDES=$(jq -cn --argjson cmd "${SEED_COMMAND}" '{containerOverrides:[{name:"db-tools",command:$cmd}]}' )
 
@@ -86,4 +83,6 @@ jobs:
             --launch-type FARGATE \
             --task-definition "${TASK_DEF_ARN}" \
             --network-configuration "awsvpcConfiguration={subnets=[${SUBNETS}],securityGroups=[${APP_SG}],assignPublicIp=ENABLED}" \
-            --overrides "${OVERRIDES}"
+            --overrides "${OVERRIDES}" \
+            --query '{tasks:tasks[].{taskArn:taskArn,lastStatus:lastStatus},failures:failures[].{arn:arn,reason:reason}}' \
+            --output json
