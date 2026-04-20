@@ -35,7 +35,6 @@ func Run() {
 		panic("初期化に失敗しました: os.GetenvでAPP項目を取得できませんでした。")
 	}
 	var appSecretClient secret.Client
-	var dbSecretClient secret.Client
 	var err error
 	if environment != "local" && environment != "ci" {
 		appSecretName := strings.TrimSpace(os.Getenv("APP_SECRET_NAME"))
@@ -47,17 +46,9 @@ func Run() {
 			panic("アプリ共通シークレットクライアント初期化に失敗しました: " + err.Error())
 		}
 
-		dbSecretName := strings.TrimSpace(os.Getenv("DB_SECRET_NAME"))
-		if dbSecretName == "" {
-			panic("初期化に失敗しました: os.GetenvでDB_SECRET_NAME項目を取得できませんでした。")
-		}
-		dbSecretClient, err = secret.New(ctx, dbSecretName)
-		if err != nil {
-			panic("DB シークレットクライアント初期化に失敗しました: " + err.Error())
-		}
 	}
 
-	osw, err := oswrapper.New(appSecretClient, dbSecretClient)
+	osw, err := oswrapper.New(appSecretClient)
 	if err != nil {
 		panic("OsWrapper 初期化に失敗しました: " + err.Error())
 	}

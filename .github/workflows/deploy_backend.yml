@@ -37,9 +37,6 @@ jobs:
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
       EMAIL_FROM_ADDRESS: no-reply@local.auth.example.com
-      # AI APIの暗号化キー素材
-      AGENT_TOKEN_KEY_V1: "9d64a1ec0d7bb5f1c4a7322ed1e4396b9d64a1ec0d7bb5f1c4a7322ed1e4396b" # 32バイト以上必須
-      AGENT_TOKEN_SALT: "ad7b2f3a9e5c41d28713ff9520c6e471"
       OPENAI_API_KEY: "dummy-openai-api-key"
       #
       EMAIL_TOKEN_KEY_V1: "your-32-byte-or-longer-email-key-here-change-this-in-production"

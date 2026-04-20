@@ -22,7 +22,7 @@ type Config struct {
 
 var (
 	defaultOsWrapper oswrapper.OsWapperInterface = func() oswrapper.OsWapperInterface {
-		osw, err := oswrapper.New(nil, nil)
+		osw, err := oswrapper.New(nil)
 		if err != nil {
 			panic(err)
 		}
@@ -37,7 +37,7 @@ func SetDefaultOsWrapper(osw oswrapper.OsWapperInterface) {
 	defaultOsWrapperMu.Lock()
 	defer defaultOsWrapperMu.Unlock()
 	if osw == nil {
-		newDefaultOsWrapper, err := oswrapper.New(nil, nil)
+		newDefaultOsWrapper, err := oswrapper.New(nil)
 		if err != nil {
 			panic(err)
 		}

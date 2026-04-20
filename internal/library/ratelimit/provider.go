@@ -28,7 +28,7 @@ func (p *Provider) GetOpenAILimiter() Limiter {
 func NewProviderFromEnv(osw oswrapper.OsWapperInterface, log logger.Interface) (*Provider, error) {
 	if osw == nil {
 		var err error
-		osw, err = oswrapper.New(nil, nil)
+		osw, err = oswrapper.New(nil)
 		if err != nil {
 			return nil, err
 		}
@@ -53,7 +53,7 @@ func NewProvider(
 ) *Provider {
 	if osw == nil {
 		var err error
-		osw, err = oswrapper.New(nil, nil)
+		osw, err = oswrapper.New(nil)
 		if err != nil {
 			panic(err)
 		}
