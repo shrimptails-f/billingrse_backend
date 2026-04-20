@@ -14,54 +14,28 @@ import (
 // OsWrapper は両方の機能を持つ具象構造体です
 type OsWrapper struct {
 	appSecretClient secret.Client
-	dbSecretClient  secret.Client
-	dbSecrets       map[string]string
 }
 
 var appSecretEnvKeys = map[string]struct{}{
 	"JWT_SECRET_KEY":            {},
 	"OPENAI_API_KEY":            {},
-	"AGENT_TOKEN_KEY_V1":        {},
-	"AGENT_TOKEN_SALT":          {},
 	"EMAIL_TOKEN_KEY_V1":        {},
 	"EMAIL_TOKEN_SALT":          {},
 	"REDIS_PASSWORD":            {},
-	"DB_HOST":                   {},
-	"DB_PORT":                   {},
+	"MYSQL_USER":                {},
+	"MYSQL_PASSWORD":            {},
 	"EMAIL_GMAIL_CLIENT_ID":     {},
 	"EMAIL_GMAIL_CLIENT_SECRET": {},
 }
 
-var dbSecretEnvKeyMap = map[string]string{
-	"MYSQL_USER":     "username",
-	"MYSQL_PASSWORD": "password",
-}
-
 // New は OsWrapper のインスタンスを返します
-func New(appSecretClient, dbSecretClient secret.Client) (*OsWrapper, error) {
+func New(appSecretClient secret.Client) (*OsWrapper, error) {
 	wrapper := &OsWrapper{
 		appSecretClient: appSecretClient,
-		dbSecretClient:  dbSecretClient,
-		dbSecrets:       map[string]string{},
 	}
 
 	if !shouldUseSecretManager() {
 		return wrapper, nil
-	}
-
-	if dbSecretClient == nil {
-		return wrapper, nil
-	}
-
-	for envKey, secretKey := range dbSecretEnvKeyMap {
-		val, err := dbSecretClient.GetValue(context.Background(), secretKey)
-		if err != nil {
-			return nil, fmt.Errorf("DB シークレット %s の取得に失敗しました: %w", secretKey, err)
-		}
-		if strings.TrimSpace(val) == "" {
-			return nil, fmt.Errorf("DB シークレット %s が設定されていません", secretKey)
-		}
-		wrapper.dbSecrets[envKey] = val
 	}
 
 	return wrapper, nil
@@ -85,14 +59,6 @@ func (o *OsWrapper) ReadFile(path string) (string, error) {
 // GetEnv は環境変数を取得します。空文字の場合はエラーを返します。
 func (o *OsWrapper) GetEnv(key string) (string, error) {
 	if shouldUseSecretManager() {
-		if _, ok := dbSecretEnvKeyMap[key]; ok {
-			val, exists := o.dbSecrets[key]
-			if !exists || strings.TrimSpace(val) == "" {
-				return "", fmt.Errorf("DB シークレット %s が設定されていません", key)
-			}
-			return val, nil
-		}
-
 		if _, ok := appSecretEnvKeys[key]; ok {
 			if o.appSecretClient == nil {
 				return "", errors.New("アプリ共通のシークレットクライアントがnilです")

@@ -20,7 +20,7 @@ func main() {
 		return
 	}
 
-	osw, err := oswrapper.New(nil, nil)
+	osw, err := oswrapper.New(nil)
 	if err != nil {
 		panic("OsWrapper 初期化に失敗しました: " + err.Error())
 	}

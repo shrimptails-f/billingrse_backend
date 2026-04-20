@@ -23,7 +23,7 @@ type Script struct {
 func New(osw oswrapper.OsWapperInterface, name, path string) (Script, error) {
 	if osw == nil {
 		var err error
-		osw, err = oswrapper.New(nil, nil)
+		osw, err = oswrapper.New(nil)
 		if err != nil {
 			return Script{}, err
 		}
