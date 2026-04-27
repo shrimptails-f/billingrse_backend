@@ -11,6 +11,9 @@ import (
 	"business/internal/library/oswrapper"
 	"business/internal/library/sendMailer"
 	"business/internal/library/timewrapper"
+	"context"
+	"fmt"
+	"strings"
 
 	"go.uber.org/dig"
 )
@@ -21,12 +24,24 @@ func ProvideAuthDependencies(container *dig.Container) {
 		return infrastructure.NewRepository(conn.DB, log)
 	})
 
-	_ = container.Provide(func(osw *oswrapper.OsWrapper) *sendMailer.SmtpClient {
-		return sendMailer.New(osw)
-	})
+	_ = container.Provide(func(osw *oswrapper.OsWrapper, log *logger.Logger) (*mailer.SMTPVerificationEmailSender, error) {
+		app, err := osw.GetEnv("APP")
+		if err != nil {
+			return nil, fmt.Errorf("failed to get env APP: %w", err)
+		}
 
-	_ = container.Provide(func(client *sendMailer.SmtpClient, log *logger.Logger) *mailer.SMTPVerificationEmailSender {
-		return mailer.NewSMTPVerificationEmailSender(client, log)
+		var client sendMailer.Client
+		environment := strings.TrimSpace(app)
+		if environment == "local" || environment == "ci" {
+			client = sendMailer.New(osw)
+		} else {
+			client, err = sendMailer.NewSES(context.Background(), osw)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		return mailer.NewSMTPVerificationEmailSender(client, log), nil
 	})
 
 	_ = container.Provide(func(
