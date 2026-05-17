@@ -12,7 +12,7 @@ import (
 func TestBillingValidate(t *testing.T) {
 	t.Parallel()
 
-	money, err := NewMoney(1200, "JPY")
+	money, err := NewMoneyFromString("1200", "JPY")
 	if err != nil {
 		t.Fatalf("NewMoney returned error: %v", err)
 	}
@@ -29,7 +29,7 @@ func TestBillingValidate(t *testing.T) {
 		LineItems: []BillingLineItem{
 			{
 				ProductNameDisplay: stringPtr("Example Product"),
-				Amount:             float64Ptr(1200),
+				Amount:             decimalPtr("1200"),
 				Currency:           stringPtr("JPY"),
 			},
 		},
@@ -148,7 +148,7 @@ func TestNewBilling(t *testing.T) {
 		3,
 		"",
 		&invoice,
-		1200.5,
+		decimal.RequireFromString("1200.5"),
 		"usd",
 		timePtr(time.Date(2025, 1, 5, 12, 30, 15, 0, time.UTC)),
 		"recurring",
@@ -166,7 +166,7 @@ func TestNewBilling(t *testing.T) {
 		3,
 		billingNumber,
 		&invoice,
-		10,
+		decimal.RequireFromString("10"),
 		"JPY",
 		timePtr(time.Date(2025, 1, 5, 12, 30, 0, 0, time.UTC)),
 		"one_time",
@@ -175,7 +175,7 @@ func TestNewBilling(t *testing.T) {
 			{
 				ProductNameRaw:     stringPtr(" Example Product Full Name "),
 				ProductNameDisplay: stringPtr(" Example Product "),
-				Amount:             float64Ptr(10),
+				Amount:             decimalPtr("10"),
 				Currency:           stringPtr(" jpy "),
 			},
 		},
@@ -209,7 +209,7 @@ func TestNewBilling(t *testing.T) {
 		3,
 		billingNumber,
 		&empty,
-		10,
+		decimal.RequireFromString("10"),
 		"JPY",
 		nil,
 		"one_time",
@@ -228,7 +228,7 @@ func TestNewBilling(t *testing.T) {
 	if len(billing.LineItems) != 1 {
 		t.Fatalf("expected fallback line item to be created, got %+v", billing.LineItems)
 	}
-	if billing.LineItems[0].Amount == nil || *billing.LineItems[0].Amount != 10 {
+	if billing.LineItems[0].Amount == nil || !billing.LineItems[0].Amount.Equal(decimal.RequireFromString("10")) {
 		t.Fatalf("expected fallback line item amount, got %+v", billing.LineItems[0])
 	}
 	if billing.LineItems[0].Currency == nil || *billing.LineItems[0].Currency != "JPY" {
@@ -238,4 +238,9 @@ func TestNewBilling(t *testing.T) {
 
 func timePtr(value time.Time) *time.Time {
 	return &value
+}
+
+func decimalPtr(value string) *decimal.Decimal {
+	parsed := decimal.RequireFromString(value)
+	return &parsed
 }

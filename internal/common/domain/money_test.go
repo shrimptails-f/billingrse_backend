@@ -10,7 +10,7 @@ import (
 func TestNewMoney(t *testing.T) {
 	t.Parallel()
 
-	money, err := NewMoney(12.345, " usd ")
+	money, err := NewMoneyFromString("12.345", " usd ")
 	if err != nil {
 		t.Fatalf("NewMoney returned error: %v", err)
 	}

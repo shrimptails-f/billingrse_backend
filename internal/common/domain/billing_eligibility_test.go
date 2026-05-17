@@ -13,7 +13,7 @@ func TestBillingEligibility(t *testing.T) {
 	productNameDisplay := "Netflix Standard"
 	productNameRaw := "Netflix Standard Plan"
 	billingNumber := "INV-001"
-	amount := 1200.0
+	amount := "1200.000"
 	currency := "JPY"
 	billingDate := time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC)
 	paymentCycle := "one_time"
@@ -127,7 +127,7 @@ func TestBillingEligibility(t *testing.T) {
 		t.Fatalf("expected ErrBillingEligibilityBillingNumberEmpty, got %v", err)
 	}
 
-	invalidAmount := -10.0
+	invalidAmount := "-10"
 	parsedInvalidAmount := parsed
 	parsedInvalidAmount.Amount = &invalidAmount
 	if err := eligibility.Evaluate(parsedInvalidAmount, resolution); !errors.Is(err, ErrBillingEligibilityAmountInvalid) {

@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 var (
@@ -162,7 +164,7 @@ type EligibleItem struct {
 	ProductNameDisplay *string
 	BillingNumber      string
 	InvoiceNumber      *string
-	Amount             float64
+	Amount             decimal.Decimal
 	BillingDate        *time.Time
 	Currency           string
 	PaymentCycle       string
@@ -173,7 +175,7 @@ type EligibleItem struct {
 type EligibleLineItem struct {
 	ProductNameRaw     *string
 	ProductNameDisplay *string
-	Amount             *float64
+	Amount             *decimal.Decimal
 	Currency           *string
 }
 

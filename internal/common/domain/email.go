@@ -109,7 +109,7 @@ type ParsedEmail struct {
 	VendorName         *string               `json:"vendorName"`
 	BillingNumber      *string               `json:"billingNumber"`
 	InvoiceNumber      *string               `json:"invoiceNumber"`
-	Amount             *float64              `json:"amount"`
+	Amount             *string               `json:"amount"`
 	Currency           *string               `json:"currency"`
 	BillingDate        *time.Time            `json:"billingDate"`
 	PaymentCycle       *string               `json:"paymentCycle"`
@@ -119,16 +119,17 @@ type ParsedEmail struct {
 
 // ParsedEmailLineItem represents one product/detail row under a billing number.
 type ParsedEmailLineItem struct {
-	ProductNameRaw     *string  `json:"productNameRaw"`
-	ProductNameDisplay *string  `json:"productNameDisplay"`
-	Amount             *float64 `json:"amount"`
-	Currency           *string  `json:"currency"`
+	ProductNameRaw     *string `json:"productNameRaw"`
+	ProductNameDisplay *string `json:"productNameDisplay"`
+	Amount             *string `json:"amount"`
+	Currency           *string `json:"currency"`
 }
 
 // Normalize trims optional strings and canonicalizes currency for one line-item.
 func (i ParsedEmailLineItem) Normalize() ParsedEmailLineItem {
 	i.ProductNameRaw = normalizeOptionalString(i.ProductNameRaw)
 	i.ProductNameDisplay = normalizeOptionalString(i.ProductNameDisplay)
+	i.Amount = normalizeOptionalString(i.Amount)
 	i.Currency = normalizeOptionalUpperString(i.Currency)
 	return i
 }
@@ -163,6 +164,7 @@ func (p ParsedEmail) Normalize() ParsedEmail {
 	p.VendorName = normalizeOptionalString(p.VendorName)
 	p.BillingNumber = normalizeOptionalString(p.BillingNumber)
 	p.InvoiceNumber = normalizeOptionalString(p.InvoiceNumber)
+	p.Amount = normalizeOptionalString(p.Amount)
 	p.Currency = normalizeOptionalUpperString(p.Currency)
 	p.PaymentCycle = normalizeOptionalPaymentCycle(p.PaymentCycle)
 	p.BillingDate = normalizeOptionalTime(p.BillingDate)

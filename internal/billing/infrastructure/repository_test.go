@@ -5,7 +5,6 @@ import (
 	"business/internal/library/logger"
 	"business/internal/library/mysql"
 	"context"
-	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -93,7 +92,7 @@ func TestBillingRepository_SaveIfAbsent_CreatedAndDuplicate(t *testing.T) {
 		3,
 		" INV-001 ",
 		&invoiceNumber,
-		1200.5,
+		decimal.RequireFromString("1200.5"),
 		" jpy ",
 		&billingDate,
 		" recurring ",
@@ -102,12 +101,12 @@ func TestBillingRepository_SaveIfAbsent_CreatedAndDuplicate(t *testing.T) {
 			{
 				ProductNameRaw:     stringPtr("Example Product Full Name"),
 				ProductNameDisplay: stringPtr("Example Product"),
-				Amount:             float64Ptr(1200.5),
+				Amount:             testDecimalPtr("1200.5"),
 				Currency:           stringPtr("jpy"),
 			},
 			{
 				ProductNameDisplay: stringPtr("Tax"),
-				Amount:             float64Ptr(100),
+				Amount:             testDecimalPtr("100"),
 				Currency:           stringPtr("JPY"),
 			},
 		},
@@ -180,7 +179,7 @@ func TestBillingRepository_SaveIfAbsent_ConcurrentDuplicate(t *testing.T) {
 		3,
 		"INV-999",
 		nil,
-		10,
+		decimal.RequireFromString("10"),
 		"USD",
 		nil,
 		"one_time",
@@ -188,7 +187,7 @@ func TestBillingRepository_SaveIfAbsent_ConcurrentDuplicate(t *testing.T) {
 		[]commondomain.BillingLineItemInput{
 			{
 				ProductNameDisplay: stringPtr("Concurrent Item"),
-				Amount:             float64Ptr(10),
+				Amount:             testDecimalPtr("10"),
 				Currency:           stringPtr("usd"),
 			},
 		},
@@ -248,7 +247,7 @@ func TestBillingRepository_SaveIfAbsent_ConcurrentDuplicate(t *testing.T) {
 	require.EqualValues(t, 1, lineItemCount)
 }
 
-func TestBillingRepository_SaveIfAbsent_RollsBackWhenLineItemCreateFails(t *testing.T) {
+func TestBillingRepository_SaveIfAbsent_RejectsInvalidLineItemAmountAtConstruction(t *testing.T) {
 	t.Parallel()
 
 	env := newBillingRepoTestEnv(t)
@@ -258,13 +257,13 @@ func TestBillingRepository_SaveIfAbsent_RollsBackWhenLineItemCreateFails(t *test
 	sourceReceivedAt := time.Date(2026, 3, 18, 9, 30, 0, 0, time.UTC)
 	seedBillingSourceEmail(t, env.db, 3, 1, sourceReceivedAt)
 
-	billing, err := commondomain.NewBilling(
+	_, err := commondomain.NewBilling(
 		1,
 		2,
 		3,
 		"INV-ERR",
 		nil,
-		10,
+		decimal.RequireFromString("10"),
 		"JPY",
 		nil,
 		"one_time",
@@ -272,14 +271,11 @@ func TestBillingRepository_SaveIfAbsent_RollsBackWhenLineItemCreateFails(t *test
 		[]commondomain.BillingLineItemInput{
 			{
 				ProductNameDisplay: stringPtr("Broken Item"),
-				Amount:             float64Ptr(math.NaN()),
+				Amount:             testDecimalPtr("1.2345"),
 				Currency:           stringPtr("JPY"),
 			},
 		},
 	)
-	require.NoError(t, err)
-
-	_, err = env.repo.SaveIfAbsent(ctx, billing)
 	require.Error(t, err)
 
 	var billingCount int64
@@ -295,6 +291,7 @@ func stringPtr(value string) *string {
 	return &value
 }
 
-func float64Ptr(value float64) *float64 {
-	return &value
+func testDecimalPtr(value string) *decimal.Decimal {
+	parsed := decimal.RequireFromString(value)
+	return &parsed
 }

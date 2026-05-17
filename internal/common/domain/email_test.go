@@ -110,7 +110,7 @@ func TestParsedEmailNormalize(t *testing.T) {
 		VendorName:         stringPtr(" Example Vendor "),
 		BillingNumber:      stringPtr(" INV-001 "),
 		InvoiceNumber:      stringPtr(" inv-001 "),
-		Amount:             float64Ptr(123.456),
+		Amount:             stringPtr("123.456"),
 		Currency:           stringPtr(" jpy "),
 		BillingDate:        &billingDate,
 		PaymentCycle:       stringPtr(" One Time "),
@@ -118,7 +118,7 @@ func TestParsedEmailNormalize(t *testing.T) {
 			{
 				ProductNameRaw:     stringPtr(" Example Product Full Name "),
 				ProductNameDisplay: stringPtr(" Example Product "),
-				Amount:             float64Ptr(123.456),
+				Amount:             stringPtr("123.456"),
 				Currency:           stringPtr(" jpy "),
 			},
 			{
@@ -220,9 +220,5 @@ func TestParsedEmailWithExtractedAt(t *testing.T) {
 }
 
 func stringPtr(value string) *string {
-	return &value
-}
-
-func float64Ptr(value float64) *float64 {
 	return &value
 }

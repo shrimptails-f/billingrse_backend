@@ -7,6 +7,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 type stubBillingUseCase struct {
@@ -98,14 +100,14 @@ func TestDirectBillingAdapter_Execute_ConvertsCommandAndResult(t *testing.T) {
 				ProductNameDisplay: &productNameDisplay,
 				BillingNumber:      "INV-001",
 				InvoiceNumber:      &invoiceNumber,
-				Amount:             1200,
+				Amount:             decimal.RequireFromString("1200"),
 				Currency:           "JPY",
 				BillingDate:        &billingDate,
 				PaymentCycle:       "one_time",
 				LineItems: []manualapp.EligibleLineItem{
 					{
 						ProductNameRaw: &lineItemName,
-						Amount:         localFloat64Ptr(1200),
+						Amount:         localDecimalPtrBilling("1200"),
 						Currency:       localStringPtr("JPY"),
 					},
 				},
@@ -146,6 +148,7 @@ func localStringPtr(value string) *string {
 	return &value
 }
 
-func localFloat64Ptr(value float64) *float64 {
-	return &value
+func localDecimalPtrBilling(value string) *decimal.Decimal {
+	parsed := decimal.RequireFromString(value)
+	return &parsed
 }

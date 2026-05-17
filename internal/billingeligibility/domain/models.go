@@ -1,6 +1,10 @@
 package domain
 
-import "time"
+import (
+	"time"
+
+	"github.com/shopspring/decimal"
+)
 
 const (
 	// FailureCodeInvalidEligibilityTarget indicates the workflow passed an invalid target.
@@ -37,7 +41,7 @@ type EligibleItem struct {
 	ProductNameDisplay *string
 	BillingNumber      string
 	InvoiceNumber      *string
-	Amount             float64
+	Amount             decimal.Decimal
 	Currency           string
 	BillingDate        *time.Time
 	PaymentCycle       string
@@ -48,7 +52,7 @@ type EligibleItem struct {
 type LineItem struct {
 	ProductNameRaw     *string
 	ProductNameDisplay *string
-	Amount             *float64
+	Amount             *decimal.Decimal
 	Currency           *string
 }
 

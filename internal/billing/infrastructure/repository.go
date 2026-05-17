@@ -8,8 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
-	"strconv"
 	"strings"
 	"time"
 
@@ -307,19 +305,12 @@ func normalizeOptionalCurrency(value *string) *string {
 	return &upper
 }
 
-func decimalPtr(value *float64) (*decimal.Decimal, error) {
+func decimalPtr(value *decimal.Decimal) (*decimal.Decimal, error) {
 	if value == nil {
 		return nil, nil
 	}
-	if math.IsNaN(*value) || math.IsInf(*value, 0) {
-		return nil, fmt.Errorf("amount must be finite")
-	}
-	raw := strconv.FormatFloat(*value, 'f', -1, 64)
-	parsed, err := decimal.NewFromString(raw)
-	if err != nil {
-		return nil, fmt.Errorf("amount must be a decimal number: %w", err)
-	}
-	return &parsed, nil
+	cloned := *value
+	return &cloned, nil
 }
 
 func isDuplicatedKeyError(err error) bool {

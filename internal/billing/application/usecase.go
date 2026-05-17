@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 // SaveResult is the repository result for idempotent billing persistence.
@@ -26,7 +28,7 @@ type BillingRepository interface {
 type CreationLineItem struct {
 	ProductNameRaw     *string
 	ProductNameDisplay *string
-	Amount             *float64
+	Amount             *decimal.Decimal
 	Currency           *string
 }
 
@@ -41,7 +43,7 @@ type CreationTarget struct {
 	ProductNameDisplay *string
 	BillingNumber      string
 	InvoiceNumber      *string
-	Amount             float64
+	Amount             decimal.Decimal
 	Currency           string
 	BillingDate        *time.Time
 	PaymentCycle       string
@@ -265,7 +267,7 @@ func cloneTime(value *time.Time) *time.Time {
 	return &cloned
 }
 
-func cloneFloat64(value *float64) *float64 {
+func cloneDecimal(value *decimal.Decimal) *decimal.Decimal {
 	if value == nil {
 		return nil
 	}
@@ -283,7 +285,7 @@ func toBillingLineItemInputs(items []CreationLineItem) []commondomain.BillingLin
 		inputs = append(inputs, commondomain.BillingLineItemInput{
 			ProductNameRaw:     cloneString(item.ProductNameRaw),
 			ProductNameDisplay: cloneString(item.ProductNameDisplay),
-			Amount:             cloneFloat64(item.Amount),
+			Amount:             cloneDecimal(item.Amount),
 			Currency:           cloneString(item.Currency),
 		})
 	}

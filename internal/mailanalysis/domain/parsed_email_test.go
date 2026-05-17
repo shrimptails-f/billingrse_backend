@@ -23,7 +23,7 @@ func TestAnalysisOutputNormalize_NormalizesAndFiltersEmptyParsedEmails(t *testin
 				LineItems: []commondomain.ParsedEmailLineItem{
 					{
 						ProductNameDisplay: stringPtr(" Example Product "),
-						Amount:             float64Ptr(123.456),
+						Amount:             stringPtr("123.456"),
 						Currency:           stringPtr(" jpy "),
 					},
 				},
@@ -149,13 +149,13 @@ func TestSaveInputValidate_RejectsOverflowingFields(t *testing.T) {
 		{
 			name: "amount too large",
 			parsed: commondomain.ParsedEmail{
-				Amount: float64Ptr(parsedEmailAmountMaxAbs + 1),
+				Amount: stringPtr("1000000000000000.000"),
 			},
 		},
 		{
 			name: "amount too many decimals",
 			parsed: commondomain.ParsedEmail{
-				Amount: float64Ptr(123.4567),
+				Amount: stringPtr("123.4567"),
 			},
 		},
 	}
@@ -175,9 +175,5 @@ func TestSaveInputValidate_RejectsOverflowingFields(t *testing.T) {
 }
 
 func stringPtr(value string) *string {
-	return &value
-}
-
-func float64Ptr(value float64) *float64 {
 	return &value
 }

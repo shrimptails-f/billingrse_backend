@@ -1,6 +1,7 @@
 package infrastructure
 
 import (
+	commondomain "business/internal/common/domain"
 	"business/internal/library/logger"
 	"business/internal/library/timewrapper"
 	madomain "business/internal/mailanalysis/domain"
@@ -8,28 +9,29 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
 type parsedEmailRecord struct {
-	ID                 uint       `gorm:"column:id;primaryKey;autoIncrement"`
-	UserID             uint       `gorm:"column:user_id;not null;index:idx_parsed_emails_user_email,priority:1"`
-	EmailID            uint       `gorm:"column:email_id;not null;index:idx_parsed_emails_user_email,priority:2"`
-	AnalysisRunID      string     `gorm:"column:analysis_run_id;type:char(36);not null;index:idx_parsed_emails_analysis_run;uniqueIndex:uni_parsed_emails_run_position,priority:1"`
-	Position           int        `gorm:"column:position;not null;uniqueIndex:uni_parsed_emails_run_position,priority:2"`
-	ProductNameRaw     *string    `gorm:"column:product_name_raw;type:text"`
-	ProductNameDisplay *string    `gorm:"column:product_name_display;size:255"`
-	VendorName         *string    `gorm:"column:vendor_name;type:text"`
-	BillingNumber      *string    `gorm:"column:billing_number;size:255"`
-	InvoiceNumber      *string    `gorm:"column:invoice_number;size:14"`
-	Amount             *float64   `gorm:"column:amount;type:decimal(18,3)"`
-	Currency           *string    `gorm:"column:currency;type:char(3)"`
-	BillingDate        *time.Time `gorm:"column:billing_date"`
-	PaymentCycle       *string    `gorm:"column:payment_cycle;size:32"`
-	ExtractedAt        time.Time  `gorm:"column:extracted_at;not null"`
-	PromptVersion      string     `gorm:"column:prompt_version;size:50;not null"`
-	CreatedAt          time.Time  `gorm:"column:created_at;not null"`
-	UpdatedAt          time.Time  `gorm:"column:updated_at;not null"`
+	ID                 uint             `gorm:"column:id;primaryKey;autoIncrement"`
+	UserID             uint             `gorm:"column:user_id;not null;index:idx_parsed_emails_user_email,priority:1"`
+	EmailID            uint             `gorm:"column:email_id;not null;index:idx_parsed_emails_user_email,priority:2"`
+	AnalysisRunID      string           `gorm:"column:analysis_run_id;type:char(36);not null;index:idx_parsed_emails_analysis_run;uniqueIndex:uni_parsed_emails_run_position,priority:1"`
+	Position           int              `gorm:"column:position;not null;uniqueIndex:uni_parsed_emails_run_position,priority:2"`
+	ProductNameRaw     *string          `gorm:"column:product_name_raw;type:text"`
+	ProductNameDisplay *string          `gorm:"column:product_name_display;size:255"`
+	VendorName         *string          `gorm:"column:vendor_name;type:text"`
+	BillingNumber      *string          `gorm:"column:billing_number;size:255"`
+	InvoiceNumber      *string          `gorm:"column:invoice_number;size:14"`
+	Amount             *decimal.Decimal `gorm:"column:amount;type:decimal(18,3)"`
+	Currency           *string          `gorm:"column:currency;type:char(3)"`
+	BillingDate        *time.Time       `gorm:"column:billing_date"`
+	PaymentCycle       *string          `gorm:"column:payment_cycle;size:32"`
+	ExtractedAt        time.Time        `gorm:"column:extracted_at;not null"`
+	PromptVersion      string           `gorm:"column:prompt_version;size:50;not null"`
+	CreatedAt          time.Time        `gorm:"column:created_at;not null"`
+	UpdatedAt          time.Time        `gorm:"column:updated_at;not null"`
 }
 
 func (parsedEmailRecord) TableName() string {
@@ -89,6 +91,10 @@ func (r *GormParsedEmailRepositoryAdapter) SaveAll(ctx context.Context, input ma
 	records := make([]parsedEmailRecord, 0, len(input.ParsedEmails))
 	for idx, parsedEmail := range input.ParsedEmails {
 		parsed := parsedEmail.WithExtractedAt(input.ExtractedAt)
+		amount, err := parseOptionalAmount(parsed.Amount)
+		if err != nil {
+			return nil, fmt.Errorf("parsed_emails[%d].amount: %w", idx, err)
+		}
 		records = append(records, parsedEmailRecord{
 			UserID:             input.UserID,
 			EmailID:            input.EmailID,
@@ -99,7 +105,7 @@ func (r *GormParsedEmailRepositoryAdapter) SaveAll(ctx context.Context, input ma
 			VendorName:         parsed.VendorName,
 			BillingNumber:      parsed.BillingNumber,
 			InvoiceNumber:      parsed.InvoiceNumber,
-			Amount:             parsed.Amount,
+			Amount:             amount,
 			Currency:           parsed.Currency,
 			BillingDate:        parsed.BillingDate,
 			PaymentCycle:       parsed.PaymentCycle,
@@ -129,4 +135,15 @@ func (r *GormParsedEmailRepositoryAdapter) SaveAll(ctx context.Context, input ma
 	}
 
 	return result, nil
+}
+
+func parseOptionalAmount(value *string) (*decimal.Decimal, error) {
+	if value == nil {
+		return nil, nil
+	}
+	parsed, err := commondomain.NormalizeAmountString(*value)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
 }

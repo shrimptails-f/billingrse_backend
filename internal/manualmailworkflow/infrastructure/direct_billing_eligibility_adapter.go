@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 // DirectBillingEligibilityAdapter directly calls the billingeligibility usecase.
@@ -116,7 +118,7 @@ func cloneTime(value *time.Time) *time.Time {
 	return &cloned
 }
 
-func cloneFloat64(value *float64) *float64 {
+func cloneDecimal(value *decimal.Decimal) *decimal.Decimal {
 	if value == nil {
 		return nil
 	}
@@ -134,7 +136,7 @@ func toEligibleLineItems(items []bedomain.LineItem) []manualapp.EligibleLineItem
 		lineItems = append(lineItems, manualapp.EligibleLineItem{
 			ProductNameRaw:     cloneString(item.ProductNameRaw),
 			ProductNameDisplay: cloneString(item.ProductNameDisplay),
-			Amount:             cloneFloat64(item.Amount),
+			Amount:             cloneDecimal(item.Amount),
 			Currency:           cloneString(item.Currency),
 		})
 	}
