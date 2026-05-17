@@ -396,6 +396,64 @@ func TestGormWorkflowStatusRepository_List_WithStatusFilterAndEmptyPage(t *testi
 	require.Equal(t, 2, queryCount)
 }
 
+func TestGormWorkflowStatusRepository_List_PreservesJSTTimestamps(t *testing.T) {
+	t.Parallel()
+
+	env := newWorkflowStatusRepoTestEnv(t)
+	defer env.clean()
+
+	ctx := context.Background()
+	jst := time.FixedZone("JST", 9*60*60)
+	mustCreateCredentialSnapshot(t, env.db, emailCredentialSnapshotRecord{
+		ID:           30,
+		UserID:       15,
+		Type:         "gmail",
+		GmailAddress: "offset@example.com",
+	})
+
+	queuedAt := time.Date(2026, 5, 1, 10, 0, 0, 0, jst)
+	finishedAt := time.Date(2026, 5, 1, 10, 5, 0, 0, jst)
+	ref, err := env.repo.CreateQueued(ctx, manualapp.QueuedWorkflowHistory{
+		WorkflowID:   "01JQ0B7N0M7H3X9C2J5K8V6Q0",
+		UserID:       15,
+		ConnectionID: 30,
+		LabelName:    "billing",
+		SinceAt:      time.Date(2026, 5, 1, 0, 0, 0, 0, jst),
+		UntilAt:      time.Date(2026, 5, 31, 23, 59, 0, 0, jst),
+		QueuedAt:     queuedAt,
+	})
+	require.NoError(t, err)
+	require.NoError(t, env.repo.Fail(ctx, ref.HistoryID, "fetch", finishedAt, "test error"))
+
+	require.NoError(t, env.db.WithContext(ctx).Create(&manualMailWorkflowStageFailureRecord{
+		WorkflowHistoryID: ref.HistoryID,
+		Stage:             "fetch",
+		ExternalMessageID: stringPtr("msg-1"),
+		ReasonCode:        "fetch_detail_failed",
+		Message:           "メールの取得に失敗しました。",
+		CreatedAt:         time.Date(2026, 5, 1, 10, 1, 0, 0, jst),
+	}).Error)
+
+	result, err := env.repo.List(ctx, manualapp.ListQuery{
+		UserID:    15,
+		Limit:     10,
+		Offset:    0,
+		HasLimit:  true,
+		HasOffset: true,
+	})
+	require.NoError(t, err)
+	require.Len(t, result.Items, 1)
+
+	item := result.Items[0]
+	require.Equal(t, "2026-05-01T00:00:00+09:00", item.Since.Format(time.RFC3339))
+	require.Equal(t, "2026-05-31T23:59:00+09:00", item.Until.Format(time.RFC3339))
+	require.Equal(t, "2026-05-01T10:00:00+09:00", item.QueuedAt.Format(time.RFC3339))
+	require.NotNil(t, item.FinishedAt)
+	require.Equal(t, "2026-05-01T10:05:00+09:00", item.FinishedAt.Format(time.RFC3339))
+	require.Len(t, item.Fetch.Failures, 1)
+	require.Equal(t, "2026-05-01T10:01:00+09:00", item.Fetch.Failures[0].CreatedAt.Format(time.RFC3339))
+}
+
 func workflowHistoryRecordFixture(userID uint, workflowID string, queuedAt time.Time, status string) manualMailWorkflowHistoryRecord {
 	return manualMailWorkflowHistoryRecord{
 		WorkflowID:        workflowID,

@@ -115,17 +115,17 @@ func (r *GormWorkflowStatusRepository) CreateQueued(ctx context.Context, cmd man
 		return manualapp.WorkflowHistoryRef{}, err
 	}
 
-	now := r.clock.Now().UTC()
+	now := r.clock.Now()
 	record := manualMailWorkflowHistoryRecord{
 		WorkflowID:        strings.TrimSpace(cmd.WorkflowID),
 		UserID:            cmd.UserID,
 		Provider:          provider,
 		AccountIdentifier: accountIdentifier,
 		LabelName:         strings.TrimSpace(cmd.LabelName),
-		SinceAt:           cmd.SinceAt.UTC(),
-		UntilAt:           cmd.UntilAt.UTC(),
+		SinceAt:           cmd.SinceAt,
+		UntilAt:           cmd.UntilAt,
 		Status:            manualapp.WorkflowStatusQueued,
-		QueuedAt:          cmd.QueuedAt.UTC(),
+		QueuedAt:          cmd.QueuedAt,
 		CreatedAt:         now,
 		UpdatedAt:         now,
 	}
@@ -155,7 +155,7 @@ func (r *GormWorkflowStatusRepository) MarkRunning(ctx context.Context, historyI
 		return fmt.Errorf("current_stage is required")
 	}
 
-	now := r.clock.Now().UTC()
+	now := r.clock.Now()
 	tx := r.db.WithContext(ctx).
 		Model(&manualMailWorkflowHistoryRecord{}).
 		Where("id = ?", historyID).
@@ -199,7 +199,7 @@ func (r *GormWorkflowStatusRepository) SaveStageProgress(ctx context.Context, pr
 		)
 	}
 
-	now := r.clock.Now().UTC()
+	now := r.clock.Now()
 	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		updateResult := tx.Model(&manualMailWorkflowHistoryRecord{}).
 			Where("id = ?", progress.HistoryID).
@@ -358,8 +358,7 @@ func (r *GormWorkflowStatusRepository) updateTerminalStatus(
 		return fmt.Errorf("gorm db is not configured")
 	}
 
-	now := r.clock.Now().UTC()
-	finishedAt = finishedAt.UTC()
+	now := r.clock.Now()
 
 	tx := r.db.WithContext(ctx).
 		Model(&manualMailWorkflowHistoryRecord{}).
@@ -433,12 +432,12 @@ func buildWorkflowHistoryListItem(
 		Provider:          record.Provider,
 		AccountIdentifier: record.AccountIdentifier,
 		LabelName:         record.LabelName,
-		Since:             record.SinceAt.UTC(),
-		Until:             record.UntilAt.UTC(),
+		Since:             record.SinceAt,
+		Until:             record.UntilAt,
 		Status:            record.Status,
 		CurrentStage:      cloneOptionalString(record.CurrentStage),
-		QueuedAt:          record.QueuedAt.UTC(),
-		FinishedAt:        cloneOptionalTime(record.FinishedAt),
+		QueuedAt:          record.QueuedAt,
+		FinishedAt:        record.FinishedAt,
 		ErrorMessage:      cloneOptionalString(record.ErrorMessage),
 		Fetch: manualapp.StageSummaryView{
 			SuccessCount:          record.FetchSuccessCount,
@@ -510,7 +509,7 @@ func groupFailureViewsByHistory(
 			ExternalMessageID: cloneOptionalString(record.ExternalMessageID),
 			ReasonCode:        record.ReasonCode,
 			Message:           record.Message,
-			CreatedAt:         record.CreatedAt.UTC(),
+			CreatedAt:         record.CreatedAt,
 		})
 	}
 
@@ -537,14 +536,5 @@ func cloneOptionalString(value *string) *string {
 		return nil
 	}
 	cloned := *value
-	return &cloned
-}
-
-func cloneOptionalTime(value *time.Time) *time.Time {
-	if value == nil {
-		return nil
-	}
-
-	cloned := value.UTC()
 	return &cloned
 }
