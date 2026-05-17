@@ -69,6 +69,39 @@ func TestExecute_202(t *testing.T) {
 	uc.AssertExpectations(t)
 }
 
+func TestExecute_202_JSTPayload(t *testing.T) {
+	t.Parallel()
+
+	uc := new(mockUseCase)
+	uc.On("Start", mock.Anything, mock.MatchedBy(func(cmd manualapp.Command) bool {
+		return cmd.UserID == 1 &&
+			cmd.ConnectionID == 12 &&
+			cmd.Condition.LabelName == "billing" &&
+			cmd.Condition.Since.Format(time.RFC3339) == "2026-05-01T00:00:00+09:00" &&
+			cmd.Condition.Until.Format(time.RFC3339) == "2026-05-31T23:59:00+09:00"
+	})).Return(manualapp.StartResult{
+		WorkflowID: "wf-jst-123",
+		Status:     manualapp.WorkflowStatusQueued,
+	}, nil).Once()
+
+	ctrl := newTestController(uc, nil)
+	r := executeRouter(ctrl)
+
+	body := []byte(`{"connection_id":12,"label_name":"billing","since":"2026-05-01T00:00:00+09:00","until":"2026-05-31T23:59:00+09:00"}`)
+	req := httptest.NewRequest(http.MethodPost, "/manual-mail-workflows", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	r.ServeHTTP(resp, req)
+
+	assert.Equal(t, http.StatusAccepted, resp.Code)
+	assert.JSONEq(t, `{
+		"message": "メール取得ワークフローを受け付けました。",
+		"workflow_id": "wf-jst-123",
+		"status": "queued"
+	}`, resp.Body.String())
+	uc.AssertExpectations(t)
+}
+
 func TestExecute_400_InvalidRequest(t *testing.T) {
 	t.Parallel()
 

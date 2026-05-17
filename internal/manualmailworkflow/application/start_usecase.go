@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/aidarkhanov/nanoid/v2"
 )
@@ -130,6 +131,9 @@ func (uc *startUseCase) Start(ctx context.Context, cmd Command) (StartResult, er
 	reqLog.Info("manual_mail_workflow_accepted",
 		logger.UserID(cmd.UserID),
 		logger.Uint("connection_id", cmd.ConnectionID),
+		logger.String("label_name", cmd.Condition.LabelName),
+		logger.String("since", cmd.Condition.Since.Format(time.RFC3339)),
+		logger.String("until", cmd.Condition.Until.Format(time.RFC3339)),
 		logger.String("workflow_id", result.WorkflowID),
 		logger.String("status", result.Status),
 	)
