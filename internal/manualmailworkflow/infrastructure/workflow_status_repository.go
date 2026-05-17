@@ -122,8 +122,8 @@ func (r *GormWorkflowStatusRepository) CreateQueued(ctx context.Context, cmd man
 		Provider:          provider,
 		AccountIdentifier: accountIdentifier,
 		LabelName:         strings.TrimSpace(cmd.LabelName),
-		SinceAt:           cmd.SinceAt,
-		UntilAt:           cmd.UntilAt,
+		SinceAt:           timewrapper.InJST(cmd.SinceAt),
+		UntilAt:           timewrapper.InJST(cmd.UntilAt),
 		Status:            manualapp.WorkflowStatusQueued,
 		QueuedAt:          cmd.QueuedAt,
 		CreatedAt:         now,
@@ -432,12 +432,12 @@ func buildWorkflowHistoryListItem(
 		Provider:          record.Provider,
 		AccountIdentifier: record.AccountIdentifier,
 		LabelName:         record.LabelName,
-		Since:             record.SinceAt,
-		Until:             record.UntilAt,
+		Since:             timewrapper.InJST(record.SinceAt),
+		Until:             timewrapper.InJST(record.UntilAt),
 		Status:            record.Status,
 		CurrentStage:      cloneOptionalString(record.CurrentStage),
-		QueuedAt:          record.QueuedAt,
-		FinishedAt:        record.FinishedAt,
+		QueuedAt:          timewrapper.InJST(record.QueuedAt),
+		FinishedAt:        cloneOptionalTime(record.FinishedAt),
 		ErrorMessage:      cloneOptionalString(record.ErrorMessage),
 		Fetch: manualapp.StageSummaryView{
 			SuccessCount:          record.FetchSuccessCount,
@@ -509,7 +509,7 @@ func groupFailureViewsByHistory(
 			ExternalMessageID: cloneOptionalString(record.ExternalMessageID),
 			ReasonCode:        record.ReasonCode,
 			Message:           record.Message,
-			CreatedAt:         record.CreatedAt,
+			CreatedAt:         timewrapper.InJST(record.CreatedAt),
 		})
 	}
 
@@ -536,5 +536,14 @@ func cloneOptionalString(value *string) *string {
 		return nil
 	}
 	cloned := *value
+	return &cloned
+}
+
+func cloneOptionalTime(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+
+	cloned := timewrapper.InJST(*value)
 	return &cloned
 }
