@@ -174,6 +174,74 @@ func TestSaveInputValidate_RejectsOverflowingFields(t *testing.T) {
 	}
 }
 
+func TestSaveInputValidate_RejectsInvalidAmountFormats(t *testing.T) {
+	t.Parallel()
+
+	base := SaveInput{
+		UserID:        1,
+		EmailID:       10,
+		AnalysisRunID: "run-1",
+		ExtractedAt:   time.Date(2026, 3, 24, 10, 0, 0, 0, time.UTC),
+		PromptVersion: "emailanalysis_v1",
+	}
+
+	cases := []struct {
+		name   string
+		parsed commondomain.ParsedEmail
+	}{
+		{
+			name: "header amount non decimal",
+			parsed: commondomain.ParsedEmail{
+				Amount: stringPtr("abc"),
+			},
+		},
+		{
+			name: "header amount trimmed decimal",
+			parsed: commondomain.ParsedEmail{
+				Amount: stringPtr(" 123.456 "),
+			},
+		},
+		{
+			name: "line item amount non decimal",
+			parsed: commondomain.ParsedEmail{
+				LineItems: []commondomain.ParsedEmailLineItem{
+					{Amount: stringPtr("abc")},
+				},
+			},
+		},
+		{
+			name: "line item amount too many decimals",
+			parsed: commondomain.ParsedEmail{
+				LineItems: []commondomain.ParsedEmailLineItem{
+					{Amount: stringPtr("123.4567")},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			input := base
+			input.ParsedEmails = []commondomain.ParsedEmail{tc.parsed}
+			err := input.Normalize().Validate()
+
+			if tc.name == "header amount trimmed decimal" {
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+				return
+			}
+
+			if err == nil {
+				t.Fatal("expected validation error, got nil")
+			}
+		})
+	}
+}
+
 func stringPtr(value string) *string {
 	return &value
 }

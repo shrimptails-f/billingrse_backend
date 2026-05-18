@@ -71,3 +71,46 @@ func TestMoneyValidate(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeAmountString(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		input  string
+		want   string
+		err    error
+	}{
+		{name: "integer", input: "1200", want: "1200"},
+		{name: "trimmed decimal", input: " 1200.500 ", want: "1200.5"},
+		{name: "max scale", input: "999999999999999.999", want: "999999999999999.999"},
+		{name: "empty", input: "", err: ErrMoneyAmountInvalid},
+		{name: "alpha", input: "abc", err: ErrMoneyAmountInvalid},
+		{name: "comma separated", input: "1,200", err: ErrMoneyAmountInvalid},
+		{name: "currency prefixed", input: "¥1200", err: ErrMoneyAmountInvalid},
+		{name: "zero", input: "0", err: ErrMoneyAmountInvalid},
+		{name: "negative", input: "-1", err: ErrMoneyAmountInvalid},
+		{name: "too many decimals", input: "12.3456", err: ErrMoneyAmountScaleInvalid},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := NormalizeAmountString(tc.input)
+			if tc.err != nil {
+				if !errors.Is(err, tc.err) {
+					t.Fatalf("expected %v, got %v", tc.err, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			if !got.Equal(decimal.RequireFromString(tc.want)) {
+				t.Fatalf("expected %s, got %s", tc.want, got.String())
+			}
+		})
+	}
+}
