@@ -80,7 +80,7 @@ func TestUseCaseExecute_SavesParsedEmailsAndReturnsSummary(t *testing.T) {
 									PaymentCycle:  stringPtr("one time"),
 								},
 								{
-									Amount:       float64Ptr(12.345),
+									Amount:       stringPtr("12.345"),
 									Currency:     stringPtr("usd"),
 									PaymentCycle: stringPtr(" recurring "),
 								},
@@ -457,9 +457,5 @@ func TestUseCaseExecute_DependencyMissingReturnsError(t *testing.T) {
 }
 
 func stringPtr(value string) *string {
-	return &value
-}
-
-func float64Ptr(value float64) *float64 {
 	return &value
 }

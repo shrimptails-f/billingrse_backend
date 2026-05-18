@@ -1,10 +1,12 @@
 package domain
 
+import "github.com/shopspring/decimal"
+
 // BillingLineItemInput is raw input used to construct a BillingLineItem.
 type BillingLineItemInput struct {
 	ProductNameRaw     *string
 	ProductNameDisplay *string
-	Amount             *float64
+	Amount             *decimal.Decimal
 	Currency           *string
 }
 
@@ -12,7 +14,7 @@ type BillingLineItemInput struct {
 func (i BillingLineItemInput) Normalize() BillingLineItemInput {
 	i.ProductNameRaw = normalizeOptionalString(i.ProductNameRaw)
 	i.ProductNameDisplay = normalizeOptionalString(i.ProductNameDisplay)
-	i.Amount = cloneOptionalFloat64(i.Amount)
+	i.Amount = cloneOptionalDecimal(i.Amount)
 	i.Currency = normalizeOptionalUpperString(i.Currency)
 	return i
 }
@@ -39,7 +41,7 @@ func (i BillingLineItemInput) ToBillingLineItem() BillingLineItem {
 type BillingLineItem struct {
 	ProductNameRaw     *string
 	ProductNameDisplay *string
-	Amount             *float64
+	Amount             *decimal.Decimal
 	Currency           *string
 }
 
@@ -47,7 +49,7 @@ type BillingLineItem struct {
 func (i BillingLineItem) Normalize() BillingLineItem {
 	i.ProductNameRaw = normalizeOptionalString(i.ProductNameRaw)
 	i.ProductNameDisplay = normalizeOptionalString(i.ProductNameDisplay)
-	i.Amount = cloneOptionalFloat64(i.Amount)
+	i.Amount = cloneOptionalDecimal(i.Amount)
 	i.Currency = normalizeOptionalUpperString(i.Currency)
 	return i
 }
@@ -98,7 +100,7 @@ func normalizeBillingLineItems(items []BillingLineItem) []BillingLineItem {
 	return normalized
 }
 
-func cloneOptionalFloat64(value *float64) *float64 {
+func cloneOptionalDecimal(value *decimal.Decimal) *decimal.Decimal {
 	if value == nil {
 		return nil
 	}

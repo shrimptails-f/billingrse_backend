@@ -3,6 +3,8 @@ package domain
 import (
 	"errors"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 var (
@@ -40,7 +42,7 @@ func NewBilling(
 	emailID uint,
 	billingNumber string,
 	invoiceNumber *string,
-	amount float64,
+	amount decimal.Decimal,
 	currency string,
 	billingDate *time.Time,
 	cycle string,
@@ -57,7 +59,7 @@ func NewBilling(
 		return Billing{}, err
 	}
 
-	money, err := NewMoney(amount, currency)
+	money, err := NewMoneyDecimal(amount, currency)
 	if err != nil {
 		return Billing{}, err
 	}
@@ -114,13 +116,26 @@ func (b Billing) Validate() error {
 	if err := b.PaymentCycle.Validate(); err != nil {
 		return err
 	}
-	if len(normalizeBillingLineItems(b.LineItems)) == 0 {
+	lineItems := normalizeBillingLineItems(b.LineItems)
+	if len(lineItems) == 0 {
 		return ErrBillingLineItemsEmpty
+	}
+	for _, item := range lineItems {
+		if item.Amount != nil {
+			if _, err := NormalizeAmountDecimal(*item.Amount); err != nil {
+				return err
+			}
+		}
+		if item.Currency != nil {
+			if _, err := NormalizeCurrency(*item.Currency); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
 
-func resolveBillingLineItems(items []BillingLineItemInput, productNameDisplay *string, amount float64, currency string) []BillingLineItem {
+func resolveBillingLineItems(items []BillingLineItemInput, productNameDisplay *string, amount decimal.Decimal, currency string) []BillingLineItem {
 	normalizedInputs := normalizeBillingLineItemInputs(items)
 	if len(normalizedInputs) > 0 {
 		lineItems := make([]BillingLineItem, 0, len(normalizedInputs))

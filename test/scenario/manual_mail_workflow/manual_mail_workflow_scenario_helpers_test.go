@@ -466,10 +466,6 @@ func (e *manualMailWorkflowScenarioEnv) listWorkflowHistories(rawQuery string) s
 	return result
 }
 
-func float64Ptr(value float64) *float64 {
-	return &value
-}
-
 func stringPtr(value string) *string {
 	return &value
 }

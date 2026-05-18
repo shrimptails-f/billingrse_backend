@@ -15,7 +15,6 @@ func TestUseCaseExecute(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 3, 25, 0, 0, 0, 0, time.UTC)
-	amount := 1200.0
 	currency := " jpy "
 	productNameRaw := " Example Product Full Name "
 	billingNumber := " INV-001 "
@@ -27,14 +26,14 @@ func TestUseCaseExecute(t *testing.T) {
 		ProductNameRaw:     &productNameRaw,
 		BillingNumber:      &billingNumber,
 		InvoiceNumber:      &invoiceNumber,
-		Amount:             &amount,
+		Amount:             testStringPtr("1200"),
 		Currency:           &currency,
 		BillingDate:        &now,
 		PaymentCycle:       &paymentCycle,
 		LineItems: []commondomain.ParsedEmailLineItem{
 			{
 				ProductNameDisplay: &productNameDisplay,
-				Amount:             &amount,
+				Amount:             testStringPtr("1200"),
 				Currency:           &currency,
 			},
 		},
@@ -173,7 +172,6 @@ func TestUseCaseExecute_InvalidCommand(t *testing.T) {
 func TestUseCaseExecute_ProductNameMissingBecomesIneligible(t *testing.T) {
 	t.Parallel()
 
-	amount := 1200.0
 	currency := "JPY"
 	billingNumber := "INV-001"
 	paymentCycle := "one_time"
@@ -191,7 +189,7 @@ func TestUseCaseExecute_ProductNameMissingBecomesIneligible(t *testing.T) {
 				MatchedBy:         "name_exact",
 				Data: commondomain.ParsedEmail{
 					BillingNumber: &billingNumber,
-					Amount:        &amount,
+					Amount:        testStringPtr("1200"),
 					Currency:      &currency,
 					PaymentCycle:  &paymentCycle,
 				},
@@ -214,6 +212,10 @@ func TestUseCaseExecute_ProductNameMissingBecomesIneligible(t *testing.T) {
 	if !strings.Contains(result.IneligibleItems[0].Message, "Acme") || !strings.Contains(result.IneligibleItems[0].Message, "msg-1") {
 		t.Fatalf("expected vendor name and message id in ineligible message, got %+v", result.IneligibleItems[0])
 	}
+}
+
+func testStringPtr(value string) *string {
+	return &value
 }
 
 func TestUseCaseExecute_NilContext(t *testing.T) {

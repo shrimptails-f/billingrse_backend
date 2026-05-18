@@ -8,6 +8,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 type stubBillingEligibilityUseCase struct {
@@ -26,7 +28,6 @@ func TestDirectBillingEligibilityAdapter_Execute_ConvertsCommandAndResult(t *tes
 	billingDate := time.Date(2026, 3, 24, 0, 0, 0, 0, time.UTC)
 	productNameDisplay := "Example Product"
 	lineItemName := "Example Product Full Name"
-	lineItemAmount := 1200.0
 	lineItemCurrency := "JPY"
 	adapter := NewDirectBillingEligibilityAdapter(&stubBillingEligibilityUseCase{
 		execute: func(ctx context.Context, cmd beapp.Command) (beapp.Result, error) {
@@ -48,14 +49,14 @@ func TestDirectBillingEligibilityAdapter_Execute_ConvertsCommandAndResult(t *tes
 						ProductNameDisplay: &productNameDisplay,
 						BillingNumber:      billingNumber,
 						InvoiceNumber:      &invoiceNumber,
-						Amount:             1200,
+						Amount:             decimal.RequireFromString("1200"),
 						Currency:           "JPY",
 						BillingDate:        &billingDate,
 						PaymentCycle:       "one_time",
 						LineItems: []bedomain.LineItem{
 							{
 								ProductNameRaw: &lineItemName,
-								Amount:         &lineItemAmount,
+								Amount:         localDecimalPtrEligibility("1200"),
 								Currency:       &lineItemCurrency,
 							},
 						},
@@ -135,4 +136,9 @@ func TestDirectBillingEligibilityAdapter_Execute_ConvertsCommandAndResult(t *tes
 	if result.Failures[0].Message != "msg-3 の請求成立判定入力が不正でした。" {
 		t.Fatalf("expected failure message to be mapped, got %+v", result.Failures[0])
 	}
+}
+
+func localDecimalPtrEligibility(value string) *decimal.Decimal {
+	parsed := decimal.RequireFromString(value)
+	return &parsed
 }

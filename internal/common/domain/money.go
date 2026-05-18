@@ -2,8 +2,6 @@ package domain
 
 import (
 	"errors"
-	"math"
-	"strconv"
 	"strings"
 
 	"github.com/shopspring/decimal"
@@ -26,9 +24,9 @@ type Money struct {
 	Currency string
 }
 
-// NewMoney creates a Money value from amount and currency.
-func NewMoney(amount float64, currency string) (Money, error) {
-	normalizedAmount, err := NormalizeAmount(amount)
+// NewMoneyDecimal creates a Money value from amount and currency.
+func NewMoneyDecimal(amount decimal.Decimal, currency string) (Money, error) {
+	normalizedAmount, err := NormalizeAmountDecimal(amount)
 	if err != nil {
 		return Money{}, err
 	}
@@ -37,6 +35,15 @@ func NewMoney(amount float64, currency string) (Money, error) {
 		return Money{}, err
 	}
 	return Money{Amount: normalizedAmount, Currency: normalizedCurrency}, nil
+}
+
+// NewMoneyFromString creates a Money value from a decimal string and currency.
+func NewMoneyFromString(amount string, currency string) (Money, error) {
+	normalizedAmount, err := NormalizeAmountString(amount)
+	if err != nil {
+		return Money{}, err
+	}
+	return NewMoneyDecimal(normalizedAmount, currency)
 }
 
 // Validate enforces invariants for Money.
@@ -50,16 +57,13 @@ func (m Money) Validate() error {
 	return nil
 }
 
-// NormalizeAmount validates and normalizes the amount to 3 decimal places.
-func NormalizeAmount(amount float64) (decimal.Decimal, error) {
-	if math.IsNaN(amount) || math.IsInf(amount, 0) {
+// NormalizeAmountString validates and normalizes a decimal string amount.
+func NormalizeAmountString(amount string) (decimal.Decimal, error) {
+	trimmed := strings.TrimSpace(amount)
+	if trimmed == "" {
 		return decimal.Zero, ErrMoneyAmountInvalid
 	}
-	if amount <= 0 {
-		return decimal.Zero, ErrMoneyAmountInvalid
-	}
-	raw := strconv.FormatFloat(amount, 'f', -1, 64)
-	parsed, err := decimal.NewFromString(raw)
+	parsed, err := decimal.NewFromString(trimmed)
 	if err != nil {
 		return decimal.Zero, ErrMoneyAmountInvalid
 	}

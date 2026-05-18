@@ -3,21 +3,22 @@ package domain
 import (
 	commondomain "business/internal/common/domain"
 	"fmt"
-	"math"
 	"strings"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 const (
-	parsedEmailTextMaxBytes                   = 65535
-	parsedEmailProductDisplayMaxBytes         = 255
-	parsedEmailBillingNumberMaxBytes          = 255
-	parsedEmailInvoiceNumberMaxBytes          = 14
-	parsedEmailCurrencyMaxBytes               = 3
-	parsedEmailPaymentCycleMaxBytes           = 32
-	parsedEmailAmountScale                    = 3
-	parsedEmailAmountMaxAbs           float64 = 999999999999999.999
-	parsedEmailLineItemMaxCount               = 200
+	parsedEmailTextMaxBytes           = 65535
+	parsedEmailProductDisplayMaxBytes = 255
+	parsedEmailBillingNumberMaxBytes  = 255
+	parsedEmailInvoiceNumberMaxBytes  = 14
+	parsedEmailCurrencyMaxBytes       = 3
+	parsedEmailPaymentCycleMaxBytes   = 32
+	parsedEmailAmountScale            = 3
+	parsedEmailAmountMaxAbs           = "999999999999999.999"
+	parsedEmailLineItemMaxCount       = 200
 )
 
 // AnalysisOutput is the analyzer result returned to the application layer.
@@ -166,19 +167,19 @@ func validateOptionalStringBytes(fieldName string, value *string, maxBytes int) 
 	return nil
 }
 
-func validateOptionalAmount(value *float64) error {
+func validateOptionalAmount(value *string) error {
 	if value == nil {
 		return nil
 	}
-	if math.IsNaN(*value) || math.IsInf(*value, 0) {
-		return fmt.Errorf("amount must be finite")
+	parsed, err := decimal.NewFromString(strings.TrimSpace(*value))
+	if err != nil {
+		return fmt.Errorf("amount must be a decimal string")
 	}
-	if math.Abs(*value) > parsedEmailAmountMaxAbs {
-		return fmt.Errorf("amount exceeds max absolute value %.3f", parsedEmailAmountMaxAbs)
+	maxAbs := decimal.RequireFromString(parsedEmailAmountMaxAbs)
+	if parsed.Abs().GreaterThan(maxAbs) {
+		return fmt.Errorf("amount exceeds max absolute value %s", parsedEmailAmountMaxAbs)
 	}
-
-	scaled := *value * 1000
-	if math.Abs(scaled-math.Round(scaled)) > 1e-9 {
+	if !parsed.Equal(parsed.Round(parsedEmailAmountScale)) {
 		return fmt.Errorf("amount must have at most %d decimal places", parsedEmailAmountScale)
 	}
 

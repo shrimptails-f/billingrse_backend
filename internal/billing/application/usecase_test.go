@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 type stubBillingRepository struct {
@@ -54,7 +56,7 @@ func TestUseCaseExecute_CreatedDuplicateAndFailures(t *testing.T) {
 				if billing.LineItems[0].ProductNameDisplay == nil || *billing.LineItems[0].ProductNameDisplay != "Example Product" {
 					t.Fatalf("expected explicit line item display, got %+v", billing.LineItems[0])
 				}
-				if billing.LineItems[0].Amount == nil || *billing.LineItems[0].Amount != 1200.5 {
+				if billing.LineItems[0].Amount == nil || !billing.LineItems[0].Amount.Equal(decimal.RequireFromString("1200.5")) {
 					t.Fatalf("expected explicit line item amount, got %+v", billing.LineItems[0])
 				}
 				return SaveResult{BillingID: 9001}, nil
@@ -82,7 +84,7 @@ func TestUseCaseExecute_CreatedDuplicateAndFailures(t *testing.T) {
 				ProductNameDisplay: &productNameDisplay,
 				BillingNumber:      " INV-100 ",
 				InvoiceNumber:      &invoiceNumber,
-				Amount:             1200.5,
+				Amount:             decimal.RequireFromString("1200.5"),
 				Currency:           " jpy ",
 				BillingDate:        &billingDate,
 				PaymentCycle:       " recurring ",
@@ -90,7 +92,7 @@ func TestUseCaseExecute_CreatedDuplicateAndFailures(t *testing.T) {
 					{
 						ProductNameRaw:     stringPtr("Example Product Full Name"),
 						ProductNameDisplay: stringPtr("Example Product"),
-						Amount:             float64Ptr(1200.5),
+						Amount:             decimalPtr("1200.5"),
 						Currency:           stringPtr("jpy"),
 					},
 				},
@@ -103,7 +105,7 @@ func TestUseCaseExecute_CreatedDuplicateAndFailures(t *testing.T) {
 				VendorName:        "Beta",
 				MatchedBy:         "sender_domain",
 				BillingNumber:     "INV-200",
-				Amount:            99.9,
+				Amount:            decimal.RequireFromString("99.9"),
 				Currency:          "USD",
 				PaymentCycle:      "one_time",
 			},
@@ -114,7 +116,7 @@ func TestUseCaseExecute_CreatedDuplicateAndFailures(t *testing.T) {
 				VendorID:          0,
 				VendorName:        "Gamma",
 				BillingNumber:     "INV-300",
-				Amount:            1,
+				Amount:            decimal.RequireFromString("1"),
 				Currency:          "JPY",
 				PaymentCycle:      "one_time",
 			},
@@ -125,7 +127,7 @@ func TestUseCaseExecute_CreatedDuplicateAndFailures(t *testing.T) {
 				VendorID:          304,
 				VendorName:        "Delta",
 				BillingNumber:     "INV-400",
-				Amount:            0,
+				Amount:            decimal.Zero,
 				Currency:          "JPY",
 				PaymentCycle:      "one_time",
 			},
@@ -136,7 +138,7 @@ func TestUseCaseExecute_CreatedDuplicateAndFailures(t *testing.T) {
 				VendorID:          305,
 				VendorName:        "Echo",
 				BillingNumber:     "INV-500",
-				Amount:            10,
+				Amount:            decimal.RequireFromString("10"),
 				Currency:          "USD",
 				PaymentCycle:      "one_time",
 			},
@@ -208,7 +210,7 @@ func TestUseCaseExecute_AllowsNilBillingDate(t *testing.T) {
 			if len(billing.LineItems) != 1 {
 				t.Fatalf("expected one fallback line item, got %+v", billing.LineItems)
 			}
-			if billing.LineItems[0].Amount == nil || *billing.LineItems[0].Amount != 100 {
+			if billing.LineItems[0].Amount == nil || !billing.LineItems[0].Amount.Equal(decimal.RequireFromString("100")) {
 				t.Fatalf("expected fallback line item amount, got %+v", billing.LineItems[0])
 			}
 			return SaveResult{BillingID: 9010}, nil
@@ -226,7 +228,7 @@ func TestUseCaseExecute_AllowsNilBillingDate(t *testing.T) {
 				VendorName:         "Acme",
 				ProductNameDisplay: nil,
 				BillingNumber:      "INV-010",
-				Amount:             100,
+				Amount:             decimal.RequireFromString("100"),
 				Currency:           "JPY",
 				PaymentCycle:       "one_time",
 			},
@@ -247,6 +249,7 @@ func stringPtr(value string) *string {
 	return &value
 }
 
-func float64Ptr(value float64) *float64 {
-	return &value
+func decimalPtr(value string) *decimal.Decimal {
+	parsed := decimal.RequireFromString(value)
+	return &parsed
 }

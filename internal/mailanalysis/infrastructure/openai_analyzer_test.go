@@ -22,7 +22,7 @@ func TestOpenAIAnalyzerAdapter_Analyze_Success(t *testing.T) {
 
 	adapter := NewOpenAIAnalyzerAdapter(&mockOpenAIClient{
 		chat: func(ctx context.Context, prompt string) (string, error) {
-			return "{\n  \"parsedEmails\": [\n    {\n      \"productNameRaw\": \" Example Product Full Name \",\n      \"productNameDisplay\": \" Example Product \",\n      \"vendorName\": \" Example Vendor \",\n      \"billingNumber\": \" INV-001 \",\n      \"invoiceNumber\": null,\n      \"amount\": 12.345,\n      \"currency\": \" jpy \",\n      \"billingDate\": \"2026-03-24T00:00:00Z\",\n      \"paymentCycle\": \"one time\",\n      \"lineItems\": [\n        {\n          \"productNameRaw\": \" Example Product Full Name \",\n          \"productNameDisplay\": \" Example Product \",\n          \"amount\": 12.345,\n          \"currency\": \" jpy \"\n        }\n      ]\n    }\n  ]\n}", nil
+			return "{\n  \"parsedEmails\": [\n    {\n      \"productNameRaw\": \" Example Product Full Name \",\n      \"productNameDisplay\": \" Example Product \",\n      \"vendorName\": \" Example Vendor \",\n      \"billingNumber\": \" INV-001 \",\n      \"invoiceNumber\": null,\n      \"amount\": \"12.345\",\n      \"currency\": \" jpy \",\n      \"billingDate\": \"2026-03-24T00:00:00Z\",\n      \"paymentCycle\": \"one time\",\n      \"lineItems\": [\n        {\n          \"productNameRaw\": \" Example Product Full Name \",\n          \"productNameDisplay\": \" Example Product \",\n          \"amount\": \"12.345\",\n          \"currency\": \" jpy \"\n        }\n      ]\n    }\n  ]\n}", nil
 		},
 	}, nil)
 

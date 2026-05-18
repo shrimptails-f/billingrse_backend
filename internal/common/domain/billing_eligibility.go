@@ -65,7 +65,7 @@ func (e BillingEligibility) Evaluate(parsed ParsedEmail, resolution VendorResolu
 	if parsed.Amount == nil {
 		return ErrBillingEligibilityAmountEmpty
 	}
-	if _, err := NormalizeAmount(*parsed.Amount); err != nil {
+	if _, err := NormalizeAmountString(*parsed.Amount); err != nil {
 		return ErrBillingEligibilityAmountInvalid
 	}
 	if parsed.Currency == nil || strings.TrimSpace(*parsed.Currency) == "" {

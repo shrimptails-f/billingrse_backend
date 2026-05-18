@@ -41,8 +41,8 @@ func BuildParsedEmailPrompt(subject, from string, receivedAt time.Time, body str
 - 値が分からない場合は null を設定してください
 - billingDate は RFC3339 形式の文字列、または null にしてください
 - paymentCycle は one_time, recurring, null のいずれかにしてください
-- amount は請求ヘッダの合計金額として数値で返してください
-- lineItems.amount は明細行ごとの金額を数値で返してください
+- amount は請求ヘッダの合計金額として decimal 文字列で返してください（例: "1200", "99.990"）
+- lineItems.amount は明細行ごとの金額を decimal 文字列で返してください（例: "1200", "99.990"）
 - 請求関連の情報が読み取れない場合は {"parsedEmails": []} を返してください
 - 推測で値を補完しないでください
 

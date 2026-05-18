@@ -71,7 +71,7 @@ type parsedEmailResponse struct {
 	VendorName         *string                       `json:"vendorName"`
 	BillingNumber      *string                       `json:"billingNumber"`
 	InvoiceNumber      *string                       `json:"invoiceNumber"`
-	Amount             *float64                      `json:"amount"`
+	Amount             *string                       `json:"amount"`
 	Currency           *string                       `json:"currency"`
 	BillingDate        *string                       `json:"billingDate"`
 	PaymentCycle       *string                       `json:"paymentCycle"`
@@ -79,10 +79,10 @@ type parsedEmailResponse struct {
 }
 
 type parsedEmailLineItemResponse struct {
-	ProductNameRaw     *string  `json:"productNameRaw"`
-	ProductNameDisplay *string  `json:"productNameDisplay"`
-	Amount             *float64 `json:"amount"`
-	Currency           *string  `json:"currency"`
+	ProductNameRaw     *string `json:"productNameRaw"`
+	ProductNameDisplay *string `json:"productNameDisplay"`
+	Amount             *string `json:"amount"`
+	Currency           *string `json:"currency"`
 }
 
 type parsedEmailResponseEnvelope struct {

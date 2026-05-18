@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -87,12 +88,12 @@ func TestGormParsedEmailRepositoryAdapter_SaveAll(t *testing.T) {
 				VendorName:         stringPtr(" Example Vendor "),
 				BillingNumber:      stringPtr(" INV-001 "),
 				InvoiceNumber:      stringPtr(" INV-RAW-001 "),
-				Amount:             float64Ptr(123.456),
+				Amount:             stringPtr("123.456"),
 				Currency:           stringPtr(" jpy "),
 				PaymentCycle:       stringPtr("one time"),
 			},
 			{
-				Amount:       float64Ptr(9.99),
+				Amount:       stringPtr("9.99"),
 				Currency:     stringPtr("usd"),
 				PaymentCycle: stringPtr(" recurring "),
 			},
@@ -116,7 +117,8 @@ func TestGormParsedEmailRepositoryAdapter_SaveAll(t *testing.T) {
 	require.Equal(t, "Example Vendor", *stored[0].VendorName)
 	require.Equal(t, "INV-001", *stored[0].BillingNumber)
 	require.Equal(t, "INV-RAW-001", *stored[0].InvoiceNumber)
-	require.Equal(t, 123.456, *stored[0].Amount)
+	require.NotNil(t, stored[0].Amount)
+	require.True(t, stored[0].Amount.Equal(decimal.RequireFromString("123.456")))
 	require.Equal(t, "JPY", *stored[0].Currency)
 	require.Equal(t, "one_time", *stored[0].PaymentCycle)
 	require.True(t, stored[0].ExtractedAt.Equal(extractedAt))
@@ -155,9 +157,5 @@ func TestGormParsedEmailRepositoryAdapter_SaveAll_NormalizedEmptyDraftsNoop(t *t
 }
 
 func stringPtr(value string) *string {
-	return &value
-}
-
-func float64Ptr(value float64) *float64 {
 	return &value
 }

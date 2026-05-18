@@ -110,7 +110,7 @@ func toBillingLineItems(items []manualapp.EligibleLineItem) []billingapp.Creatio
 		lineItems = append(lineItems, billingapp.CreationLineItem{
 			ProductNameRaw:     cloneString(item.ProductNameRaw),
 			ProductNameDisplay: cloneString(item.ProductNameDisplay),
-			Amount:             cloneFloat64(item.Amount),
+			Amount:             cloneDecimal(item.Amount),
 			Currency:           cloneString(item.Currency),
 		})
 	}

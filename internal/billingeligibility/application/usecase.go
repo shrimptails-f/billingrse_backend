@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 // EligibilityTarget is a resolved vendor item evaluated for billing creation.
@@ -135,7 +137,7 @@ func (uc *useCase) Execute(ctx context.Context, cmd Command) (Result, error) {
 				ProductNameDisplay: uc.policy.ResolvedProductNameDisplay(target.Data),
 				BillingNumber:      stringValue(target.Data.BillingNumber),
 				InvoiceNumber:      cloneString(target.Data.InvoiceNumber),
-				Amount:             float64Value(target.Data.Amount),
+				Amount:             decimalValue(target.Data.Amount),
 				Currency:           stringValue(target.Data.Currency),
 				BillingDate:        cloneTime(target.Data.BillingDate),
 				PaymentCycle:       stringValue(target.Data.PaymentCycle),
@@ -272,11 +274,15 @@ func stringValue(value *string) string {
 	return *value
 }
 
-func float64Value(value *float64) float64 {
+func decimalValue(value *string) decimal.Decimal {
 	if value == nil {
-		return 0
+		return decimal.Zero
 	}
-	return *value
+	parsed, err := commondomain.NormalizeAmountString(*value)
+	if err != nil {
+		return decimal.Zero
+	}
+	return parsed
 }
 
 func cloneString(value *string) *string {
@@ -295,7 +301,7 @@ func cloneTime(value *time.Time) *time.Time {
 	return &cloned
 }
 
-func cloneFloat64(value *float64) *float64 {
+func cloneDecimal(value *decimal.Decimal) *decimal.Decimal {
 	if value == nil {
 		return nil
 	}
@@ -332,7 +338,7 @@ func toLineItems(items []commondomain.ParsedEmailLineItem, fallbackCurrency stri
 		lineItem := domain.LineItem{
 			ProductNameRaw:     cloneString(normalized.ProductNameRaw),
 			ProductNameDisplay: cloneString(normalized.ProductNameDisplay),
-			Amount:             cloneFloat64(normalized.Amount),
+			Amount:             decimalPtr(normalized.Amount),
 			Currency:           currency,
 		}
 		if lineItem.ProductNameRaw == nil &&
@@ -348,4 +354,15 @@ func toLineItems(items []commondomain.ParsedEmailLineItem, fallbackCurrency stri
 		return nil
 	}
 	return lineItems
+}
+
+func decimalPtr(value *string) *decimal.Decimal {
+	if value == nil {
+		return nil
+	}
+	parsed, err := commondomain.NormalizeAmountString(*value)
+	if err != nil {
+		return nil
+	}
+	return &parsed
 }

@@ -7,6 +7,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 type stubFetchStage struct {
@@ -58,7 +60,8 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 	vendorResolutionCalls := 0
 	billingEligibilityCalls := 0
 	billingCalls := 0
-	amount := 1200.0
+	amountText := "1200"
+	amount := decimal.RequireFromString(amountText)
 	currency := "JPY"
 	billingNumber := "INV-001"
 	paymentCycle := "one_time"
@@ -118,7 +121,7 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 							Data: commondomain.ParsedEmail{
 								VendorName:    stringPtr("Acme"),
 								BillingNumber: stringPtr(billingNumber),
-								Amount:        float64Ptr(amount),
+								Amount:        stringPtr(amountText),
 								Currency:      stringPtr(currency),
 								PaymentCycle:  stringPtr(paymentCycle),
 							},
@@ -165,7 +168,7 @@ func TestUseCaseExecute_FetchThenAnalyze(t *testing.T) {
 							Data: commondomain.ParsedEmail{
 								VendorName:    stringPtr("Acme"),
 								BillingNumber: stringPtr(billingNumber),
-								Amount:        float64Ptr(amount),
+								Amount:        stringPtr(amountText),
 								Currency:      stringPtr(currency),
 								PaymentCycle:  stringPtr(paymentCycle),
 							},
@@ -908,6 +911,7 @@ func stringPtr(value string) *string {
 	return &value
 }
 
-func float64Ptr(value float64) *float64 {
-	return &value
+func decimalPtr(value string) *decimal.Decimal {
+	parsed := decimal.RequireFromString(value)
+	return &parsed
 }

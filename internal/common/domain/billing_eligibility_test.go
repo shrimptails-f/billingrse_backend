@@ -13,7 +13,7 @@ func TestBillingEligibility(t *testing.T) {
 	productNameDisplay := "Netflix Standard"
 	productNameRaw := "Netflix Standard Plan"
 	billingNumber := "INV-001"
-	amount := 1200.0
+	amount := "1200.000"
 	currency := "JPY"
 	billingDate := time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC)
 	paymentCycle := "one_time"
@@ -127,10 +127,59 @@ func TestBillingEligibility(t *testing.T) {
 		t.Fatalf("expected ErrBillingEligibilityBillingNumberEmpty, got %v", err)
 	}
 
-	invalidAmount := -10.0
+	invalidAmount := "-10"
 	parsedInvalidAmount := parsed
 	parsedInvalidAmount.Amount = &invalidAmount
 	if err := eligibility.Evaluate(parsedInvalidAmount, resolution); !errors.Is(err, ErrBillingEligibilityAmountInvalid) {
 		t.Fatalf("expected ErrBillingEligibilityAmountInvalid, got %v", err)
+	}
+}
+
+func TestBillingEligibility_InvalidAmountFormats(t *testing.T) {
+	t.Parallel()
+
+	vendorName := "Netflix"
+	productNameDisplay := "Netflix Standard"
+	billingNumber := "INV-001"
+	currency := "JPY"
+	billingDate := time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC)
+	paymentCycle := "one_time"
+
+	resolution := VendorResolution{
+		ResolvedVendor: &Vendor{UserID: 1, Name: "Netflix"},
+	}
+	eligibility := BillingEligibility{}
+
+	cases := []struct {
+		name   string
+		amount string
+	}{
+		{name: "empty string", amount: ""},
+		{name: "alpha", amount: "abc"},
+		{name: "zero", amount: "0"},
+		{name: "comma separated", amount: "1,200"},
+		{name: "currency prefixed", amount: "¥1200"},
+		{name: "too many decimals", amount: "12.3456"},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			parsed := ParsedEmail{
+				ProductNameDisplay: &productNameDisplay,
+				VendorName:         &vendorName,
+				BillingNumber:      &billingNumber,
+				Amount:             &tc.amount,
+				Currency:           &currency,
+				BillingDate:        &billingDate,
+				PaymentCycle:       &paymentCycle,
+			}
+
+			if err := eligibility.Evaluate(parsed, resolution); !errors.Is(err, ErrBillingEligibilityAmountInvalid) {
+				t.Fatalf("expected ErrBillingEligibilityAmountInvalid, got %v", err)
+			}
+		})
 	}
 }
